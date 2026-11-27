@@ -1,6 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useRef } from "react";
 
 import { useToast } from "@/components/useToast";
 import {
@@ -13,10 +12,53 @@ import {
   updateNotificationPreferences,
   updateTimezone,
 } from "@/lib/api/preferences";
+import { sessionGeneration } from "@/lib/session";
 
 import { phoneTimezone, timezoneOffer, withChange } from "./notificationHelpers";
 
 const SAVE_FAILED = "Couldn't save. Try again.";
+
+function usePreferenceSave<T>(
+  queryKey: readonly string[],
+  request: (next: T) => Promise<T>,
+  onError: () => void,
+) {
+  const queryClient = useQueryClient();
+  const generation = sessionGeneration();
+  const mutationKey = ["savePreference", ...queryKey, generation];
+  const isSaving = useIsMutating({ mutationKey }) > 0;
+  const mutation = useMutation({
+    mutationKey,
+    async mutationFn(next: T) {
+      await queryClient.cancelQueries({ queryKey });
+      if (generation !== sessionGeneration()) return;
+      const previous = queryClient.getQueryData<T>(queryKey);
+      queryClient.setQueryData<T>(queryKey, next);
+      try {
+        const answer = await request(next);
+        if (generation !== sessionGeneration()) return;
+        await queryClient.cancelQueries({ queryKey });
+        if (generation === sessionGeneration()) queryClient.setQueryData<T>(queryKey, answer);
+      } catch {
+        if (generation !== sessionGeneration()) return;
+        queryClient.setQueryData<T>(queryKey, previous);
+        onError();
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    },
+  });
+
+  function save(next: T) {
+    if (generation !== sessionGeneration() || queryClient.isMutating({ mutationKey })) return;
+    mutation.mutate(next);
+  }
+
+  return { isSaving, save };
+}
+
+function saveTimezone(next: Timezone) {
+  return updateTimezone(next.timezone);
+}
 
 export function useNotificationsScreen() {
   const queryClient = useQueryClient();
@@ -26,31 +68,15 @@ export function useNotificationsScreen() {
     queryFn: getNotificationPreferences,
   });
   const timezone = useQuery({ queryKey: preferenceKeys.timezone, queryFn: getTimezone });
-  // Per cache key, the number of the last save; an older one's answer is stale.
-  const lastSave = useRef<Record<string, number>>({});
+  const preferencesSave = usePreferenceSave(
+    preferenceKeys.notifications,
+    updateNotificationPreferences,
+    showSaveError,
+  );
+  const timezoneSave = usePreferenceSave(preferenceKeys.timezone, saveTimezone, showSaveError);
 
-  // Shown at once, then saved; a refused save puts the old value back. Each
-  // save sends every field, so only the newest may write what came back.
-  async function save<T>(
-    queryKey: readonly string[],
-    next: T,
-    request: () => Promise<T>,
-  ) {
-    const id = queryKey.join("/");
-    const number = (lastSave.current[id] ?? 0) + 1;
-    lastSave.current[id] = number;
-    await queryClient.cancelQueries({ queryKey });
-    const previous = queryClient.getQueryData<T>(queryKey);
-    queryClient.setQueryData<T>(queryKey, next);
-    try {
-      const answer = await request();
-      if (lastSave.current[id] === number) queryClient.setQueryData<T>(queryKey, answer);
-    } catch {
-      if (lastSave.current[id] !== number) return;
-      queryClient.setQueryData<T>(queryKey, previous);
-      show({ message: SAVE_FAILED, tone: "error" });
-      void queryClient.invalidateQueries({ queryKey });
-    }
+  function showSaveError() {
+    show({ message: SAVE_FAILED, tone: "error" });
   }
 
   function changeNotifications(change: Partial<NotificationPreferences>) {
@@ -58,8 +84,7 @@ export function useNotificationsScreen() {
       preferenceKeys.notifications,
     );
     if (!saved) return;
-    const next = withChange(saved, change);
-    void save(preferenceKeys.notifications, next, () => updateNotificationPreferences(next));
+    preferencesSave.save(withChange(saved, change));
   }
 
   function chooseBriefing(frequency: BriefingFrequency) {
@@ -72,7 +97,7 @@ export function useNotificationsScreen() {
   }
 
   function chooseZone(zone: string) {
-    void save<Timezone>(preferenceKeys.timezone, { timezone: zone }, () => updateTimezone(zone));
+    timezoneSave.save({ timezone: zone });
   }
 
   function retry() {
@@ -93,6 +118,8 @@ export function useNotificationsScreen() {
     isLoadError:
       (preferences.isError && !preferences.data) || (timezone.isError && !timezone.data),
     isRetrying: preferences.isFetching || timezone.isFetching,
+    isSavingPreferences: preferencesSave.isSaving,
+    isSavingTimezone: timezoneSave.isSaving,
     retry,
     goBack,
     chooseBriefing,

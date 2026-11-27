@@ -9,11 +9,12 @@ import { BRIEFING_OPTIONS } from "../notificationHelpers";
 
 interface Props {
   value: BriefingFrequency;
+  disabled: boolean;
   onChoose: (frequency: BriefingFrequency) => void;
 }
 
 /** How often the Briefing email comes. */
-export function BriefingPicker({ value, onChoose }: Props) {
+export function BriefingPicker({ value, disabled, onChoose }: Props) {
   const styles = useStyles();
   const colors = useColors();
 
@@ -33,7 +34,8 @@ export function BriefingPicker({ value, onChoose }: Props) {
               key={option.value}
               accessibilityRole="radio"
               accessibilityLabel={option.label}
-              accessibilityState={{ checked: isSelected }}
+              accessibilityState={{ checked: isSelected, disabled }}
+              disabled={disabled}
               onPress={() => onChoose(option.value)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >

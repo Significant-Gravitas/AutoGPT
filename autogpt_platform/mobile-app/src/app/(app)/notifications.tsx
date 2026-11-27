@@ -37,12 +37,14 @@ export default function NotificationsScreen() {
           >
             <BriefingPicker
               value={preferences.briefing_frequency}
+              disabled={screen.isSavingPreferences}
               onChoose={screen.chooseBriefing}
             />
             <SwitchRow
               label="Alerts"
               description="Only when something is waiting on you — never for a successful run. At most two a day."
               value={preferences.alerts_enabled}
+              disabled={screen.isSavingPreferences}
               onValueChange={screen.setAlerts}
             />
           </SettingsGroup>
@@ -54,6 +56,8 @@ export default function NotificationsScreen() {
             {zoneOffer ? (
               <Pressable
                 accessibilityRole="button"
+                accessibilityState={{ disabled: screen.isSavingTimezone }}
+                disabled={screen.isSavingTimezone}
                 onPress={() => screen.chooseZone(zoneOffer)}
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
               >
