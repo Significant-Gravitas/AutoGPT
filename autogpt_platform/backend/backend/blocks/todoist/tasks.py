@@ -11,6 +11,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.blocks.todoist._api import (
+    PAGE_SIZE,
     flatten_pages,
     get_api,
     parse_duration_unit,
@@ -290,18 +291,18 @@ class TodoistGetTasksBlock(Block):
         ids: Optional[list[str]] = None,
     ):
         with get_api(credentials) as api:
-            # REST v2's precedence: a filter query, then ids, then the project,
-            # section and label filters. API v1 serves a filter query from its
-            # own endpoint and would otherwise combine ids with the rest.
+            # Precedence: a filter query, then ids, then the project, section
+            # and label filters.
             if filter is not None:
-                pages = api.filter_tasks(query=filter, lang=lang)
+                pages = api.filter_tasks(query=filter, lang=lang, limit=PAGE_SIZE)
             elif ids:
-                pages = api.get_tasks(ids=ids)
+                pages = api.get_tasks(ids=ids, limit=PAGE_SIZE)
             else:
                 pages = api.get_tasks(
                     project_id=project_id,
                     section_id=section_id,
                     label=label,
+                    limit=PAGE_SIZE,
                 )
             return [task_to_dict(task) for task in flatten_pages(pages)]
 
@@ -513,9 +514,8 @@ class TodoistUpdateTaskBlock(Block):
                 duration=duration,
                 duration_unit=parse_duration_unit(duration_unit),
             )
-            # project_id/section_id/parent_id are not sent: the update endpoint
-            # never moved tasks (REST v2 ignored them too), and moving is a
-            # separate move_task call this block has not made so far.
+            # Update never moves a task: project_id/section_id/parent_id are not
+            # sent, and moving needs api.move_task.
             return True
 
     async def run(

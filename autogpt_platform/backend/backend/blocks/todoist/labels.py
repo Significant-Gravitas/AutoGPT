@@ -8,7 +8,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.todoist._api import flatten_pages, get_api
+from backend.blocks.todoist._api import PAGE_SIZE, flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -173,7 +173,10 @@ class TodoistListLabelsBlock(Block):
     @staticmethod
     def get_labels(credentials: TodoistCredentials):
         with get_api(credentials) as api:
-            return [label.to_dict() for label in flatten_pages(api.get_labels())]
+            return [
+                label.to_dict()
+                for label in flatten_pages(api.get_labels(limit=PAGE_SIZE))
+            ]
 
     async def run(
         self,
@@ -431,7 +434,7 @@ class TodoistGetSharedLabelsBlock(Block):
     @staticmethod
     def get_shared_labels(credentials: TodoistCredentials):
         with get_api(credentials) as api:
-            return flatten_pages(api.get_shared_labels())
+            return flatten_pages(api.get_shared_labels(limit=PAGE_SIZE))
 
     async def run(
         self,

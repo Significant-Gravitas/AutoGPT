@@ -206,6 +206,7 @@ def test_get_tasks_reads_every_page(requests_sent):
 
     assert [task["id"] for task in tasks] == ["a", "b", "c"]
     assert requests_sent[0]["params"]["project_id"] == "P"
+    assert requests_sent[0]["params"]["limit"] == str(todoist_api.PAGE_SIZE)
     assert requests_sent[1]["params"]["cursor"] == "c1"
 
 
@@ -240,9 +241,10 @@ def test_create_task_sends_due_date_and_duration(requests_sent):
 
     assert task_id == "T"
     assert url == data["url"]
-    body = json.dumps(requests_sent[0]["body"])
-    assert "2026-10-05" in body
-    assert "minute" in body
+    body = requests_sent[0]["body"]
+    assert body["due_date"] == "2026-10-05"
+    assert body["duration"] == 15
+    assert body["duration_unit"] == "minute"
 
 
 def test_update_task_does_not_move_the_task(requests_sent):
@@ -335,8 +337,12 @@ def test_shared_label_blocks(requests_sent):
     TodoistRenameSharedLabelsBlock.rename_shared_labels(CREDS, "old", "new")
     TodoistRemoveSharedLabelsBlock.remove_shared_label(CREDS, "new")
 
-    assert "labels/shared" in requests_sent[-2]["path"]
-    assert "labels/shared" in requests_sent[-1]["path"]
+    rename, remove = requests_sent[-2], requests_sent[-1]
+    assert rename["path"].endswith("/labels/shared/rename")
+    assert rename["params"]["name"] == "old"
+    assert rename["body"]["new_name"] == "new"
+    assert remove["path"].endswith("/labels/shared/remove")
+    assert remove["body"]["name"] == "new"
 
 
 def test_comment_blocks(requests_sent):
@@ -364,3 +370,12 @@ def test_comment_blocks(requests_sent):
     assert TodoistUpdateCommentBlock.update_comment(CREDS, "C", "edited") is True
     TodoistDeleteCommentBlock.delete_comment(CREDS, "C")
     assert requests_sent[-1]["method"] == "DELETE"
+
+
+def test_create_comment_rejects_an_attachment_without_a_url(requests_sent):
+    with pytest.raises(ValueError, match="file_url or url"):
+        TodoistCreateCommentBlock.create_comment(
+            CREDS, "hello", task_id="T", attachment={"file_name": "a.pdf"}
+        )
+
+    assert requests_sent == []

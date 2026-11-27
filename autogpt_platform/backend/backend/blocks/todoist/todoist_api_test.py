@@ -114,6 +114,26 @@ def test_task_to_dict_gives_due_date_in_the_task_timezone():
     assert data["due"]["datetime"].startswith("2026-10-04T23:00:00")
 
 
+@pytest.mark.parametrize("timezone", ["Not/AZone", None])
+def test_task_to_dict_falls_back_to_the_utc_day(timezone):
+    task = Task.from_dict(
+        _task_payload(
+            {
+                "date": "2026-10-04T23:00:00Z",
+                "string": "Oct 4 11pm",
+                "lang": "en",
+                "is_recurring": False,
+                "timezone": timezone,
+            }
+        )
+    )
+
+    data = task_to_dict(task)
+
+    assert data["due"]["date"] == "2026-10-04"
+    assert data["due"]["datetime"].startswith("2026-10-04T23:00:00")
+
+
 def test_project_to_dict_keeps_legacy_keys():
     project = Project.from_dict(
         {

@@ -12,7 +12,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.todoist._api import flatten_pages, get_api
+from backend.blocks.todoist._api import PAGE_SIZE, flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -102,14 +102,20 @@ class TodoistCreateCommentBlock(Block):
         project_id: Optional[str] = None,
         attachment: Optional[dict] = None,
     ):
+        parsed_attachment = None
+        if attachment is not None:
+            parsed_attachment = Attachment.from_dict(attachment)
+            if not (parsed_attachment.file_url or parsed_attachment.url):
+                raise ValueError(
+                    "The attachment needs a file_url or url; got keys "
+                    f"{sorted(attachment)}"
+                )
         with get_api(credentials) as api:
             comment = api.add_comment(
                 content=content,
                 task_id=task_id,
                 project_id=project_id,
-                attachment=(
-                    Attachment.from_dict(attachment) if attachment is not None else None
-                ),
+                attachment=parsed_attachment,
             )
             return comment.to_dict()
 
@@ -213,7 +219,9 @@ class TodoistGetCommentsBlock(Block):
         project_id: Optional[str] = None,
     ):
         with get_api(credentials) as api:
-            comments = api.get_comments(task_id=task_id, project_id=project_id)
+            comments = api.get_comments(
+                task_id=task_id, project_id=project_id, limit=PAGE_SIZE
+            )
             return [comment.to_dict() for comment in flatten_pages(comments)]
 
     async def run(

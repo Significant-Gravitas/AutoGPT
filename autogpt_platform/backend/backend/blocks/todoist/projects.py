@@ -8,7 +8,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.todoist._api import flatten_pages, get_api, project_to_dict
+from backend.blocks.todoist._api import (
+    PAGE_SIZE,
+    flatten_pages,
+    get_api,
+    project_to_dict,
+)
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -83,7 +88,7 @@ class TodoistListProjectsBlock(Block):
     @staticmethod
     def get_project_lists(credentials: TodoistCredentials):
         with get_api(credentials) as api:
-            projects = flatten_pages(api.get_projects())
+            projects = flatten_pages(api.get_projects(limit=PAGE_SIZE))
 
         names = []
         ids = []
@@ -508,7 +513,9 @@ class TodoistListCollaboratorsBlock(Block):
     @staticmethod
     def get_collaborators(credentials: TodoistCredentials, project_id: str):
         with get_api(credentials) as api:
-            collaborators = flatten_pages(api.get_collaborators(project_id=project_id))
+            collaborators = flatten_pages(
+                api.get_collaborators(project_id=project_id, limit=PAGE_SIZE)
+            )
 
         ids = []
         names = []

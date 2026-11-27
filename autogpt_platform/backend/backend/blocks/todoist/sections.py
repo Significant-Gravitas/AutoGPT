@@ -8,7 +8,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.todoist._api import flatten_pages, get_api
+from backend.blocks.todoist._api import PAGE_SIZE, flatten_pages, get_api
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -86,7 +86,9 @@ class TodoistListSectionsBlock(Block):
         credentials: TodoistCredentials, project_id: Optional[str] = None
     ):
         with get_api(credentials) as api:
-            sections = flatten_pages(api.get_sections(project_id=project_id))
+            sections = flatten_pages(
+                api.get_sections(project_id=project_id, limit=PAGE_SIZE)
+            )
 
         names = []
         ids = []
