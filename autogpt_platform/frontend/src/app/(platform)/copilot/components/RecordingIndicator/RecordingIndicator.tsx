@@ -18,7 +18,7 @@ export function RecordingIndicator() {
     <div
       role="status"
       aria-live="polite"
-      className="inline-flex items-center gap-1.5 rounded-full border border-error/20 bg-error-surface px-2.5 py-1 text-error-foreground"
+      className="inline-flex items-center gap-1.5 rounded-pill border border-error/20 bg-error-surface px-2.5 py-1 text-error-foreground"
     >
       <span className="flex text-error-hover motion-safe:animate-pulse">
         <Icon
@@ -28,7 +28,9 @@ export function RecordingIndicator() {
           aria-hidden="true"
         />
       </span>
-      <Text variant="small-medium-tight">Recording</Text>
+      <Text variant="small" weight="medium" leading="4">
+        Recording
+      </Text>
     </div>
   );
 }

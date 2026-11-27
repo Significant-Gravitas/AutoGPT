@@ -41,13 +41,15 @@ export function WalletEarnCredits({ groups, completedSteps }: Props) {
           open={open}
           available={available}
         />
-        <CollapsibleContent forceMount hidden={!open} className="px-2 pb-3">
-          {earnGroups.map((group) => (
-            <EarnGroupSection
-              key={`${group.key}:${group.defaultOpen}`}
-              group={group}
-            />
-          ))}
+        <CollapsibleContent forceMount hidden={!open}>
+          <div className="px-2 pb-3">
+            {earnGroups.map((group) => (
+              <EarnGroupSection
+                key={`${group.key}:${group.defaultOpen}`}
+                group={group}
+              />
+            ))}
+          </div>
         </CollapsibleContent>
       </section>
     </CollapsibleRoot>
@@ -71,7 +73,7 @@ function EarnCreditsHeader({
           className="flex w-full flex-col gap-1 px-5 py-3 text-left transition-colors outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-inset"
         >
           <span className="flex w-full items-baseline justify-between gap-3">
-            <Text as="span" variant="large-medium" tone="primary">
+            <Text as="span" variant="large" weight="medium" tone="primary">
               Earn credits
             </Text>
             <Text as="span" variant="small" tone="secondary" tabular>
@@ -112,7 +114,9 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
       >
         <span className="flex min-w-0 items-start gap-2.5">
           <StatusIcon done={group.done} />
-          <Text variant="body-medium">{group.label}</Text>
+          <Text variant="body" weight="medium">
+            {group.label}
+          </Text>
           <Icon
             icon={ArrowDown01Icon}
             size={14}
@@ -121,7 +125,13 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
             className={cn("mt-1 shrink-0", open && "rotate-180")}
           />
         </span>
-        <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
+        <Text
+          variant="body"
+          leading="5"
+          as="span"
+          tone="muted"
+          className="shrink-0"
+        >
           {group.done ? "Done" : `$${group.amount.toFixed(2)}`}
         </Text>
       </button>
@@ -138,7 +148,13 @@ function EarnTaskRow({ row }: { row: EarnRow }) {
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
       </div>
-      <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
+      <Text
+        variant="body"
+        leading="5"
+        as="span"
+        tone="muted"
+        className="shrink-0"
+      >
         {row.done ? "Done" : `$${row.amount.toFixed(2)}`}
       </Text>
     </div>

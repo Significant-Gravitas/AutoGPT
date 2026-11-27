@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Node's own fetch, as the route gets in production: the dropped-connection
+// tests send it to a real server.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -35,7 +38,12 @@ import { readServerSession } from "@/lib/auth/server/getServerSession";
 import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { APIError } from "better-auth/api";
 import { encodeImpersonation } from "@/lib/impersonation";
-import { GET, POST } from "../route";
+import { environment } from "@/services/environment";
+import {
+  hangUp,
+  startLoopbackBackend,
+} from "@/tests/integrations/loopback-backend";
+import { DELETE, GET, PATCH, POST, PUT } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
   "accept",
@@ -118,7 +126,6 @@ describe("proxy route — handler pass-through", () => {
     const req = new NextRequest("https://app.test/api/proxy/api/v1/x", {
       method: "DELETE",
     });
-    const { DELETE } = await import("../route");
     const res = await DELETE(req, makeParams(["api", "v1", "x"]));
 
     expect(res.status).toBe(204);
@@ -787,6 +794,7 @@ describe("proxy: admin impersonation header", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -873,5 +881,169 @@ describe("proxy: admin impersonation header", () => {
         "target-b",
       ),
     ).toBeNull();
+  });
+});
+
+// A pooled connection to the backend can be dead by the time it's reused,
+// and Node's fetch fails the request rather than send it again.
+describe("proxy route — a dropped backend connection", () => {
+  const HANDLERS = { DELETE, PATCH, POST, PUT };
+
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(environment.getAGPTServerBaseUrl).mockReturnValue(BACKEND);
+  });
+
+  async function startBackend(
+    answer: Parameters<typeof startLoopbackBackend>[0],
+  ) {
+    const backend = await startLoopbackBackend(answer);
+    vi.mocked(environment.getAGPTServerBaseUrl).mockReturnValue(backend.url);
+    return backend;
+  }
+
+  it.each([
+    { method: "GET", how: "destroy", code: "UND_ERR_SOCKET" },
+    { method: "GET", how: "resetAndDestroy", code: "ECONNRESET" },
+    { method: "HEAD", how: "destroy", code: "UND_ERR_SOCKET" },
+  ] as const)(
+    "sends a $method once more when its connection is dropped ($code)",
+    async ({ method, how, code }) => {
+      const backend = await startBackend((request, response, count) => {
+        if (count === 1) return hangUp(request, how);
+        response.end("answered");
+      });
+
+      const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+        method,
+      });
+      const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+      expect(res.status).toBe(200);
+      expect(backend.requests).toEqual([
+        `${method} /api/v1/items`,
+        `${method} /api/v1/items`,
+      ]);
+      expect(console.info).toHaveBeenCalledExactlyOnceWith(
+        `Retried ${method} /api/v1/items after a dropped connection (${code}): 200`,
+      );
+      expect(console.error).not.toHaveBeenCalled();
+      expect(console.warn).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["POST", "PUT", "PATCH", "DELETE"] as const)(
+    "never sends a %s again, and answers 502",
+    async (method) => {
+      const backend = await startBackend((request, response, count) => {
+        if (count === 1) return hangUp(request);
+        response.end("answered");
+      });
+
+      const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+        method,
+        ...(method === "DELETE"
+          ? {}
+          : {
+              body: JSON.stringify({ name: "foo" }),
+              headers: { "Content-Type": "application/json" },
+            }),
+      });
+      const res = await HANDLERS[method](
+        req,
+        makeParams(["api", "v1", "items"]),
+      );
+
+      expect(res.status).toBe(502);
+      expect(await res.json()).toEqual({
+        error: "Proxy request failed",
+        detail: "fetch failed",
+      });
+      expect(backend.requests).toEqual([`${method} /api/v1/items`]);
+      expect(console.error).toHaveBeenCalledExactlyOnceWith(
+        `Proxy error for ${method} /api/v1/items (UND_ERR_SOCKET):`,
+        expect.any(TypeError),
+      );
+      expect(console.info).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers 502 when the second connection is dropped too", async () => {
+    const backend = await startBackend((request) => hangUp(request));
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: "Proxy request failed",
+      detail: "fetch failed",
+    });
+    expect(backend.requests).toEqual([
+      "GET /api/v1/items",
+      "GET /api/v1/items",
+    ]);
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(
+      "Proxy error for GET /api/v1/items (UND_ERR_SOCKET):",
+      expect.any(TypeError),
+    );
+    expect(console.info).not.toHaveBeenCalled();
+  });
+
+  it("never sends a request that timed out again", async () => {
+    await startBackend(() => {});
+    // The route's deadline, cut from 290 s to a real 100 ms.
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(100));
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.status).toBe(504);
+    expect(await res.json()).toMatchObject({
+      error: "Proxy request timed out",
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(console.info).not.toHaveBeenCalled();
+  });
+
+  it("never sends a request again once its response has started", async () => {
+    // Private media is read in full before the route answers, so a cut in
+    // the body fails the route itself rather than the browser's read.
+    const backend = await startBackend((_request, response) => {
+      response.writeHead(200, {
+        "Content-Type": "image/png",
+        "Content-Length": "100",
+      });
+      response.write("10 bytes..", () => response.socket?.destroy());
+    });
+    const path = [
+      "api",
+      "store",
+      "submissions",
+      "media",
+      "user-123",
+      "images",
+      "thumbnail.png",
+    ];
+
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Proxy request failed" });
+    expect(backend.requests).toHaveLength(1);
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(
+      "Private media proxy GET failed: Proxy request failed (UND_ERR_SOCKET)",
+    );
+    expect(console.info).not.toHaveBeenCalled();
   });
 });

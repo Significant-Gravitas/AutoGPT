@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import enum
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from json import JSONDecodeError
@@ -20,6 +21,7 @@ from typing import (
     get_args,
 )
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
@@ -45,7 +47,7 @@ from backend.data.credential_scope import ServerTarget, scope_rule
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import ExecutionFailureReason
+from backend.util.exceptions import CredentialsExpiredError, ExecutionFailureReason
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
 from backend.util.settings import Secrets
@@ -464,6 +466,26 @@ class APIKeyCredentials(_BaseCredentials):
         description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
     )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
+
+    def is_expired(self, now: int | None = None) -> bool:
+        """Whether ``expires_at`` is at or before *now* (default: the current time)."""
+        if self.expires_at is None:
+            return False
+        return self.expires_at <= (int(time.time()) if now is None else now)
+
+    def expired_error(self, user_timezone: str = "UTC") -> CredentialsExpiredError:
+        """Dated in *user_timezone* (an IANA name), so its owner reads the day
+        they picked; in UTC when that zone is unknown."""
+        try:
+            zone = ZoneInfo(user_timezone)
+        except (KeyError, ValueError):  # not a zone name, or not one we know
+            zone = ZoneInfo("UTC")
+        # Clamped: a key stored with a far-past expiry still gets this message.
+        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), zone)
+        name = f" '{self.title}'" if self.title else ""
+        return CredentialsExpiredError(
+            f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M %Z}. Add a new key."
+        )
 
     def auth_header(self) -> str:
         # Linear API keys should not have Bearer prefix

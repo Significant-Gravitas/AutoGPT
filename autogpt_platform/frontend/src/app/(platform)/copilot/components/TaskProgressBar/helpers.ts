@@ -21,6 +21,23 @@ function isTodoItem(value: unknown): value is TodoItem {
   );
 }
 
+function isAcceptedEmptyTodoWrite(output: unknown): boolean {
+  if (!output || typeof output !== "object") return false;
+  const result = output as Record<string, unknown>;
+  if ("type" in result) {
+    return (
+      result.type === "todo_write" &&
+      Array.isArray(result.todos) &&
+      result.todos.length === 0
+    );
+  }
+  return (
+    Array.isArray(result.oldTodos) &&
+    Array.isArray(result.newTodos) &&
+    result.newTodos.length === 0
+  );
+}
+
 // Walks the message history backwards for the most recent TodoWrite tool call
 // and returns its task list (the copilot's live plan), or EMPTY_TODOS.
 export function getLatestTaskList(messages: UIMessage[]): TodoItem[] {
@@ -32,6 +49,8 @@ export function getLatestTaskList(messages: UIMessage[]): TodoItem[] {
         type: string;
         state?: string;
         input?: unknown;
+        output?: unknown;
+        preliminary?: boolean;
       };
       if (part.type !== "tool-TodoWrite") continue;
       // While a TodoWrite call's arguments are still streaming, the AI SDK
@@ -44,6 +63,14 @@ export function getLatestTaskList(messages: UIMessage[]): TodoItem[] {
       if (!input || typeof input !== "object") continue;
       const todos = (input as { todos?: unknown }).todos;
       if (!Array.isArray(todos)) continue;
+      if (
+        todos.length === 0 &&
+        part.state === "output-available" &&
+        !part.preliminary &&
+        isAcceptedEmptyTodoWrite(part.output)
+      ) {
+        return EMPTY_TODOS;
+      }
       const filtered = todos.filter(isTodoItem);
       if (filtered.length > 0) return filtered;
     }

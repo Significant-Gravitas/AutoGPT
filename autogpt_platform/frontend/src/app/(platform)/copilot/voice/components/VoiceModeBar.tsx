@@ -56,10 +56,22 @@ export function VoiceModeBar({
         >
           {failure.message}
         </span>
-        <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          shape="sharp"
+          onClick={onRetry}
+        >
           Retry
         </Button>
-        <Button type="button" variant="ghost" size="xs" onClick={onDownload}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          shape="sharp"
+          onClick={onDownload}
+        >
           Download recording
         </Button>
         {leaveButton}

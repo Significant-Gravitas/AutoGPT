@@ -34,10 +34,11 @@ export function ProviderGroup({
       type="single"
       collapsible
       defaultValue={provider.id}
-      className="w-full overflow-hidden rounded-2xl border border-border-base bg-surface"
+      variant="panel"
+      className="w-full overflow-hidden"
     >
-      <AccordionItem value={provider.id} className="border-b-0">
-        <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-foreground-base">
+      <AccordionItem value={provider.id}>
+        <AccordionTrigger>
           <div className="flex items-center gap-3">
             <ProviderAvatar provider={provider} />
             <span className="text-body-lg leading-6.5 font-medium tracking-title text-foreground-base">
@@ -48,7 +49,7 @@ export function ProviderGroup({
             </span>
           </div>
         </AccordionTrigger>
-        <AccordionContent className="px-0 pt-0 pb-0">
+        <AccordionContent>
           <div className="flex flex-col divide-y divide-border-base border-t border-border-base">
             {provider.credentials.map((credential) => (
               <CredentialRow

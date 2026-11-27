@@ -253,7 +253,7 @@ export default function AuthorizePage() {
 
           {/* Permissions */}
           <div>
-            <Text variant="body-medium" className="mb-3">
+            <Text variant="body" weight="medium" className="mb-3">
               This application is requesting permission to:
             </Text>
             <ul className="space-y-2">

@@ -70,6 +70,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 className="lg:hidden"
                 aria-label="All held calls"
                 aria-expanded={carousel.sheetOpen}
@@ -79,17 +80,25 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 aria-label="Previous"
                 disabled={!carousel.canPrev}
                 leadingIcon={ArrowLeft01Icon}
                 onClick={() => carousel.move(-1)}
               />
-              <Text variant="body-medium" as="span" aria-live="polite" tabular>
+              <Text
+                variant="body"
+                weight="medium"
+                as="span"
+                aria-live="polite"
+                tabular
+              >
                 {carousel.position} of {carousel.total}
               </Text>
               <Button
                 variant="secondary"
                 size="icon-sm"
+                shape="soft"
                 aria-label="Next"
                 disabled={!carousel.canNext}
                 leadingIcon={ArrowRight01Icon}
@@ -180,7 +189,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
             ) : null}
           </section>
           {carousel.sheetOpen ? (
-            <div className="absolute inset-x-0 top-16 bottom-0 z-10 flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
+            <div className="absolute inset-x-0 top-16 bottom-0 z-raised flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
               <ReviewSidebar carousel={carousel} sheet />
             </div>
           ) : null}

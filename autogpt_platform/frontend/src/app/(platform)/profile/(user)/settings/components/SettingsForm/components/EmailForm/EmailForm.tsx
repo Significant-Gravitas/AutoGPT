@@ -24,7 +24,7 @@ export function EmailForm({ user }: EmailFormProps) {
 
   return (
     <div>
-      <Text variant="h3" size="large-semibold">
+      <Text variant="h3" size="large" weight="semibold">
         Security & Access
       </Text>
       <FormProvider {...form}>

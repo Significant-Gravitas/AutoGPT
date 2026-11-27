@@ -122,11 +122,10 @@ class TelegramAdapter(WebhookAdapter):
     def register_routes(self, app: FastAPI) -> None:
         app.add_api_route(UPDATES_PATH, self._handle_update_request, methods=["POST"])
 
-    async def _register_command_menu(self) -> None:
-        try:
-            await self._client.call("setMyCommands", commands=commands.COMMAND_MENU)
-        except Exception:
-            logger.warning("Failed to register Telegram command menu", exc_info=True)
+    async def on_startup(self) -> None:
+        # Publish the command menu so BotFather needs no manual /setcommands
+        # step and the menu can't drift from the code.
+        await self._client.call("setMyCommands", commands=commands.COMMAND_MENU)
 
     # -- Inbound --
 

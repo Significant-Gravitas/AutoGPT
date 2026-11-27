@@ -36,7 +36,7 @@ export function ChatErrorBanner({ error, onResend }: Props) {
         </pre>
       </details>
       {note ? (
-        <Text variant="small-tight" tone="muted" className="mt-1">
+        <Text variant="small" leading="4" tone="muted" className="mt-1">
           {note}
         </Text>
       ) : null}

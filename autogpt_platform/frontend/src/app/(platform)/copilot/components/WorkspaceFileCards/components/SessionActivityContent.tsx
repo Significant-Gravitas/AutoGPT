@@ -99,11 +99,11 @@ function RunRow({ run }: { run: SessionRun }) {
         className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <Text variant="body-tight" tone="emphasis" className="truncate">
+        <Text variant="body" leading="5" tone="emphasis" className="truncate">
           {name}
         </Text>
         {meta && (
-          <Text variant="small-tight" tone="subtle" className="truncate">
+          <Text variant="small" leading="4" tone="subtle" className="truncate">
             {meta}
           </Text>
         )}
@@ -143,11 +143,16 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
         className="mt-0.5 shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <Text variant="body-tight" tone="emphasis" className="truncate">
+        <Text variant="body" leading="5" tone="emphasis" className="truncate">
           {schedule.name}
         </Text>
         {schedule.detail && (
-          <Text variant="small-tight" tone="muted" className="line-clamp-2">
+          <Text
+            variant="small"
+            leading="4"
+            tone="muted"
+            className="line-clamp-2"
+          >
             {schedule.detail}
           </Text>
         )}

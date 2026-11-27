@@ -19,6 +19,7 @@ import {
   type TaskOwner,
 } from "../helpers";
 import { OwnerAvatar, OwnerLabel } from "./TaskOwner";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   task: SuggestedTask;
@@ -65,7 +66,7 @@ export function TaskRow({
   return (
     <motion.li
       exit={prefersReducedMotion ? undefined : { height: 0, opacity: 0 }}
-      transition={{ duration: 0.15 }}
+      transition={{ duration: duration.fast }}
       className={cn(
         "group/row flex items-start transition-colors duration-150 sm:items-center",
         isStartHere ? "bg-accent-surface" : "hover:bg-surface-muted",
@@ -137,6 +138,7 @@ export function TaskRow({
             type="button"
             variant="toggle"
             size="icon-xs"
+            shape="sharp"
             withTooltip={false}
             aria-label={`Remove: ${task.title}`}
             disabled={isRemoveDisabled}
@@ -178,7 +180,8 @@ function RowText({
     <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone={isMuted ? "secondary" : "primary"}
           className="text-pretty"
@@ -186,7 +189,7 @@ function RowText({
           {isStartHere ? (
             <span
               id={pillID}
-              className="mr-2 inline-block -translate-y-px rounded-full bg-accent-strong/10 px-2 py-0.5 align-middle text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase"
+              className="mr-2 inline-block -translate-y-px rounded-pill bg-accent-strong/10 px-2 py-0.5 align-middle text-caption-sm font-semibold tracking-eyebrow text-accent-strong uppercase"
             >
               Start here
             </span>

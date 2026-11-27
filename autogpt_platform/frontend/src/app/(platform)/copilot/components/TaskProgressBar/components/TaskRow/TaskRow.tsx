@@ -1,12 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  EASE_OUT,
-  ICON_ENTER,
-  ICON_EXIT,
-  LOADER_DELAY,
-} from "../../animations";
+import { ICON_ENTER, ICON_EXIT, LOADER_DELAY } from "../../animations";
 import { toDisplayStatus, type TodoItem } from "../../helpers";
 import { StatusIcon } from "../StatusIcon/StatusIcon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   todo: TodoItem;
@@ -42,14 +38,14 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
                     filter: "blur(6px)",
                     transition: {
                       duration: ICON_EXIT,
-                      ease: EASE_OUT,
+                      ease: ease.out,
                       // A pending circle only leaves when its task becomes active
                       // — hold it until the previous step's tick/strike finishes.
                       delay: status === "pending" ? LOADER_DELAY : 0,
                     },
                   }
             }
-            transition={{ duration: ICON_ENTER, ease: EASE_OUT }}
+            transition={{ duration: ICON_ENTER, ease: ease.out }}
           >
             <StatusIcon status={status} />
           </motion.span>
@@ -61,10 +57,14 @@ export function TaskRow({ todo, isStreaming, reduceMotion }: Props) {
           {completed && !reduceMotion && (
             <motion.span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-foreground-subtle"
+              className="pointer-events-none absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-fill-subtle"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: 1 }}
-              transition={{ duration: 0.25, ease: EASE_OUT, delay: ICON_EXIT }}
+              transition={{
+                duration: duration.base,
+                ease: ease.out,
+                delay: ICON_EXIT,
+              }}
             />
           )}
         </span>

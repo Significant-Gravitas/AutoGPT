@@ -12,18 +12,15 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { invalidateConnectionQueries } from "@/lib/react-query/invalidateConnections";
 import { CredentialsActionsContext } from "@/providers/agent-credentials/credentials-provider";
 
-import { apiKeyConnectSchema, type ApiKeyConnectFormValues } from "./schema";
+import {
+  apiKeyConnectSchema,
+  dateInputToEndOfLocalDayUnix,
+  type ApiKeyConnectFormValues,
+} from "./schema";
 
 interface Args {
   provider: string;
   onSuccess: (credential?: CredentialsMetaResponse) => void;
-}
-
-function toUnixSeconds(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return undefined;
-  return Math.floor(ms / 1000);
 }
 
 export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
@@ -49,7 +46,7 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
         type: "api_key",
         title: values.title,
         api_key: values.apiKey,
-        expires_at: toUnixSeconds(values.expiresAt),
+        expires_at: dateInputToEndOfLocalDayUnix(values.expiresAt),
       });
 
       toast({ title: "API key saved", variant: "success" });

@@ -37,7 +37,7 @@ export function OwnerLabel({ owner }: { owner: TaskOwner }) {
       tone="secondary"
       className="sm:whitespace-nowrap"
     >
-      <Text variant="small-medium" as="span" tone="primary">
+      <Text variant="small" weight="medium" as="span" tone="primary">
         {owner.expert.name}
       </Text>
       {role ? `, ${role}` : null}

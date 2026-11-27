@@ -25,7 +25,7 @@ jobs:
       startsWith(github.event.comment.body, '/batch')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         id: app-token
         with:
           app-id: ${{ vars.BATCH_BOT_APP_ID }}
@@ -37,7 +37,7 @@ jobs:
           permission-pull-requests: write
 
       - name: Slash command dispatch
-        uses: peter-evans/slash-command-dispatch@0683e68ce8b375f2dc24214e065a3ae1ef93040e # v5
+        uses: peter-evans/slash-command-dispatch@9bdcd7914ec1b75590b790b844aa3b8eee7c683a # v5
         with:
           token: ${{ steps.app-token.outputs.token }}
           issue-type: pull-request

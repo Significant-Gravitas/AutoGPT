@@ -32,7 +32,9 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
         </span>
         <span className="min-w-0 flex-1">
           <Text
-            variant="body-medium-tight"
+            variant="body"
+            weight="medium"
+            leading="5"
             as="span"
             tone="primary"
             className="block"
@@ -41,7 +43,8 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
           </Text>
           {model && (
             <Text
-              variant="small-tight"
+              variant="small"
+              leading="4"
               as="span"
               tone="secondary"
               className="mt-0.5 block break-words"
@@ -58,7 +61,7 @@ export function MaxUpgradeCard({ label, name, model, reason, href }: Props) {
       <p className="mt-5 mb-2 text-lead leading-snug font-medium tracking-tight text-foreground-strong">
         Unlock {name} with Max.
       </p>
-      <Text variant="small-relaxed" tone="secondary">
+      <Text variant="small" leading="relaxed" tone="secondary">
         {reason}
       </Text>
       <Button

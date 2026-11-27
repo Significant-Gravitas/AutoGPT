@@ -41,17 +41,17 @@ export function CreatorPageLoading() {
                   <div className="mb-6">
                     <Skeleton className="mb-2 h-5 w-28" />
                     <div className="flex flex-wrap gap-2">
-                      <Skeleton className="h-7 w-20 rounded-full" />
-                      <Skeleton className="h-7 w-24 rounded-full" />
-                      <Skeleton className="h-7 w-16 rounded-full" />
+                      <Skeleton className="h-7 w-20 rounded-pill" />
+                      <Skeleton className="h-7 w-24 rounded-pill" />
+                      <Skeleton className="h-7 w-16 rounded-pill" />
                     </div>
                   </div>
 
                   {/* Links */}
                   <Skeleton className="mb-2 h-5 w-14" />
                   <div className="flex flex-wrap gap-2">
-                    <Skeleton className="h-9 w-28 rounded-full" />
-                    <Skeleton className="h-9 w-32 rounded-full" />
+                    <Skeleton className="h-9 w-28 rounded-pill" />
+                    <Skeleton className="h-9 w-32 rounded-pill" />
                   </div>
                 </div>
               </div>

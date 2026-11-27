@@ -51,7 +51,8 @@ export function IntegrationsPanel({
       <section aria-labelledby="tool-connections-heading">
         <div className="pb-3 pl-4">
           <Text
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="h2"
             id="tool-connections-heading"
             tone="body"

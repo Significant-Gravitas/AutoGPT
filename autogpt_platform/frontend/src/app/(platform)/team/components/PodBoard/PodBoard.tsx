@@ -38,11 +38,12 @@ export function PodBoard({
             type="button"
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={ArrowLeft01Icon}
             aria-label="Back to pods"
             onClick={() => setOpenPodId(null)}
           />
-          <Text variant="large-medium" as="h5" tone="primary">
+          <Text variant="large" weight="medium" as="h5" tone="primary">
             {openGroup.pod.name}
           </Text>
           <Text variant="small" tone="muted">
@@ -65,7 +66,7 @@ export function PodBoard({
 
   return (
     <section aria-label="Pods" className="flex flex-col gap-4">
-      <Text variant="large-medium" as="h5" tone="primary">
+      <Text variant="large" weight="medium" as="h5" tone="primary">
         Pods
       </Text>
       {isLoading ? (
@@ -76,7 +77,7 @@ export function PodBoard({
         </div>
       ) : podGroups.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border-strong bg-surface p-8 text-center">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             No pods yet
           </Text>
           <Text variant="body" tone="secondary" className="max-w-prose">
@@ -122,7 +123,8 @@ function PodFolder({ name, experts, onOpen }: PodFolderProps) {
         </span>
         <div className="min-w-0">
           <Text
-            variant="large-medium"
+            variant="large"
+            weight="medium"
             as="h5"
             tone="primary"
             className="truncate"

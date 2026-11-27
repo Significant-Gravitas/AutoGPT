@@ -64,7 +64,7 @@ export function FileDropZone({ children, onFilesDropped, className }: Props) {
       {children}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-brand/60 bg-brand/10 transition-opacity duration-150",
+          "pointer-events-none absolute inset-0 z-overlay flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-brand/60 bg-brand/10 transition-opacity duration-150",
           isDragging ? "opacity-100" : "opacity-0",
         )}
       >

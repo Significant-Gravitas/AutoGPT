@@ -1,3 +1,5 @@
+import { duration } from "@/components/styles/motion";
+
 // Otto's avatar is one element across the greeting's arrival, not two:
 // GreetingLoader renders it centered, OnboardingIntroCard renders it in
 // the heading, and framer moves it between the two because they share
@@ -7,7 +9,7 @@ export const GREETING_ORB_LAYOUT_ID = "onboarding-greeting-orb";
 export const ORB_FLIP_TRANSITION = {
   type: "spring",
   bounce: 0.15,
-  duration: 0.55,
+  duration: duration.slowest,
 } as const;
 
 // The same trip with prefers-reduced-motion on: the orb is where it

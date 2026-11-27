@@ -48,7 +48,9 @@ export function ExecutionCard({
           )}
         </div>
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >
@@ -61,7 +63,7 @@ export function ExecutionCard({
             aria-label={
               variant === "agent" ? "Open workflow" : "Open execution"
             }
-            className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+            className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
           >
             <Icon icon={LinkSquare01Icon} size={14} />
           </Link>

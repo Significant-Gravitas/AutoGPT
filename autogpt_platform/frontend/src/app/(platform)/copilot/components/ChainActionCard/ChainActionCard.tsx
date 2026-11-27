@@ -22,6 +22,9 @@ interface Props {
   /** A card opted out of auto-sending, so the stack needs a Proceed even with
    *  no inputs of its own. */
   manualProceed: boolean;
+  /** False in an earlier answer, whose step has already run or been passed
+   *  over: the card keeps its rows and inputs but offers no Proceed. */
+  canProceed?: boolean;
   isReady: boolean;
   onProceed: () => void;
 }
@@ -37,6 +40,7 @@ export function ChainActionCard({
   inputs,
   questions,
   manualProceed,
+  canProceed = true,
   isReady,
   onProceed,
 }: Props) {
@@ -81,7 +85,7 @@ export function ChainActionCard({
         </div>
       )}
 
-      {(hasInputs || manualProceed) && !hasQuestions && (
+      {canProceed && (hasInputs || manualProceed) && !hasQuestions && (
         <Button
           variant="primary"
           size="small"

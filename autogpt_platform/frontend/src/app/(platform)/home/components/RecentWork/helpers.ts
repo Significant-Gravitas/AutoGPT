@@ -37,14 +37,12 @@ const ACTOR_CHIPS: Record<HomeWorkActorKind, ActorChip> = {
   expert: {
     label: "Expert",
     className:
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the chip's coloured glow has no shadow token
-      "border-info/30 bg-info-surface text-info-foreground shadow-[0_0_8px_-1px_rgba(96,165,250,0.7)]",
+      "border-info/30 bg-info-surface text-info-foreground shadow-status-glow shadow-info/70",
   },
   workflow: {
     label: "Workflow",
     className:
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the yellow glow has no shadow token
-      "border-warning-border bg-warning-surface text-yellow-foreground shadow-[0_0_8px_-1px_rgba(247,205,51,0.9)]",
+      "border-warning-border bg-warning-surface text-yellow-foreground shadow-status-glow shadow-yellow/90",
   },
   autopilot: {
     label: "Otto",

@@ -275,6 +275,15 @@ def test_the_executor_can_forget_a_deleted_scheduled_chat() -> None:
     manager._create_fastapi_endpoint(manager.forget_scheduled_chat)
 
 
+def test_the_scheduler_can_check_a_turn_owners_membership() -> None:
+    """The scheduler has no Prisma of its own; a scheduled turn's org is
+    re-checked through this RPC when it fires."""
+    assert hasattr(DatabaseManagerAsyncClient, "is_active_member")
+    assert hasattr(DatabaseManagerAsyncClient, "resolve_default_tenancy")
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.is_active_member)
+
+
 def test_the_scheduler_can_post_a_note_into_a_chat() -> None:
     """The scheduler has no Prisma of its own; a skipped run's note goes
     through this RPC."""

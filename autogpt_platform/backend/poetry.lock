@@ -499,7 +499,7 @@ develop = true
 colorama = "^0.4.6"
 cryptography = ">=46,<51"
 expiringdict = "^1.2.2"
-fastapi = ">=0.128.7,<0.162.0"
+fastapi = ">=0.128.7,<0.163.0"
 google-cloud-logging = "^3.13.0"
 pydantic = "^2.12.5"
 pydantic-settings = "^2.12.0"
@@ -1308,6 +1308,33 @@ cffi = {version = ">=2.0.0", markers = "platform_python_implementation != \"PyPy
 ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
+name = "dataclass-wizard"
+version = "0.39.1"
+description = "A wizard-like JSON serialization library for Python dataclasses"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "dataclass_wizard-0.39.1-py3-none-any.whl", hash = "sha256:3324e59eca705882eb34e2b3989b2beadd8c2b523e6269d4002cf1a4a5bf703b"},
+    {file = "dataclass_wizard-0.39.1.tar.gz", hash = "sha256:1679948ed7c62103f40b34df97d03b35e6b2ad50f58173fdbe30074e2e4730f2"},
+]
+
+[package.dependencies]
+typing-extensions = {version = ">=4.13.0", markers = "python_version <= \"3.12\""}
+
+[package.extras]
+all = ["PyYAML (>=6,<7)", "Sphinx (==7.4.7) ; python_version == \"3.9\"", "Sphinx (==8.1.3) ; python_version >= \"3.10\"", "attrs (==25.4.0)", "bump-my-version (==1.2.5)", "coverage (>=6.2)", "dacite (==1.9.2)", "dataclass-factory (==2.16)", "dataclasses-json (==0.6.7)", "flake8 (>=3)", "jsons (==1.6.3)", "mashumaro (==3.17)", "matplotlib", "mypy (>=1.19,<2)", "pydantic (==2.12.5)", "pytest (==8.3.4)", "pytest-benchmark[histogram]", "pytest-cov (==6.0.0)", "pytest-mock (>=3.6.1)", "python-dotenv (>=1,<2)", "pytimeparse (==1.1.8)", "pytimeparse (>=1.1.7)", "sphinx-autodoc-typehints (==2.5.0) ; python_version >= \"3.10\"", "sphinx-copybutton (==0.5.2)", "sphinx-issues (==5.0.0)", "tomli (>=2,<3) ; python_version == \"3.10\"", "tomli (>=2,<3) ; python_version == \"3.9\"", "tomli-w (>=1,<2)", "tox (==4.23.2)", "twine (==6.0.1)", "typing-extensions (>=4.9.0)", "tzdata (>=2024.1) ; platform_system == \"Windows\"", "watchdog[watchmedo] (==6.0.0)", "wheel (==0.45.1)"]
+bench = ["attrs (==25.4.0)", "dacite (==1.9.2)", "dataclass-factory (==2.16)", "dataclasses-json (==0.6.7)", "jsons (==1.6.3)", "mashumaro (==3.17)", "matplotlib", "pydantic (==2.12.5)", "pytest-benchmark[histogram]"]
+dev = ["Sphinx (==7.4.7) ; python_version == \"3.9\"", "Sphinx (==8.1.3) ; python_version >= \"3.10\"", "bump-my-version (==1.2.5)", "coverage (>=6.2)", "dataclass-wizard[toml]", "flake8 (>=3)", "mypy (>=1.19,<2)", "pip (>=21.3.1)", "python-dotenv (>=1,<2)", "pytimeparse (==1.1.8)", "tomli (>=2,<3) ; python_version == \"3.10\"", "tomli (>=2,<3) ; python_version == \"3.9\"", "tomli-w (>=1,<2)", "tox (==4.23.2)", "twine (==6.0.1)", "tzdata (>=2024.1) ; platform_system == \"Windows\"", "watchdog[watchmedo] (==6.0.0)", "wheel (==0.45.1)"]
+docs = ["sphinx-autodoc-typehints (==2.5.0) ; python_version >= \"3.10\"", "sphinx-copybutton (==0.5.2)", "sphinx-issues (==5.0.0)", "typing-extensions (>=4.9.0)"]
+dotenv = ["python-dotenv (>=1,<2)"]
+test = ["pytest (==8.3.4)", "pytest-cov (==6.0.0)", "pytest-mock (>=3.6.1)", "tzdata (>=2024.1) ; platform_system == \"Windows\""]
+timedelta = ["pytimeparse (>=1.1.7)"]
+toml = ["tomli (>=2,<3) ; python_version == \"3.10\"", "tomli (>=2,<3) ; python_version == \"3.9\"", "tomli-w (>=1,<2)"]
+tz = ["tzdata (>=2024.1)"]
+yaml = ["PyYAML (>=6,<7)"]
+
+[[package]]
 name = "decorator"
 version = "5.2.1"
 description = "Decorators for Humans"
@@ -1380,24 +1407,24 @@ files = [
 
 [[package]]
 name = "dnspython"
-version = "2.8.0"
+version = "2.9.2"
 description = "DNS toolkit"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "dnspython-2.8.0-py3-none-any.whl", hash = "sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af"},
-    {file = "dnspython-2.8.0.tar.gz", hash = "sha256:181d3c6996452cb1189c4046c61599b84a5a86e099562ffde77d26984ff26d0f"},
+    {file = "dnspython-2.9.2-py3-none-any.whl", hash = "sha256:af15f7d385a6ae2fb35a796fde2138004c8c42c7389090e2addc83e3b3340fd8"},
+    {file = "dnspython-2.9.2.tar.gz", hash = "sha256:8d4d39a513e649d634004ce4d39ade2352efcea472a0247535a5c2d18a9d7ba9"},
 ]
 
 [package.extras]
-dev = ["black (>=25.1.0)", "coverage (>=7.0)", "flake8 (>=7)", "hypercorn (>=0.17.0)", "mypy (>=1.17)", "pylint (>=3)", "pytest (>=8.4)", "pytest-cov (>=6.2.0)", "quart-trio (>=0.12.0)", "sphinx (>=8.2.0)", "sphinx-rtd-theme (>=3.0.0)", "twine (>=6.1.0)", "wheel (>=0.45.0)"]
-dnssec = ["cryptography (>=45)"]
-doh = ["h2 (>=4.2.0)", "httpcore (>=1.0.0)", "httpx (>=0.28.0)"]
-doq = ["aioquic (>=1.2.0)"]
-idna = ["idna (>=3.10)"]
-trio = ["trio (>=0.30)"]
-wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
+dev = ["black (>=26.5)", "coverage (>=7.15)", "hypercorn (>=0.18.0)", "pyright (>=1.1.411)", "pytest (>=9.1)", "pytest-cov (>=7.1)", "quart-trio (>=0.12.0)", "ruff (>=0.16.0)", "sphinx (>=9.1.0) ; python_full_version >= \"3.12.0\"", "sphinx-rtd-theme (>=3.1.0) ; python_full_version >= \"3.12.0\"", "trustme (>=1.2.1)", "ty (>=0.0.85)"]
+dnssec = ["cryptography (>=50)"]
+doh = ["h2 (>=4.4)", "httpcore2 (>=2.13)", "httpx2 (>=2.13)"]
+doq = ["aioquic (>=1.3.0)"]
+idna = ["idna (>=3.20)"]
+trio = ["trio (>=0.34)"]
+wmi = ["wmi (>=1.5.1) ; sys_platform == \"win32\""]
 
 [[package]]
 name = "docstring-parser"
@@ -7611,18 +7638,20 @@ test = ["pytest", "ruff"]
 
 [[package]]
 name = "todoist-api-python"
-version = "2.1.7"
-description = "Official Python SDK for the Todoist REST API."
+version = "4.0.0"
+description = "Official Python SDK for the Todoist API."
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "todoist_api_python-2.1.7-py3-none-any.whl", hash = "sha256:278bfe851b9bd19bde5ff5de09d813d671ef7310ba55e1962131fca5b59bb735"},
-    {file = "todoist_api_python-2.1.7.tar.gz", hash = "sha256:84934a19ccd83fb61010a8126362a5d7d6486c92454c111307ba55bc74903f5c"},
+    {file = "todoist_api_python-4.0.0-py3-none-any.whl", hash = "sha256:6b435f5fbf48da2faf7cb846a0de3b6719a33461958512d2adb4546494c195de"},
+    {file = "todoist_api_python-4.0.0.tar.gz", hash = "sha256:2e8acbaa4ea7aae05a640bd24690ca020ef8044610b0dcf4df85b8a788a43872"},
 ]
 
 [package.dependencies]
-requests = ">=2.32.3,<3.0.0"
+annotated-types = "*"
+dataclass-wizard = ">=0.35.4,<1.0"
+httpx = ">=0.28.1,<1"
 
 [[package]]
 name = "tomlkit"
@@ -8726,4 +8755,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.14"
-content-hash = "ebe6492adc066b57620d7b406a3219a1d50b482eae4fef9d32367696f4409a84"
+content-hash = "f85e043ee6a656ac3f0d563f0b582c0d12a365e32544369d5537ed298ae6b81e"

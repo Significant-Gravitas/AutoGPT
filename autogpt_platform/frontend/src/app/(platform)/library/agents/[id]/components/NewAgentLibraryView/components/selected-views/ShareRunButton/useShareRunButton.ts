@@ -30,6 +30,14 @@ export function useShareRunButton({
     setShareToken(initialShareToken || null);
   }, [initialIsShared, initialShareToken]);
 
+  // The "copied" tick clears itself after 2 s, and its timer goes with the
+  // dialog if it closes first.
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   const shareUrl = shareToken ? executionShareUrl(shareToken) : "";
 
   const { mutateAsync: enableSharing, isPending: isEnabling } =
@@ -97,7 +105,6 @@ export function useShareRunButton({
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
       toast({
         title: "Copied!",
         description: "Share link copied to clipboard.",

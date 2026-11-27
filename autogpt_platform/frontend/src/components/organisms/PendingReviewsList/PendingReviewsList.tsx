@@ -285,8 +285,9 @@ export function PendingReviewsList({
                 <Icon icon={Alert01Icon} size={28} />
               </AttentionCard.Icon>
               <Text
-                variant="large-semibold"
-                className="overflow-hidden text-ellipsis text-foreground-base"
+                variant="large"
+                weight="semibold"
+                className="overflow-hidden text-ellipsis"
               >
                 Your review is needed
               </Text>
@@ -342,7 +343,9 @@ export function PendingReviewsList({
                         data-slot="pending-reviews-list-group-heading"
                         className="flex-1"
                       >
-                        <Text variant="body-semibold">{reviewTitle}</Text>
+                        <Text variant="body" weight="semibold">
+                          {reviewTitle}
+                        </Text>
                         {(workflowName ||
                           (!firstReview?.action && !isGateReview(nodeId))) && (
                           <Text variant="small" tone="muted">

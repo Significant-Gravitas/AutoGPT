@@ -133,7 +133,12 @@ from ..constants import (
     is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
-from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
+from ..context import (
+    encode_cwd_for_cli,
+    get_current_turn_id,
+    get_workspace_manager,
+    is_unattended_turn,
+)
 from ..hidden_rows import visible_to_model
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
@@ -545,14 +550,27 @@ async def _consume_sdk_until_done(
         # output count arrives. Metering must never fail the turn it meters;
         # the CLI's own budget and turn limits still back it up.
         if state.governor is not None:
+            stop = False
             try:
                 state.governor.observe(sdk_msg)
+                await state.governor.keep_up()
+                stop = state.governor.stop()
             except Exception:
                 logger.warning(
                     "%s Turn governor could not meter a message",
                     ctx.log_prefix,
                     exc_info=True,
                 )
+            if stop:
+                # Spent past what a credit-billed turn holds: its CLI backstop
+                # sits on the most it may hold, so the turn ends here.
+                logger.info(f"{ctx.log_prefix} Turn spent what it holds; interrupting")
+                try:
+                    await client.interrupt()
+                except Exception as exc:
+                    logger.warning(
+                        f"{ctx.log_prefix} Interrupt at the turn's hold failed: {exc}"
+                    )
 
         if loop_state.provider_refused:
             if isinstance(sdk_msg, ResultMessage):
@@ -5940,8 +5958,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Lands the turn with a checkpoint near its budget or step check-in.
         # A ChatGPT subscription pays for its own turns, so it gets the
-        # check-in only. A turn billed to credits gets what its balance covers.
+        # check-in only. A turn billed to credits gets what it holds of its
+        # balance.
         credit_turn = credit_billed_turn(user_id)
+        growing = None if is_codex_transport else credit_turn
         governor = TurnGovernor(
             budget=(
                 None
@@ -5953,6 +5973,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
             ),
             step_checkin=config.sdk_step_checkin,
+            # It holds the balance a step at a time, so its budget grows.
+            grow=growing.grow if growing is not None else None,
+            room=growing.model_room_usd if growing is not None else None,
         )
 
         if permissions is not None:
@@ -6186,8 +6209,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             return
 
+        # The turn's first look at the follow-up queue. A redelivered turn runs
+        # again under the same turn id, after an attempt that may have closed
+        # the queue at its last look and then died, so this look reopens it
+        # for the turn first (#17247).
         async with recover_pending_on_failure(
-            session_id, drain_pending_safe(session_id, log_prefix, drain_backlog=True)
+            session_id,
+            drain_pending_safe(
+                session_id,
+                log_prefix,
+                drain_backlog=True,
+                open_for_turn=get_current_turn_id(),
+            ),
         ) as drained_pending:
             pending_messages: list[PendingMessage] = [*unsaved_held, *drained_pending]
             pending_messages, recovered_in_history = partition_pending_by_history(
@@ -7507,6 +7540,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Nor does a platform turn the allowance can no longer cover: nobody
     # pressed send for the continuation, so nothing else would check it. The
     # queued messages stay queued and a not-started pause takes their place.
+    #
+    # This drain is the turn's last look at the queue. Finding it empty, it
+    # closes the queue to this turn (the executor's turn id) in the same Redis
+    # step, so a follow-up sent from here until the turn is marked done is
+    # refused with a 409 (the client then sends it as a new turn) rather than
+    # accepted into a queue no turn will drain again (#17247).
     # -------------------------------------------------------------------------
     if not ended_with_stream_error and not (governor is not None and governor.landed):
         auto_continue = await gate_auto_continue(
@@ -7515,7 +7554,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if auto_continue.pause is not None:
             yield StreamTurnPaused.of(auto_continue.pause)
         _auto_pending_messages = (
-            await drain_pending_safe(session_id, log_prefix)
+            await drain_pending_safe(
+                session_id, log_prefix, close_for_turn=get_current_turn_id()
+            )
             if auto_continue.proceed
             else []
         )

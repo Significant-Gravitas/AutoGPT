@@ -6,9 +6,11 @@ import type { ChatStatus } from "ai";
 import { useEffect, useInsertionEffect, useRef } from "react";
 import { isQueueRefusal } from "./helpers";
 import {
+  chatShownUnder,
   noteFailedSetAside,
   noteSetAside,
   returnFailedFollowUp,
+  returnLeftBehind,
   useHeldFollowUps,
   type HeldFollowUp,
 } from "./useHeldFollowUps";
@@ -23,6 +25,13 @@ interface Args {
   messages: ChipArgs["messages"];
   setMessages: NonNullable<ChipArgs["setMessages"]>;
   sendMessage: (message: { text: string }) => unknown;
+  /** Where a held follow-up's copy waits (see `useHeldFollowUps`). Omitted,
+   *  it is the session; null keeps copies under their own session, and no
+   *  chat takes them back when it opens. */
+  heldKey?: string | null;
+  /** The toast's reason when the panel moves to another chat before a held
+   *  follow-up went out; null shows none. */
+  setAsideReason?: string | null;
 }
 
 /**
@@ -39,6 +48,8 @@ export function useBuilderChatSend({
   messages,
   setMessages,
   sendMessage,
+  heldKey = sessionId,
+  setAsideReason = "You opened another workflow before it went out.",
 }: Args) {
   // Refs, not props: a follow-up that waited for the settle must see a turn
   // another held follow-up dispatched in the same settle, and the workflow
@@ -72,7 +83,7 @@ export function useBuilderChatSend({
     messages,
     setMessages,
   });
-  const held = useHeldFollowUps(sessionId);
+  const held = useHeldFollowUps(sessionId, heldKey);
 
   async function onSend(message: string, _files?: File[]) {
     const text = message.trim();
@@ -88,9 +99,24 @@ export function useBuilderChatSend({
       // The composer restores the draft and shows the one toast for it.
       throw error;
     }
+    if (hasMovedOnUnderSameKey(sessionId)) {
+      returnLeftBehind(text);
+      return;
+    }
     // Not awaited: the composer keeps Enter and the queue button locked
     // until this resolves, and the wait can last as long as the answer.
     void sendOnceSettled(held.hold(sessionId, text));
+  }
+
+  /**
+   * The refusal came back after another chat under the same `heldKey` opened,
+   * in this panel or in one mounted since this one went away. That chat took
+   * what was waiting for it when it opened, so a copy stored now would wait
+   * for yet another chat.
+   */
+  function hasMovedOnUnderSameKey(forSessionId: string) {
+    const shown = heldKey === null ? undefined : chatShownUnder(heldKey);
+    return shown !== undefined && shown !== forSessionId;
   }
 
   /**
@@ -114,9 +140,9 @@ export function useBuilderChatSend({
   /**
    * Sends a held follow-up as a new turn once this panel's stream settles.
    * If the panel unmounts or moves to another workflow first, its stored copy
-   * goes back to the composer the next time its own chat opens: the composer
-   * on screen belongs to another chat, where a quick Enter would send it to
-   * the wrong workflow.
+   * goes back to the composer the next time a chat under its `heldKey` opens
+   * (its own, by default): the composer on screen belongs to another chat,
+   * where a quick Enter would send it to the wrong workflow.
    */
   async function sendOnceSettled(followUp: HeldFollowUp) {
     for (;;) {
@@ -125,7 +151,7 @@ export function useBuilderChatSend({
         (await waitUntilSettled());
       if (sessionIdRef.current !== followUp.sessionId) {
         held.setAside(followUp);
-        noteSetAside("You opened another workflow before it went out.");
+        if (setAsideReason) noteSetAside(setAsideReason);
         return;
       }
       if (!isSettled) return;
