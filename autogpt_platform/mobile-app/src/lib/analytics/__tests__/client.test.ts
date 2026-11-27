@@ -74,10 +74,12 @@ test("allowing later makes the client and opts in", () => {
   const client = loadClient("unset");
   client.startAnalytics();
   client.identifyUser("user-1");
+  client.trackScreen("home");
   client.setAnalyticsConsent(true);
   expect(mockPostHog).toHaveBeenCalledTimes(1);
   expect(mockClient.optIn).toHaveBeenCalled();
   expect(mockClient.identify).toHaveBeenCalledWith("user-1");
+  expect(mockClient.screen).toHaveBeenCalledWith("home");
 });
 
 test("allowing again sends the screen in front again", () => {
@@ -85,8 +87,11 @@ test("allowing again sends the screen in front again", () => {
   client.startAnalytics();
   client.trackScreen("settings");
   client.setAnalyticsConsent(false);
+  client.trackScreen("plan");
+  expect(mockClient.screen).toHaveBeenCalledTimes(1);
+  client.trackScreen("settings");
   client.setAnalyticsConsent(true);
   client.trackScreen("settings");
   expect(mockClient.optOut).toHaveBeenCalled();
-  expect(mockClient.screen).toHaveBeenCalledTimes(2);
+  expect(mockClient.screen.mock.calls).toEqual([["settings"], ["settings"]]);
 });

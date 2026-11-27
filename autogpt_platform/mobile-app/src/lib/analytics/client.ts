@@ -16,6 +16,7 @@ const HOST = process.env.EXPO_PUBLIC_POSTHOG_HOST || "https://eu.i.posthog.com";
 let client: PostHog | null = null;
 let consent: Consent = "unset";
 let userID: string | null = null;
+let currentScreen: string | null = null;
 let lastScreen: string | null = null;
 
 function isAllowed() {
@@ -64,6 +65,7 @@ export function hasAnalyticsKey() {
 export function startAnalytics() {
   consent = readConsent();
   openClient();
+  sendCurrentScreen();
 }
 
 export function setAnalyticsConsent(allowed: boolean) {
@@ -71,8 +73,12 @@ export function setAnalyticsConsent(allowed: boolean) {
   saveConsent(consent);
   // A screen sent before the change goes again once allowed.
   lastScreen = null;
-  if (allowed) openClient();
-  else void client?.optOut();
+  if (allowed) {
+    openClient();
+    sendCurrentScreen();
+  } else {
+    void client?.optOut();
+  }
 }
 
 /** The platform user id only: the email and name never go to analytics. */
@@ -83,6 +89,7 @@ export function identifyUser(id: string) {
 
 export function resetAnalytics() {
   userID = null;
+  currentScreen = null;
   lastScreen = null;
   if (!client) return;
   client.reset();
@@ -97,7 +104,12 @@ export function track(event: AnalyticsEvent, properties?: Record<string, string>
 }
 
 export function trackScreen(name: string) {
-  if (!client || !isAllowed() || name === lastScreen) return;
-  lastScreen = name;
-  void client.screen(name);
+  currentScreen = name;
+  sendCurrentScreen();
+}
+
+function sendCurrentScreen() {
+  if (!client || !isAllowed() || currentScreen === null || currentScreen === lastScreen) return;
+  lastScreen = currentScreen;
+  void client.screen(currentScreen);
 }

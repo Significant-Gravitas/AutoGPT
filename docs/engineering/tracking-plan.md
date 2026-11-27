@@ -430,7 +430,7 @@ merges the website pageviews into the new user:
 | `expert_thread_created` | browser, mobile app | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. The mobile app sends it when a chat with an expert starts from Home. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
-| `home_viewed` | browser, mobile app | live | — | The home dashboard renders with data. The mobile app keeps Home open, so it sends this once per launch of the app. |
+| `home_viewed` | browser, mobile app | live | — | The home dashboard renders with data. Mobile sends this once per launch if consent is already on when the dashboard renders. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
 | `home_team_member_clicked` | browser, mobile app | live | `expert_id` | A team member row is clicked. In the mobile app, an expert is picked in Home's recipient menu. |
 | `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one), `owner` (`expert`, `otto`: who it was sent to), `expert_template_id` (the planned owner, or null), `rank` (0-based in the stored, ranked order) | A suggested first task is clicked, on the greeting or under the Home composer. |
