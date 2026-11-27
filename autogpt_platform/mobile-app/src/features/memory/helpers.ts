@@ -61,9 +61,13 @@ export function withFactBack(
   now: MemoryFactList | undefined,
   uuid: string,
 ): MemoryFactList {
-  const kept = new Set((now ?? before).items.map((item) => item.uuid));
-  return {
-    ...before,
-    items: before.items.filter((item) => item.uuid === uuid || kept.has(item.uuid)),
-  };
+  if (!now) return before;
+  const oldIndex = before.items.findIndex((item) => item.uuid === uuid);
+  if (oldIndex < 0 || now.items.some((item) => item.uuid === uuid)) return now;
+  const nextIDs = new Set(before.items.slice(oldIndex + 1).map((item) => item.uuid));
+  const nextIndex = now.items.findIndex((item) => nextIDs.has(item.uuid));
+  const index = nextIndex < 0 ? now.items.length : nextIndex;
+  const items = now.items.slice();
+  items.splice(index, 0, before.items[oldIndex]);
+  return { ...now, items };
 }

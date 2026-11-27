@@ -109,7 +109,9 @@ export default function MemoryScreen() {
         >
           {renderFacts()}
         </SettingsGroup>
-        {screen.overview ? (
+        {screen.isOverviewError ? (
+          <SettingsGroup>{renderUnavailable()}</SettingsGroup>
+        ) : screen.overview ? (
           <SettingsGroup>
             <SettingsRow
               icon={Delete02Icon}

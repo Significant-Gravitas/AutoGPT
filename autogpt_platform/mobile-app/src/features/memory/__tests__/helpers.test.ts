@@ -23,3 +23,11 @@ test("a failed forget puts back only its own row", () => {
   expect(now.items.map((item) => item.uuid)).toEqual(["b"]);
   expect(withFactBack(before, now, "a").items.map((item) => item.uuid)).toEqual(["a", "b"]);
 });
+
+test("a second failed forget keeps a row restored by the first", () => {
+  const row = (uuid: string) => ({ uuid, fact: uuid, name: null, source: "", target: "", created_at: null });
+  const before = { items: [row("a"), row("b"), row("c")] };
+  const afterA = withoutFact(before, "a");
+  const restoredA = withFactBack(before, withoutFact(afterA, "b"), "a");
+  expect(withFactBack(afterA, restoredA, "b")).toEqual(before);
+});
