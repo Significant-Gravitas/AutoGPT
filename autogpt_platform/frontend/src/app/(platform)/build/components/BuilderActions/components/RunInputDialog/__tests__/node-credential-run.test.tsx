@@ -488,3 +488,72 @@ test("a builder field open to several providers, with no key to pick, says where
   expect(link.getAttribute("href")).toBe("/settings/integrations");
   expect(screen.getByText(/Openai or Anthropic/)).toBeDefined();
 });
+
+// An Exa Websets step refuses the platform's key, and the saved workflow's
+// credentials schema marks its field so
+const WEBSETS_FIELD = "exa_api_key_credentials";
+const WEBSETS_FIELD_SCHEMA = {
+  ...FIRECRAWL_FIELD,
+  credentials_provider: ["exa"],
+  refuses_platform_credentials: true,
+};
+const EXA_PLATFORM_KEY = {
+  id: "exa-default",
+  provider: "exa",
+  type: "api_key",
+  title: "Exa API Key",
+  is_system: true,
+};
+const USER_EXA_KEY = {
+  id: "user-exa-key",
+  provider: "exa",
+  type: "api_key",
+  title: "My Exa key",
+  is_system: false,
+};
+
+function mockWebsetsBuilderRun(stepKey?: Key) {
+  return mockBuilderRun({
+    stepKeys: [stepKey],
+    field: WEBSETS_FIELD,
+    fieldSchema: WEBSETS_FIELD_SCHEMA,
+    savedCredentials: [EXA_PLATFORM_KEY, USER_EXA_KEY],
+  });
+}
+
+// The only key that fits shows as a row, with no system credentials around it
+async function expectOnlyTheUsersExaKey() {
+  expect(
+    await screen.findByText(USER_EXA_KEY.title, { exact: true }),
+  ).toBeDefined();
+  expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull();
+  expect(screen.queryByText(EXA_PLATFORM_KEY.title)).toBeNull();
+}
+
+test("a builder run of a Websets step with no key starts on the user's Exa key, not the platform's", async () => {
+  const executeBodies = mockWebsetsBuilderRun();
+  renderRunDialog();
+
+  await expectOnlyTheUsersExaKey();
+
+  expect(await runAndGetKey(executeBodies, WEBSETS_FIELD)).toBe(
+    USER_EXA_KEY.id,
+  );
+});
+
+test("the builder's schedule dialog keeps a Websets step on the user's Exa key, not the platform's", async () => {
+  mockWebsetsBuilderRun(USER_EXA_KEY);
+  renderRunDialog("schedule");
+
+  await expectOnlyTheUsersExaKey();
+});
+
+test("the builder's schedule dialog holds the user's Exa key for a Websets step, and doesn't only show it", async () => {
+  mockWebsetsBuilderRun(USER_EXA_KEY);
+  renderRunDialog("schedule");
+
+  await expectOnlyTheUsersExaKey();
+  // A lone key's row shows whether or not the field holds it; the field's
+  // title says "required" until it does
+  await waitFor(() => expect(screen.queryByText("required")).toBeNull());
+});

@@ -783,6 +783,308 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
       }),
     );
   });
+
+  it("does not offer the system credential for such a block", async () => {
+    const otherCredential = {
+      ...ownCredential,
+      id: "other-exa",
+      title: "Other Exa key",
+    };
+    mockExa([systemCredential, ownCredential, otherCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+      />,
+    );
+
+    const picker = (await screen.findByRole("combobox", {
+      name: "Select Exa credential",
+    })) as HTMLSelectElement;
+    expect(Array.from(picker.options, (option) => option.value)).toEqual([
+      "__none__",
+      ownCredential.id,
+      otherCredential.id,
+    ]);
+  });
+
+  it("lets go of a system credential such a block was given, for the user's own", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential, ownCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        initial={{
+          id: systemCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: systemCredential.title,
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    // Straight to the user's key: a pass through "none" would read as the
+    // user's own choice to the form around the picker
+    await waitFor(() =>
+      expect(onSelectionChange.mock.calls).toEqual([
+        [
+          {
+            id: ownCredential.id,
+            provider: "exa",
+            title: ownCredential.title,
+            type: ownCredential.type,
+          },
+        ],
+      ]),
+    );
+  });
+
+  it.each([
+    {
+      case: "one key of their own",
+      saved: () => [systemCredential, ownCredential],
+      notice:
+        "This step keeps what it creates in your Exa account, so it can't use the platform's Exa key. Now using My Exa key.",
+    },
+    {
+      case: "no key of their own",
+      saved: () => [systemCredential],
+      notice:
+        "This step keeps what it creates in your Exa account, so it can't use the platform's Exa key. Add your own Exa key.",
+    },
+    {
+      case: "several keys of their own",
+      saved: () => [
+        systemCredential,
+        ownCredential,
+        { ...ownCredential, id: "other-exa", title: "Other Exa key" },
+      ],
+      notice:
+        "This step keeps what it creates in your Exa account, so it can't use the platform's Exa key. Choose one of your own Exa keys.",
+    },
+  ])(
+    "says why it let go of the system credential, for a user with $case",
+    async ({ saved, notice }) => {
+      mockExa(saved());
+
+      render(
+        <StatefulCredentialsInput
+          schema={{ ...exaSchema, refuses_platform_credentials: true }}
+          initial={{
+            id: systemCredential.id,
+            provider: "exa",
+            type: "api_key",
+            title: systemCredential.title,
+          }}
+        />,
+      );
+
+      expect(await screen.findByText(notice)).toBeDefined();
+    },
+  );
+
+  it("stops saying so once the user picks a key", async () => {
+    mockExa([
+      systemCredential,
+      ownCredential,
+      { ...ownCredential, id: "other-exa", title: "Other Exa key" },
+    ]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        initial={{
+          id: systemCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: systemCredential.title,
+        }}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/can't use the platform's Exa key/),
+    ).toBeDefined();
+    const picker = screen.getByRole("combobox", {
+      name: "Select Exa credential",
+    }) as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: "other-exa" } });
+
+    await waitFor(() => expect(picker.value).toBe("other-exa"));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+  });
+
+  it("says nothing of the kind for a field that started empty", async () => {
+    const onSelectionChange = vi.fn();
+    mockExa([systemCredential, ownCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await waitFor(() => expect(onSelectionChange).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+  });
+
+  // Only a platform key such a block still holds is swapped in one step. A key
+  // that's gone, or one that doesn't fit an ordinary field, passes through
+  // "none" as before, so a form around the picker asks the user.
+  it.each([
+    {
+      case: "a key that's gone, on such a block",
+      refuses: true,
+      initialID: "deleted-exa",
+      known: [] as CredentialsMetaResponse[],
+    },
+    {
+      case: "a key that doesn't fit an ordinary field",
+      refuses: false,
+      initialID: "unfit-exa",
+      known: [{ ...ownCredential, id: "unfit-exa", title: "Unfit Exa key" }],
+    },
+    {
+      case: "a key of the user's own that doesn't fit such a block's field",
+      refuses: true,
+      initialID: "unfit-exa",
+      known: [{ ...ownCredential, id: "unfit-exa", title: "Unfit Exa key" }],
+    },
+  ])("passes through none for $case", async ({ refuses, initialID, known }) => {
+    const onSelectionChange = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        provider: "exa",
+        providerName: "Exa",
+        schema: exaSchema,
+        savedCredentials: [ownCredential],
+        allProviderCredentials: [ownCredential, ...known],
+        supportsApiKey: true,
+        supportsOAuth2: false,
+      }),
+    );
+
+    render(
+      <StatefulCredentialsInput
+        schema={{
+          ...exaSchema,
+          ...(refuses ? { refuses_platform_credentials: true } : {}),
+        }}
+        initial={{
+          id: initialID,
+          provider: "exa",
+          type: "api_key",
+          title: "Old Exa key",
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    await waitFor(() => expect(onSelectionChange).toHaveBeenCalledTimes(2));
+    expect(onSelectionChange.mock.calls).toEqual([
+      [undefined],
+      [
+        {
+          id: ownCredential.id,
+          provider: "exa",
+          title: ownCredential.title,
+          type: ownCredential.type,
+        },
+      ],
+    ]);
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+  });
+
+  it("lets go of such a credential for none when the user has several keys", async () => {
+    const onSelectionChange = vi.fn();
+    const otherCredential = {
+      ...ownCredential,
+      id: "other-exa",
+      title: "Other Exa key",
+    };
+    mockExa([systemCredential, ownCredential, otherCredential]);
+
+    render(
+      <StatefulCredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        initial={{
+          id: systemCredential.id,
+          provider: "exa",
+          type: "api_key",
+          title: systemCredential.title,
+        }}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    const picker = (await screen.findByRole("combobox", {
+      name: "Select Exa credential",
+    })) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe("__none__"));
+    expect(onSelectionChange.mock.calls).toEqual([[undefined]]);
+  });
+
+  it("stops saying so once the form around it holds another key", async () => {
+    const otherCredential = {
+      ...ownCredential,
+      id: "other-exa",
+      title: "Other Exa key",
+    };
+    mockExa([systemCredential, ownCredential, otherCredential]);
+    const onSelectCredentials = vi.fn();
+    const schema = { ...exaSchema, refuses_platform_credentials: true };
+
+    function renderHolding(selected?: CredentialsMetaInput) {
+      return (
+        <CredentialsInput
+          schema={schema}
+          selectedCredentials={selected}
+          onSelectCredentials={onSelectCredentials}
+          showTitle={false}
+        />
+      );
+    }
+
+    const { rerender } = render(
+      renderHolding({
+        id: systemCredential.id,
+        provider: "exa",
+        type: "api_key",
+        title: systemCredential.title,
+      }),
+    );
+    await waitFor(() =>
+      expect(onSelectCredentials).toHaveBeenCalledWith(undefined),
+    );
+    rerender(renderHolding(undefined));
+    expect(
+      await screen.findByText(/Choose one of your own Exa keys/),
+    ).toBeDefined();
+
+    // The form moves the field on itself, as a switch of template does
+    rerender(
+      renderHolding({
+        id: otherCredential.id,
+        provider: "exa",
+        type: "api_key",
+        title: otherCredential.title,
+      }),
+    );
+
+    const picker = screen.getByRole("combobox", {
+      name: "Select Exa credential",
+    }) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe("other-exa"));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+
+    // A later reset of the field doesn't bring the old notice back
+    rerender(renderHolding(undefined));
+    await waitFor(() => expect(picker.value).toBe("__none__"));
+    expect(screen.queryByText(/can't use the platform's Exa key/)).toBeNull();
+  });
 });
 
 describe("CredentialsInput – a removed connection", () => {

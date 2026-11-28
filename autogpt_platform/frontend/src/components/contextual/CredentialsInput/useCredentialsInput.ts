@@ -26,6 +26,7 @@ import {
   getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
+  isSystemCredential,
   processCredentialDeletion,
   resolveActionTarget,
 } from "./helpers";
@@ -70,6 +71,13 @@ export function useCredentialsInput({
   const [removedCredentialTitle, setRemovedCredentialTitle] = useState<
     string | null
   >(null);
+  // The key the picker moved to, or none, after letting go of a platform key
+  // the block refuses. The notice shows while the field holds it, and goes
+  // for good once the field has held it and moved on.
+  const [refusedPlatformKeyNotice, setRefusedPlatformKeyNotice] = useState<{
+    selectedId: string | undefined;
+    reached: boolean;
+  } | null>(null);
   const [credentialToDelete, setCredentialToDelete] = useState<{
     id: string;
     title: string;
@@ -114,7 +122,11 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials) return;
-    const availableCreds = credentials.savedCredentials;
+    // A block that refuses the platform's shared keys can't run on a system
+    // credential, so one it was given is let go like a key that's gone
+    const availableCreds = schema.refuses_platform_credentials
+      ? filterSystemCredentials(credentials.savedCredentials)
+      : credentials.savedCredentials;
     if (
       selectedCredential &&
       selectedCredential.provider !== credentials.provider
@@ -130,9 +142,10 @@ export function useCredentialsInput({
     );
     if (stillUsable) return;
 
-    const stillExists = credentials.allProviderCredentials.some(
+    const selectedRecord = credentials.allProviderCredentials.find(
       (credential) => credential.id === selectedCredential.id,
     );
+    const stillExists = selectedRecord !== undefined;
 
     const isDeletingSelected =
       isDeletingCredential && credentialToDelete?.id === selectedCredential.id;
@@ -140,6 +153,34 @@ export function useCredentialsInput({
       setRemovedCredentialTitle(
         selectedCredential.title || credentials.providerName,
       );
+    }
+    // A platform key a refusing block was given gives way to the user's only
+    // key, the one an empty field starts on. Passing through "none" would
+    // read as the user's own choice to the form around the picker.
+    const isRefusedPlatformKey = Boolean(
+      selectedRecord &&
+        isSystemCredential(selectedRecord) &&
+        schema.refuses_platform_credentials,
+    );
+    const replacement =
+      isRefusedPlatformKey && availableCreds.length === 1
+        ? availableCreds[0]
+        : undefined;
+    if (isRefusedPlatformKey) {
+      setRefusedPlatformKeyNotice({
+        selectedId: replacement?.id,
+        reached: false,
+      });
+    }
+    if (replacement) {
+      hasAttemptedAutoSelect.current = true;
+      onSelectCredential({
+        id: replacement.id,
+        type: replacement.type,
+        provider: credentials.provider,
+        title: replacement.title,
+      });
+      return;
     }
     onSelectCredential(undefined);
     hasAttemptedAutoSelect.current = false;
@@ -149,8 +190,26 @@ export function useCredentialsInput({
     isDeletingCredential,
     onSelectCredential,
     readOnly,
+    schema.refuses_platform_credentials,
     selectedCredential,
   ]);
+
+  useEffect(
+    function forgetRefusedKeyNoticeOnceMovedOn() {
+      if (!refusedPlatformKeyNotice) return;
+      const holdsIt =
+        refusedPlatformKeyNotice.selectedId === selectedCredential?.id;
+      if (holdsIt && !refusedPlatformKeyNotice.reached) {
+        setRefusedPlatformKeyNotice({
+          ...refusedPlatformKeyNotice,
+          reached: true,
+        });
+      } else if (!holdsIt && refusedPlatformKeyNotice.reached) {
+        setRefusedPlatformKeyNotice(null);
+      }
+    },
+    [refusedPlatformKeyNotice, selectedCredential?.id],
+  );
 
   // Auto-select the first available credential on initial mount
   // Once a user has made a selection, we don't override it
@@ -215,15 +274,19 @@ export function useCredentialsInput({
     discriminatorValue,
   } = credentials;
 
-  // Split credentials into user and system
+  // Split credentials into user and system. A block that refuses the
+  // platform's shared keys isn't offered a system credential.
   const userCredentials = filterSystemCredentials(savedCredentials);
-  const systemCredentials = getSystemCredentials(savedCredentials);
+  const systemCredentials = schema.refuses_platform_credentials
+    ? []
+    : getSystemCredentials(savedCredentials);
   const userUpgradeableCredentials = filterSystemCredentials(
     upgradeableCredentials,
   );
 
   function handleCredentialChange(newValue?: CredentialsMetaInput) {
     setRemovedCredentialTitle(null);
+    setRefusedPlatformKeyNotice(null);
     onSelectCredential(newValue);
   }
 
@@ -542,6 +605,9 @@ export function useCredentialsInput({
     allProviderCredentials: credentials.allProviderCredentials,
     selectedCredential,
     removedCredentialTitle,
+    hasRefusedPlatformKey:
+      refusedPlatformKeyNotice !== null &&
+      refusedPlatformKeyNotice.selectedId === selectedCredential?.id,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
