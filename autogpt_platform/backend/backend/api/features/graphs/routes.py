@@ -115,6 +115,8 @@ async def get_graph(
 @router.get(
     path="/graphs/{graph_id}/versions",
     summary="Get all graph versions",
+    # Loaded only to build each version's credentials input schema.
+    response_model_exclude={"__all__": {"sub_graphs"}},
 )
 async def get_graph_all_versions(
     graph_id: str,
@@ -129,16 +131,23 @@ async def get_graph_all_versions(
     )
     if not graphs:
         raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
-    return [_shared_if_not_owner(graph, user_id) for graph in graphs]
+    stripped_sub_graphs: dict[int, graph_db.BaseGraph] = {}
+    return [
+        _shared_if_not_owner(graph, user_id, stripped_sub_graphs) for graph in graphs
+    ]
 
 
 def _shared_if_not_owner(
-    graph: graph_db.GraphModel, user_id: str
+    graph: graph_db.GraphModel,
+    user_id: str,
+    stripped_sub_graphs: dict[int, graph_db.BaseGraph] | None = None,
 ) -> graph_db.GraphModel:
     # An export comes back with its owner blanked, so an owner's own export
     # takes the `shared_copy` branch too. That is harmless only as long as
     # `shared_copy` removes nothing an export keeps.
-    return graph if graph.user_id == user_id else graph.shared_copy()
+    if graph.user_id == user_id:
+        return graph
+    return graph.shared_copy(stripped_sub_graphs)
 
 
 @router.post(
