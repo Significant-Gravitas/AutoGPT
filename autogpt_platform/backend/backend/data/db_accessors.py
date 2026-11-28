@@ -1,37 +1,45 @@
+from types import ModuleType
+from typing import TYPE_CHECKING, TypeVar
+
 from backend.data import db
+from backend.util import clients
+
+if TYPE_CHECKING:
+    from backend.data.db_manager import DatabaseManagerAsyncClient
+
+M = TypeVar("M", bound=ModuleType)
+
+
+def db_for(module: M, *, should_retry: bool = True) -> "M | DatabaseManagerAsyncClient":
+    """``module``'s database functions, wherever this process can run them.
+
+    The module itself in a process with a Prisma connection, else the database
+    manager's RPC client, which offers the functions the manager exposes.
+    """
+    if db.is_connected():
+        return module
+    if should_retry:
+        # No argument, so every default caller shares one thread-cached client.
+        return clients.get_database_manager_async_client()
+    return clients.get_database_manager_async_client(should_retry=False)
 
 
 def auth_session_db():
-    if db.is_connected():
-        from backend.data.auth import session as auth_session_store
+    from backend.data.auth import session as module
 
-        return auth_session_store
-    from backend.util.clients import get_database_manager_async_client
-
-    return get_database_manager_async_client()
+    return db_for(module)
 
 
 def background_task_db():
-    if db.is_connected():
-        from backend.copilot import background_task_db as store
+    from backend.copilot import background_task_db as module
 
-        return store
-    from backend.util.clients import get_database_manager_async_client
-
-    return get_database_manager_async_client()
+    return db_for(module)
 
 
 def chat_db():
-    if db.is_connected():
-        from backend.copilot import db as _chat_db
+    from backend.copilot import db as module
 
-        chat_db = _chat_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        chat_db = get_database_manager_async_client()
-
-    return chat_db
+    return db_for(module)
 
 
 def chat_db_is_local() -> bool:
@@ -41,482 +49,232 @@ def chat_db_is_local() -> bool:
 
 
 def experts_db():
-    if db.is_connected():
-        from backend.api.features.experts import experts_db as _experts_db
+    from backend.api.features.experts import experts_db as module
 
-        experts_db = _experts_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        experts_db = get_database_manager_async_client()
-
-    return experts_db
+    return db_for(module)
 
 
 def expert_kickoff_db():
-    if db.is_connected():
-        from backend.api.features.experts import kickoff as _kickoff
+    from backend.api.features.experts import kickoff as module
 
-        expert_kickoff_db = _kickoff
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        expert_kickoff_db = get_database_manager_async_client()
-
-    return expert_kickoff_db
+    return db_for(module)
 
 
 def expert_check_db():
-    if db.is_connected():
-        from backend.api.features.experts import experts_db as _expert_check_db
+    from backend.api.features.experts import experts_db as module
 
-        expert_check_db = _expert_check_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        # One attempt: a database manager from before check_private_expert
-        # answers at once that it has no such route, where the retrying
-        # client would wait up to five minutes for its replacement. The
-        # executor's expert check then reads the expert another way.
-        expert_check_db = get_database_manager_async_client(should_retry=False)
-
-    return expert_check_db
+    # One attempt: a database manager from before check_private_expert
+    # answers at once that it has no such route, where the retrying
+    # client would wait up to five minutes for its replacement. The
+    # executor's expert check then reads the expert another way.
+    return db_for(module, should_retry=False)
 
 
 def feedback_prompts_db():
-    if db.is_connected():
-        from backend.data import feedback_prompts as _feedback_prompts_db
+    from backend.data import feedback_prompts as module
 
-        feedback_prompts_db = _feedback_prompts_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        feedback_prompts_db = get_database_manager_async_client()
-
-    return feedback_prompts_db
+    return db_for(module)
 
 
 def spend_approval_db():
-    if db.is_connected():
-        from backend.api.features.experts import spend_approval as _spend_approval
+    from backend.api.features.experts import spend_approval as module
 
-        spend_approval_db = _spend_approval
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        spend_approval_db = get_database_manager_async_client()
-
-    return spend_approval_db
+    return db_for(module)
 
 
 def graph_db():
-    if db.is_connected():
-        from backend.data import graph as _graph_db
+    from backend.data import graph as module
 
-        graph_db = _graph_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        graph_db = get_database_manager_async_client()
-
-    return graph_db
+    return db_for(module)
 
 
 def library_db():
-    if db.is_connected():
-        from backend.api.features.library import db as _library_db
+    from backend.api.features.library import db as module
 
-        library_db = _library_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        library_db = get_database_manager_async_client()
-
-    return library_db
+    return db_for(module)
 
 
 def store_db():
-    if db.is_connected():
-        from backend.api.features.store import db as _store_db
+    from backend.api.features.store import db as module
 
-        store_db = _store_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        store_db = get_database_manager_async_client()
-
-    return store_db
+    return db_for(module)
 
 
 def triggers_db():
-    if db.is_connected():
-        from backend.api.features.library import triggers as _triggers_db
+    from backend.api.features.library import triggers as module
 
-        triggers_db = _triggers_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        triggers_db = get_database_manager_async_client()
-
-    return triggers_db
+    return db_for(module)
 
 
 def search():
-    if db.is_connected():
-        from backend.api.features.search import hybrid_search as _search
+    from backend.api.features.search import hybrid_search as module
 
-        search = _search
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        search = get_database_manager_async_client()
-
-    return search
+    return db_for(module)
 
 
 def embeddings_db():
-    if db.is_connected():
-        from backend.api.features.search import embeddings as _embeddings_db
+    from backend.api.features.search import embeddings as module
 
-        embeddings_db = _embeddings_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        embeddings_db = get_database_manager_async_client()
-
-    return embeddings_db
+    return db_for(module)
 
 
 def execution_db():
-    if db.is_connected():
-        from backend.data import execution as _execution_db
+    from backend.data import execution as module
 
-        execution_db = _execution_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        execution_db = get_database_manager_async_client()
-
-    return execution_db
+    return db_for(module)
 
 
 def user_db():
-    if db.is_connected():
-        from backend.data import user as _user_db
+    from backend.data import user as module
 
-        user_db = _user_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        user_db = get_database_manager_async_client()
-
-    return user_db
+    return db_for(module)
 
 
 def memory_schedule_db():
-    if db.is_connected():
-        from backend.data import memory_schedule as _memory_schedule_db
+    from backend.data import memory_schedule as module
 
-        memory_schedule_db = _memory_schedule_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        memory_schedule_db = get_database_manager_async_client()
-
-    return memory_schedule_db
+    return db_for(module)
 
 
 def understanding_db():
-    if db.is_connected():
-        from backend.data import understanding as _understanding_db
+    from backend.data import understanding as module
 
-        understanding_db = _understanding_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        understanding_db = get_database_manager_async_client()
-
-    return understanding_db
+    return db_for(module)
 
 
 def workspace_db():
-    if db.is_connected():
-        from backend.data import workspace as _workspace_db
+    from backend.data import workspace as module
 
-        workspace_db = _workspace_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        workspace_db = get_database_manager_async_client()
-
-    return workspace_db
+    return db_for(module)
 
 
 def workspace_folder_db():
-    if db.is_connected():
-        from backend.data import workspace_folder as _workspace_folder_db
+    from backend.data import workspace_folder as module
 
-        workspace_folder_db = _workspace_folder_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        workspace_folder_db = get_database_manager_async_client()
-
-    return workspace_folder_db
+    return db_for(module)
 
 
 def skill_db():
     """Marketplace skill listings: active versions and packages, read by the
     copy reconcile in copilot.tools.skills."""
-    if db.is_connected():
-        from backend.api.features.store import skill_db as _skill_db
+    from backend.api.features.store import skill_db as module
 
-        return _skill_db
-    from backend.util.clients import get_database_manager_async_client
-
-    return get_database_manager_async_client()
+    return db_for(module)
 
 
 def workspace_skill_db():
-    if db.is_connected():
-        from backend.data import workspace_skill
+    from backend.data import workspace_skill as module
 
-        return workspace_skill
-    from backend.util.clients import get_database_manager_async_client
-
-    return get_database_manager_async_client()
+    return db_for(module)
 
 
 def review_db():
-    if db.is_connected():
-        from backend.data import human_review as _review_db
+    from backend.data import human_review as module
 
-        review_db = _review_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        review_db = get_database_manager_async_client()
-
-    return review_db
+    return db_for(module)
 
 
 def credit_db():
-    if db.is_connected():
-        from backend.data import db_manager as _credit_db
+    from backend.data import db_manager as module
 
-        credit_db = _credit_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        credit_db = get_database_manager_async_client()
-
-    return credit_db
+    return db_for(module)
 
 
 def platform_cost_db():
-    if db.is_connected():
-        from backend.data import platform_cost as _platform_cost_db
+    from backend.data import platform_cost as module
 
-        platform_cost_db = _platform_cost_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        platform_cost_db = get_database_manager_async_client()
-
-    return platform_cost_db
+    return db_for(module)
 
 
 def activity_event_db():
-    if db.is_connected():
-        from backend.data import activity_event as _activity_event_db
+    from backend.data import activity_event as module
 
-        activity_event_db = _activity_event_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        activity_event_db = get_database_manager_async_client()
-
-    return activity_event_db
+    return db_for(module)
 
 
 def orgs_db():
-    if db.is_connected():
-        from backend.api.features.orgs import db as _orgs_db
+    from backend.api.features.orgs import db as module
 
-        orgs_db = _orgs_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        orgs_db = get_database_manager_async_client()
-
-    return orgs_db
+    return db_for(module)
 
 
 def platform_linking_db():
-    if db.is_connected():
-        from backend.platform_linking import db as _platform_linking_db
+    from backend.platform_linking import db as module
 
-        platform_linking_db = _platform_linking_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        platform_linking_db = get_database_manager_async_client()
-
-    return platform_linking_db
+    return db_for(module)
 
 
 def bot_analytics_db():
-    if db.is_connected():
-        from backend.data import bot_analytics as _bot_analytics_db
+    from backend.data import bot_analytics as module
 
-        bot_analytics_db = _bot_analytics_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        bot_analytics_db = get_database_manager_async_client()
-
-    return bot_analytics_db
+    return db_for(module)
 
 
 def skill_learning_db():
-    if db.is_connected():
-        from backend.data import skill_learning as _skill_learning_db
+    from backend.data import skill_learning as module
 
-        skill_learning_db = _skill_learning_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_learning_db = get_database_manager_async_client()
-
-    return skill_learning_db
+    return db_for(module)
 
 
 def skill_reviews_db():
-    if db.is_connected():
-        from backend.data import skill_reviews as _skill_reviews_db
+    from backend.data import skill_reviews as module
 
-        skill_reviews_db = _skill_reviews_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_reviews_db = get_database_manager_async_client()
-
-    return skill_reviews_db
+    return db_for(module)
 
 
 def skill_publication_db():
-    if db.is_connected():
-        from backend.data import skill_publication as _skill_publication_db
+    from backend.data import skill_publication as module
 
-        skill_publication_db = _skill_publication_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_publication_db = get_database_manager_async_client()
-
-    return skill_publication_db
+    return db_for(module)
 
 
 def skill_use_db():
-    if db.is_connected():
-        from backend.data import skill_use as _skill_use_db
+    from backend.data import skill_use as module
 
-        skill_use_db = _skill_use_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_use_db = get_database_manager_async_client()
-
-    return skill_use_db
+    return db_for(module)
 
 
 def skill_deletion_db():
-    if db.is_connected():
-        from backend.data import skill_deletion as _skill_deletion_db
+    from backend.data import skill_deletion as module
 
-        skill_deletion_db = _skill_deletion_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_deletion_db = get_database_manager_async_client()
-
-    return skill_deletion_db
+    return db_for(module)
 
 
 def skill_versions_db():
-    if db.is_connected():
-        from backend.data import skill_versions as _skill_versions_db
+    from backend.data import skill_versions as module
 
-        skill_versions_db = _skill_versions_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        skill_versions_db = get_database_manager_async_client()
-
-    return skill_versions_db
+    return db_for(module)
 
 
 def bot_installs_db():
-    if db.is_connected():
-        from backend.data import bot_installs as _bot_installs_db
+    from backend.data import bot_installs as module
 
-        bot_installs_db = _bot_installs_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        bot_installs_db = get_database_manager_async_client()
-
-    return bot_installs_db
+    return db_for(module)
 
 
 def dream_db():
-    if db.is_connected():
-        from backend.data import dream_pass as _dream_db
+    from backend.data import dream_pass as module
 
-        dream_db = _dream_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        # The dream record is written under a short deadline that already
-        # covers retrying (copilot/dream/store.py); a retrying client would
-        # only keep going on a request the deadline has given up on.
-        dream_db = get_database_manager_async_client(should_retry=False)
-
-    return dream_db
+    # The dream record is written under a short deadline that already
+    # covers retrying (copilot/dream/store.py); a retrying client would
+    # only keep going on a request the deadline has given up on.
+    return db_for(module, should_retry=False)
 
 
 def pro_activation_db():
-    if db.is_connected():
-        from backend.data import pro_activation
+    from backend.data import pro_activation as module
 
-        return pro_activation
-    from backend.util.clients import get_database_manager_async_client
-
-    return get_database_manager_async_client()
+    return db_for(module)
 
 
 def posthog_lifecycle_db():
-    if db.is_connected():
-        from backend.data import posthog_lifecycle_sync as _posthog_lifecycle_db
+    from backend.data import posthog_lifecycle_sync as module
 
-        posthog_lifecycle_db = _posthog_lifecycle_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        # Best-effort and asked for after the work is queued: fail fast.
-        posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
-
-    return posthog_lifecycle_db
+    # Best-effort and asked for after the work is queued: fail fast.
+    return db_for(module, should_retry=False)
 
 
 def scheduled_chats_db():
-    if db.is_connected():
-        from backend.copilot.scheduled_chats import forget as _scheduled_chats_db
+    from backend.copilot.scheduled_chats import forget as module
 
-        scheduled_chats_db = _scheduled_chats_db
-    else:
-        from backend.util.clients import get_database_manager_async_client
-
-        scheduled_chats_db = get_database_manager_async_client()
-
-    return scheduled_chats_db
+    return db_for(module)
