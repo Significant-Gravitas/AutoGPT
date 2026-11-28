@@ -195,7 +195,7 @@ export function useChatInput({
  *  cleared eagerly, so the failed message goes back in — and if they started
  *  a new draft during the stream, BOTH are kept: silently picking a winner
  *  deletes the other one for good. */
-function restoreFailedDraft(current: string, failed: string) {
+export function restoreFailedDraft(current: string, failed: string) {
   if (!current.trim() || current === failed) return failed;
   return `${failed}\n\n${current}`;
 }

@@ -124,6 +124,7 @@ async def test_a_rerun_on_the_baseline_engine_reopens_the_queue_its_dead_attempt
                     session.session_id,
                     PendingMessage(content=FOLLOW_UP),
                     session_meta_key=meta,
+                    hold_field=stream_registry.STOP_HOLD_FIELD,
                 )
             )
             # Taken back off, so the rest of the turn runs as it would have:

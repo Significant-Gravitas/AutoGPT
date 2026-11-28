@@ -41,6 +41,9 @@ import { startReplyTiming } from "./helpers/replyTiming";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
+import { useChatDraftAccess } from "./components/ChatInput/useChatDraft";
+import { restoreFailedDraft } from "./components/ChatInput/useChatInput";
+import { sessionDraftKey } from "./components/SendAtReset/helpers";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
@@ -431,7 +434,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage, holdForStop } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -442,6 +445,34 @@ function useCopilotPageChat(
           drainedCount: stream.drainedCount,
         }),
   });
+
+  // Every follow-up queued before a Stop was either read by the stopped turn
+  // or discarded. The discarded ones go to this chat's own draft, which is
+  // still right if the user switched chats while the cancel ran. When the
+  // server can't tell which it discarded, the chips stay as they are.
+  const stoppedChatDraft = useChatDraftAccess(
+    sessionId ? sessionDraftKey(sessionId) : undefined,
+  );
+  async function stopAndGiveBackQueued() {
+    const queued = queuedMessages;
+    const settleQueue = holdForStop();
+    const discarded = await stop().catch((error: unknown) => {
+      settleQueue([]);
+      throw error;
+    });
+    settleQueue(discarded ? queuedOrDiscarded(queued, discarded) : []);
+    if (!discarded?.length) return;
+    const text = discarded.join("\n\n");
+    stoppedChatDraft.write((current) => restoreFailedDraft(current, text));
+    toast({
+      title:
+        discarded.length === 1
+          ? "Queued message not sent"
+          : "Queued messages not sent",
+      description:
+        "Stop cancels what Otto hadn't read yet. It's back in the composer of the chat you stopped.",
+    });
+  }
 
   useCopilotNotifications(sessionId);
 
@@ -642,7 +673,7 @@ function useCopilotPageChat(
     messages: displayMessages,
     status,
     error,
-    stop,
+    stop: stopAndGiveBackQueued,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,
@@ -707,4 +738,18 @@ export function useCopilotRuntimePage() {
   const session = useCopilotPageSession();
   const stream = useCopilotRuntimeStream(session.streamArgs);
   return useCopilotPageChat(session, stream);
+}
+
+// A follow-up still being sent at the click has no chip in `queued` yet, but
+// the server may have taken it in before the Stop and discarded it.
+function queuedOrDiscarded(
+  queued: readonly string[],
+  discarded: readonly string[],
+) {
+  const late = [...discarded];
+  for (const text of queued) {
+    const index = late.indexOf(text);
+    if (index !== -1) late.splice(index, 1);
+  }
+  return [...queued, ...late];
 }

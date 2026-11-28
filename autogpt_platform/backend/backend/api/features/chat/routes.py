@@ -114,6 +114,9 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
+    stop_follow_ups,
+    wait_for_next_turn,
+    wait_for_stopped_turn,
 )
 from backend.copilot.pending_message_receipts import (
     PendingMessageReceiptUnavailable,
@@ -726,6 +729,11 @@ class CancelSessionResponse(BaseModel):
 
     cancelled: bool
     reason: str | None = None
+    discarded_messages: list[str] | None = Field(
+        default=None,
+        description="The user's follow-ups the Stop discarded unread, oldest "
+        "first; null when the server could not tell.",
+    )
 
 
 class UpdateSessionTitleRequest(BaseModel):
@@ -2226,6 +2234,25 @@ _CANCEL_CONFIRM_TIMEOUT_SECONDS = 5.0
 _CANCEL_CONFIRM_POLL_INTERVAL_SECONDS = 0.5
 
 
+async def _stop_follow_ups_best_effort(session_id: str) -> list[str] | None:
+    """Discard the follow-ups queued before the Stop and hold the turn's queue
+    closed, in one step.
+
+    Returns the user's own discarded follow-ups for the client to give back
+    (an internal sender's entry carries metadata and is left out), or ``None``
+    when the step failed and what the queue held is unknown.
+    """
+    try:
+        dropped = await stop_follow_ups(session_id)
+    except Exception:
+        logger.warning(
+            f"[CANCEL] Failed to stop follow-ups for session ...{session_id[-8:]}",
+            exc_info=True,
+        )
+        return None
+    return [message.content for message in dropped if not message.metadata]
+
+
 async def _clear_pending_best_effort(session_id: str) -> None:
     """Drop the session's pending buffer, swallowing Redis errors.
 
@@ -2263,22 +2290,10 @@ async def cancel_session_task(
     """
     await _validate_and_get_session(session_id, user_id)
 
-    # Cancelling discards any follow-ups the user queued for this turn:
-    # Stop means stop.  The pending buffer only exists to feed the
-    # *running* turn (drained at tool boundaries); once that turn is
-    # cancelled there is nothing left to feed it, so leaving entries
-    # behind would silently inject them into the next unrelated turn
-    # (up to the 1h buffer TTL).
-    #
-    # This first clear shrinks the window but doesn't close it: the HTTP
-    # pending-write path CAS-gates on stream meta ``status == "running"``
-    # (``push_pending_message_if_session_running``), so a follow-up queued
-    # after this clear but before the turn actually stops would still land.
-    # The running path below clears again once the turn is confirmed
-    # stopped — at which point the CAS gate rejects every new write, so the
-    # buffer stays empty.  Best-effort throughout: a Redis hiccup must not
-    # block the cancel itself, so we swallow and log.
-    await _clear_pending_best_effort(session_id)
+    # Stop discards the follow-ups queued before it, which would otherwise feed
+    # the next unrelated turn, and holds the queue closed in the same step, so a
+    # send after it starts the next turn (``stream_chat_post``).
+    discarded = await _stop_follow_ups_best_effort(session_id)
 
     await cancel_background_subtasks(user_id, session_id)
 
@@ -2287,9 +2302,13 @@ async def cancel_session_task(
     if await background_task_db().cancel_queued_background_followup(
         user_id, session_id
     ):
-        return CancelSessionResponse(cancelled=True, reason="dequeued")
+        return CancelSessionResponse(
+            cancelled=True, reason="dequeued", discarded_messages=discarded
+        )
     if await turn_queue.cancel_queued_turn(user_id=user_id, session_id=session_id):
-        return CancelSessionResponse(cancelled=True, reason="dequeued")
+        return CancelSessionResponse(
+            cancelled=True, reason="dequeued", discarded_messages=discarded
+        )
 
     active_session, _ = await stream_registry.get_active_session(session_id, user_id)
     if not active_session:
@@ -2307,8 +2326,16 @@ async def cancel_session_task(
         if await _try_release_orphan_running(
             session_id, user_id, cancel_background=True
         ):
-            return CancelSessionResponse(cancelled=True, reason="orphan_released")
-        return CancelSessionResponse(cancelled=True, reason="no_active_session")
+            return CancelSessionResponse(
+                cancelled=True,
+                reason="orphan_released",
+                discarded_messages=discarded,
+            )
+        return CancelSessionResponse(
+            cancelled=True,
+            reason="no_active_session",
+            discarded_messages=discarded,
+        )
 
     await cancel_background_subtasks(user_id, session_id, active_session.turn_id)
     await enqueue_cancel_task(session_id)
@@ -2323,17 +2350,16 @@ async def cancel_session_task(
         # A turn the cancelled one's end woke is not the one the user stopped,
         # and its queued follow-ups are its own.
         if session_state and session_state.turn_id != active_session.turn_id:
-            return CancelSessionResponse(cancelled=True)
+            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
         if session_state is None or session_state.status != "running":
             logger.info(
                 f"[CANCEL] Session ...{session_id[-8:]} confirmed stopped "
                 f"(status={session_state.status if session_state else 'gone'}) after {waited:.1f}s"
             )
-            # Re-clear now the turn is no longer running: the CAS gate rejects
-            # any further pending writes, so this drops anything queued during
-            # the cancel window and closes the cross-turn leak for good.
+            # Re-clear now the turn is no longer running, for what an internal
+            # sender queued past the gate during the cancel window.
             await _clear_pending_best_effort(session_id)
-            return CancelSessionResponse(cancelled=True)
+            return CancelSessionResponse(cancelled=True, discarded_messages=discarded)
 
     logger.warning(
         f"[CANCEL] Session ...{session_id[-8:]} not confirmed after "
@@ -2347,11 +2373,13 @@ async def cancel_session_task(
         skip_error_publish=True,
         turn_id=active_session.turn_id,
     )
-    # Status is now force-flipped out of "running"; re-clear to drop any
-    # follow-up that landed during the poll window.
+    # Status is now force-flipped out of "running"; re-clear to drop what an
+    # internal sender queued during the poll window.
     await _clear_pending_best_effort(session_id)
     return CancelSessionResponse(
-        cancelled=True, reason="cancel_published_not_confirmed"
+        cancelled=True,
+        reason="cancel_published_not_confirmed",
+        discarded_messages=discarded,
     )
 
 
@@ -2609,29 +2637,50 @@ async def stream_chat_post(
     ):
         turn_in_flight = False
 
-    if turn_in_flight:
-        if request.expert_kickoff:
-            if persisted_kickoff_has_reply is not None:
-                return _empty_ui_message_stream_response()
-            raise HTTPException(
-                status_code=409,
-                detail="expert kickoff requires an idle session",
-            )
+    # The text before the files block below: the queue adds its own.
+    follow_up_text = message
+
+    async def queue_as_follow_up() -> bool:
         try:
             await queue_pending_for_http(
                 session_id=session_id,
                 user_id=user_id,
-                message=message,
+                message=follow_up_text,
                 context=request.context,
                 file_ids=request.file_ids,
                 folder_ids=request.folder_ids,
                 expert_id=session.expert_id,
                 client_message_id=client_message_id,
             )
-            return _empty_ui_message_stream_response(follow_up_queued=True)
         except HTTPException as exc:
             if exc.status_code != 409:
                 raise
+            return False
+        return True
+
+    stopped_turn_held = False
+    try:
+        if turn_in_flight:
+            if request.expert_kickoff:
+                if persisted_kickoff_has_reply is not None:
+                    return _empty_ui_message_stream_response()
+                raise HTTPException(
+                    status_code=409,
+                    detail="expert kickoff requires an idle session",
+                )
+            # A turn the user stopped takes no follow-ups: this message is the next
+            # turn, or a follow-up again if the Stop's hold lapses with the turn alive.
+            for _ in range(2):
+                if await queue_as_follow_up():
+                    return _empty_ui_message_stream_response(follow_up_queued=True)
+                if not await wait_for_stopped_turn(session_id):
+                    break
+                stopped_turn_held = True
+        else:
+            # A Stop's cancel can end the turn before its executor lets go of it.
+            stopped_turn_held = await wait_for_stopped_turn(session_id)
+    except StreamRegistryUnavailable as exc:
+        raise _chat_service_degraded() from exc
 
     if request.expert_kickoff and persisted_kickoff_has_reply is not None:
         if persisted_kickoff_has_reply:
@@ -2748,6 +2797,17 @@ async def stream_chat_post(
             )
     except turn_queue.SessionNotIdle as exc:
         await release_client_message_claim()
+        # The turn a Stop held this message for gave way to another send's: follow it.
+        try:
+            follows = (
+                stopped_turn_held
+                and await wait_for_next_turn(session_id)
+                and await queue_as_follow_up()
+            )
+        except StreamRegistryUnavailable as degraded:
+            raise _chat_service_degraded() from degraded
+        if follows:
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         raise HTTPException(
             status_code=409,
             detail="Another reply started while this message was being sent. "
@@ -2999,6 +3059,14 @@ async def stream_chat_post(
         event_generator(),
         media_type="text/event-stream",
         headers=_ui_message_stream_headers(),
+    )
+
+
+def _chat_service_degraded() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail="Chat service degraded, retry shortly",
+        headers={"Retry-After": "30"},
     )
 
 

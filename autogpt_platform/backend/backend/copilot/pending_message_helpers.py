@@ -9,6 +9,7 @@ routes.py stays free of Redis/Lua details.
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.executor.utils import get_session_released_key
 from backend.copilot.limit_tracking import LimitReading, track_chat_blocked
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
@@ -41,17 +43,23 @@ from backend.copilot.pending_messages import (
     push_pending_message_if_session_running,
     release_client_message,
     reopen_follow_ups,
+    take_pending_and_hold,
 )
 from backend.copilot.response_model import (
     StreamPendingDrained,
     StreamPendingDrainedMessage,
 )
 from backend.copilot.service import EmptyUserMessage, normalise_user_message
+from backend.copilot.stream_registry import STOP_HOLD_FIELD, ActiveSession
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import RedisListCapacityExceeded, incr_with_ttl
+from backend.data.redis_helpers import (
+    RedisListCapacityExceeded,
+    as_str,
+    incr_with_ttl,
+)
 from backend.data.workspace import build_files_block, resolve_attachable_workspace_files
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
@@ -138,6 +146,109 @@ async def is_turn_in_flight(session_id: str) -> bool:
     return chat_status in (CHAT_STATUS_QUEUED, CHAT_STATUS_RUNNING)
 
 
+# Outlasts the cancel route's 5 s confirmation window, after which it completes
+# the stopped turn itself; the hold of a cancel that failed lapses with it.
+STOP_HOLD_SECONDS = 10.0
+_STOPPED_TURN_POLL_SECONDS = 0.1
+_STOPPED_TURN_MAX_POLL_SECONDS = 0.5
+_NEXT_TURN_WAIT_SECONDS = 5.0
+
+
+async def stop_follow_ups(session_id: str) -> list[PendingMessage]:
+    """Discard the session's follow-ups and close its running turn to new ones
+    for ``STOP_HOLD_SECONDS``, in one step. Returns what was discarded."""
+    return await take_pending_and_hold(
+        session_id,
+        session_meta_key=get_session_meta_key(session_id),
+        hold_field=STOP_HOLD_FIELD,
+        hold_until=time.time() + STOP_HOLD_SECONDS,
+    )
+
+
+async def wait_for_stopped_turn(session_id: str) -> bool:
+    """Wait while a turn the user stopped still holds the session.
+
+    A message sent meanwhile starts the next turn once the stopped one has
+    left the stream registry, the session's ``chatStatus`` and its executor,
+    which drops a turn sent to a chat it still holds. The wait ends there, or
+    when the Stop's hold lapses: the cancel failed and the turn runs on, or no
+    executor reports letting go (one that died, or predates the marker).
+    Returns whether a stopped turn held the session. Raises
+    :class:`StreamRegistryUnavailable` when Redis or the database can't answer.
+    """
+    held = False
+    # Bounded here too, whatever deadline the meta carries.
+    deadline = time.monotonic() + STOP_HOLD_SECONDS
+    interval = _STOPPED_TURN_POLL_SECONDS
+    while True:
+        active = await _read_active_meta(session_id)
+        if (
+            active is None
+            or active.stop_held_until <= time.time()
+            or time.monotonic() >= deadline
+        ):
+            return held
+        # The database is asked only once the executor has let go.
+        if (
+            active.status != "running"
+            and await _executor_released(session_id, active.turn_id)
+            and await _chat_status(session_id) != CHAT_STATUS_RUNNING
+        ):
+            return True
+        held = True
+        await asyncio.sleep(interval)
+        interval = min(interval * 2, _STOPPED_TURN_MAX_POLL_SECONDS)
+
+
+async def wait_for_next_turn(session_id: str) -> bool:
+    """Wait for the turn another send just started to take follow-ups.
+
+    That send holds the turn slot before it writes its stream meta, so a send
+    that lost the slot to it finds no turn to follow for a moment. Returns
+    whether a running turn took the session within ``_NEXT_TURN_WAIT_SECONDS``.
+    Raises :class:`StreamRegistryUnavailable` when Redis can't answer.
+    """
+    deadline = time.monotonic() + _NEXT_TURN_WAIT_SECONDS
+    while True:
+        active = await _read_active_meta(session_id)
+        if (
+            active is not None
+            and active.status == "running"
+            and active.stop_held_until <= time.time()
+        ):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
+
+
+async def _read_active_meta(session_id: str) -> ActiveSession | None:
+    try:
+        return await get_active_session_meta(session_id)
+    except _REDIS_ERRORS as exc:
+        raise StreamRegistryUnavailable() from exc
+
+
+async def _executor_released(session_id: str, turn_id: str) -> bool:
+    try:
+        redis = await get_redis_async()
+        released = await redis.get(get_session_released_key(session_id))
+    except _REDIS_ERRORS as exc:
+        raise StreamRegistryUnavailable() from exc
+    return as_str(released) == turn_id
+
+
+async def _chat_status(session_id: str) -> str | None:
+    try:
+        return await chat_db().get_chat_session_status(session_id)
+    except Exception as exc:
+        raise StreamRegistryUnavailable() from exc
+
+
+# RedisClusterException (a slot moving in a rolling restart) is no RedisError.
+_REDIS_ERRORS = (RedisError, RedisClusterException, ConnectionError, OSError)
+
+
 class QueuePendingMessageResponse(BaseModel):
     """Response returned when a message is queued because the session already
     has a turn in flight.
@@ -194,6 +305,7 @@ async def queue_user_message(
             session_id,
             pending,
             session_meta_key=get_session_meta_key(session_id),
+            hold_field=STOP_HOLD_FIELD,
             deduplicate=message_id is not None,
         )
         return QueuePendingMessageResponse(

@@ -22,6 +22,7 @@ application code, add a helper here first — callers should not touch
 this module can cover.
 """
 
+import time
 from enum import IntEnum
 from typing import Any, cast
 
@@ -105,10 +106,21 @@ redis.call('LTRIM', KEYS[1], #ARGV, -1)
 return current
 """
 
+_TAKE_LIST_AND_HOLD_LUA = """
+local guarded = redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2]
+local items = redis.call('LRANGE', KEYS[2], 0, -1)
+redis.call('DEL', KEYS[2])
+if guarded then
+    redis.call('HSET', KEYS[1], ARGV[3], ARGV[4])
+end
+return items
+"""
+
 # Push to a capped list only when a hash field currently matches the expected
-# value, and the list is not closed to the hash's current owner. Returns the
-# list length, -1 on a failed guard, or -2 at capacity. A queued ID with an
-# expired receipt restores that receipt from the list's PTTL.
+# value, the list is not closed to the hash's current owner, and no hold
+# deadline has yet to pass. Returns the list length, -1 on a failed guard, or
+# -2 at capacity. A queued ID with an expired receipt restores that receipt
+# from the list's PTTL.
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
@@ -121,6 +133,8 @@ return current
 #   ARGV[6]  message ID used to recover an expired receipt
 #   ARGV[7]  optional closed-by field (see _POP_OR_CLOSE_LUA), "" for none
 #   ARGV[8]  owner field the closed-by field must match to refuse
+#   ARGV[9]  hash field holding a hold deadline (unix seconds), "" for none
+#   ARGV[10] the caller's current unix time; the push is refused before the deadline
 _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
@@ -145,6 +159,12 @@ if ARGV[7] and ARGV[7] ~= '' then
     local closed_by = redis.call('HGET', KEYS[1], ARGV[7])
     if closed_by and closed_by ~= ''
         and closed_by == redis.call('HGET', KEYS[1], ARGV[8]) then
+        return -1
+    end
+end
+if ARGV[9] and ARGV[9] ~= '' then
+    local until_ts = tonumber(redis.call('HGET', KEYS[1], ARGV[9]))
+    if until_ts and until_ts > tonumber(ARGV[10]) then
         return -1
     end
 end
@@ -412,13 +432,15 @@ async def capped_rpush_if_hash_field(
     message_id: str | None = None,
     closed_by_field: str | None = None,
     owner_field: str | None = None,
+    hold_field: str = "",
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``, or when
+    hash field does not currently match ``expected``, when
     ``closed_by_field`` holds the hash's current ``owner_field`` value (the
-    owner closed the list with :func:`pop_or_close_list`). With a receipt
+    owner closed the list with :func:`pop_or_close_list`), or when
+    ``hold_field`` holds a deadline still to come. With a receipt
     key, retries return the current length without pushing. A matching JSON
     ``id`` in the list restores an expired receipt. Full lists raise
     ``RedisListCapacityExceeded`` without evicting an accepted item.
@@ -443,6 +465,8 @@ async def capped_rpush_if_hash_field(
             message_id or "",
             closed_by_field or "",
             owner_field or "",
+            hold_field,
+            repr(time.time()),
         ),
     )
     length = int(result)
@@ -489,6 +513,38 @@ async def pop_or_close_list(
         ),
     )
     return list(result or [])
+
+
+async def take_list_and_hold(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    list_key: str,
+    guard_field: str,
+    expected: str,
+    hold_field: str,
+    hold_until: float,
+) -> list[Any]:
+    """Atomically empty a list and return it, setting ``hold_field`` to
+    ``hold_until`` when ``guard_field`` matches ``expected``.
+
+    Both keys must share a Redis Cluster slot. The script reads before it
+    writes, so a failure leaves both as they were.
+    """
+    items = await cast(
+        "Any",
+        redis.eval(
+            _TAKE_LIST_AND_HOLD_LUA,
+            2,
+            hash_key,
+            list_key,
+            guard_field,
+            expected,
+            hold_field,
+            repr(hold_until),
+        ),
+    )
+    return list(items)
 
 
 async def claim_batch_dispatch_atomic(

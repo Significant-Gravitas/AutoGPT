@@ -21,7 +21,7 @@ interface Args {
   isReconnecting: boolean;
   isFinishProbing: boolean;
   sendMessage: (message: SendInput) => Promise<void>;
-  stop: () => Promise<void>;
+  stop: () => Promise<unknown>;
 }
 
 /**

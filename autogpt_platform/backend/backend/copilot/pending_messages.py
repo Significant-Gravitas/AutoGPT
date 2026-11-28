@@ -41,6 +41,7 @@ from backend.data.redis_helpers import (
     pop_matching_list_prefix,
     pop_or_close_list,
     string_compare_and_set,
+    take_list_and_hold,
 )
 
 logger = logging.getLogger(__name__)
@@ -373,10 +374,12 @@ async def push_pending_message_if_session_running(
     message: PendingMessage,
     *,
     session_meta_key: str,
+    hold_field: str,
     deduplicate: bool = False,
 ) -> int | None:
-    """Append a pending message only while the stream meta is still running
-    and its turn has not yet taken its last look at the buffer."""
+    """Append a pending message only while the stream meta is still running,
+    its turn has not yet taken its last look at the buffer, and no Stop holds
+    that turn's follow-ups (see :func:`take_pending_and_hold`)."""
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
@@ -396,12 +399,12 @@ async def push_pending_message_if_session_running(
         message_id=message.id,
         closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
         owner_field=_SESSION_TURN_FIELD,
+        hold_field=hold_field,
     )
     if new_length is None:
         logger.info(
-            "pending_messages: skipped push to session=%s because no running "
-            "turn will read the buffer again",
-            session_id,
+            f"pending_messages: skipped push to session={session_id} because "
+            "no running turn takes follow-ups"
         )
         return None
 
@@ -420,6 +423,28 @@ async def push_pending_message_if_session_running(
         new_length,
     )
     return new_length
+
+
+async def take_pending_and_hold(
+    session_id: str,
+    *,
+    session_meta_key: str,
+    hold_field: str,
+    hold_until: float,
+) -> list[PendingMessage]:
+    """Empty the buffer and, if a turn is running, refuse its follow-ups
+    until ``hold_until``, in one step. Returns what the buffer held."""
+    redis = await get_redis_async()
+    taken = await take_list_and_hold(
+        redis,
+        hash_key=session_meta_key,
+        list_key=_buffer_key(session_id),
+        guard_field=_SESSION_STATUS_FIELD,
+        expected=_SESSION_RUNNING,
+        hold_field=hold_field,
+        hold_until=hold_until,
+    )
+    return _parse_drained(session_id, taken)
 
 
 async def drain_pending_messages(

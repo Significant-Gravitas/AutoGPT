@@ -54,6 +54,7 @@ async def _push(text: str, *, message_id: str | None = None) -> int | None:
         SESSION,
         message,
         session_meta_key=META,
+        hold_field=stream_registry.STOP_HOLD_FIELD,
         deduplicate=message_id is not None,
     )
 
