@@ -1224,9 +1224,13 @@ async def delete_library_agent(
             data={"isDeleted": True},
         )
     else:
-        deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
-            where={"id": library_agent_id, "userId": user_id}
-        )
+        async with transaction() as tx:
+            await prisma.models.ExpertWorkflow.prisma(tx).delete_many(
+                where={"libraryAgentId": library_agent_id}
+            )
+            deleted_count = await prisma.models.LibraryAgent.prisma(tx).delete_many(
+                where={"id": library_agent_id, "userId": user_id}
+            )
 
     if deleted_count < 1:
         raise NotFoundError(f"Library agent #{library_agent_id} not found")

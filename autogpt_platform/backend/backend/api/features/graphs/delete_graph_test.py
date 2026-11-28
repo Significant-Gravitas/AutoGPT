@@ -120,6 +120,59 @@ async def test_delete_created_graph(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_delete_graph_cleans_up_expert_workflows(server: SpinTestServer):
+    created = await _create_graph(server)
+    other = await _create_graph(server)
+    library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"agentGraphId": created.id, "userId": DEFAULT_USER_ID}
+    )
+    other_library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={"agentGraphId": other.id, "userId": DEFAULT_USER_ID}
+    )
+    assert library_agent is not None
+    assert other_library_agent is not None
+
+    expert = await prisma.models.Expert.prisma().create(
+        data={
+            "name": f"Test Expert {uuid4().hex[:8]}",
+            "role": "Assistant",
+            "identity": "I'm a test assistant.",
+            "ownerUserId": DEFAULT_USER_ID,
+        }
+    )
+    workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": expert.id,
+            "libraryAgentId": library_agent.id,
+        }
+    )
+    other_workflow = await prisma.models.ExpertWorkflow.prisma().create(
+        data={
+            "expertId": expert.id,
+            "libraryAgentId": other_library_agent.id,
+        }
+    )
+
+    try:
+        result = await server.agent_server.test_delete_graph(
+            created.id, DEFAULT_USER_ID
+        )
+        assert result == {"version_counts": 1}
+        assert not await prisma.models.ExpertWorkflow.prisma().find_unique(
+            where={"id": workflow.id}
+        )
+        assert await prisma.models.ExpertWorkflow.prisma().find_unique(
+            where={"id": other_workflow.id}
+        )
+    finally:
+        await prisma.models.ExpertWorkflow.prisma().delete_many(
+            where={"id": {"in": [workflow.id, other_workflow.id]}}
+        )
+        await prisma.models.Expert.prisma().delete_many(where={"id": expert.id})
+        await server.agent_server.test_delete_graph(other.id, DEFAULT_USER_ID)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_delete_graph_keeps_versions_saved_under_another_org(
     server: SpinTestServer,
 ):

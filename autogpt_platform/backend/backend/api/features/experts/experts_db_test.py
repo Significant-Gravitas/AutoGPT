@@ -2885,6 +2885,43 @@ async def test_a_workflow_whose_library_agent_was_deleted_is_not_offered(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_orphaned_workflow_row_with_null_source_is_not_offered(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    # Simulate an orphan row left with both source columns NULL (#17281)
+    orphan = await prisma.models.ExpertWorkflow.prisma().create(
+        data={"expertId": hired.expert.id, "scheduleCron": "0 9 * * 1"}
+    )
+    try:
+        expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+        assert expert is not None
+        assert [w.id for w in expert.workflows] == []
+        assert await _setup_links(test_user.id, hired.expert.id) == set()
+    finally:
+        await prisma.models.ExpertWorkflow.prisma().delete_many(where={"id": orphan.id})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_soft_deleted_preload_listing_is_counted_in_failed_preloads_at_hire(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    await prisma.models.StoreListingVersion.prisma().update(
+        where={"id": slv_id}, data={"isDeleted": True}
+    )
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(result, template.id, failed_preloads_count=1),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_copy(
     server: SpinTestServer, test_user
 ):

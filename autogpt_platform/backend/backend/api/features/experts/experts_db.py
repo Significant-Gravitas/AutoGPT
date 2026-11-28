@@ -159,9 +159,13 @@ def _raised_identity(name: str) -> str:
 # Postgres promises no row order without this, so the profile's workflow grid
 # could reshuffle between loads; createdAt keeps the roster's authored order.
 _WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
-# A row whose library agent the owner deleted would link to a page that 404s.
+# A template workflow has no LibraryAgent until hired, but a row whose library
+# agent was deleted (or orphaned with no source) would link to a page that 404s.
 LIVE_WORKFLOWS: prisma.types.ExpertWorkflowWhereInput = {
-    "OR": [{"libraryAgentId": None}, {"LibraryAgent": {"is": {"isDeleted": False}}}]
+    "OR": [
+        {"libraryAgentId": None, "NOT": [{"storeListingVersionId": None}]},
+        {"LibraryAgent": {"is": {"isDeleted": False}}},
+    ]
 }
 
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
