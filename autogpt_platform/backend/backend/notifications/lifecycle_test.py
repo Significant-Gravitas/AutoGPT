@@ -143,8 +143,7 @@ async def _run(coro_factory, user, claim=True, audience_ok=True):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "name,greeted",
-    # The second is what email sign-up stores: the address's local part.
-    [("Sam Carter", "Sam"), ("sam", "there")],
+    [("Sam Carter", "Sam"), (None, "there")],
 )
 async def test_first_subscription_gets_the_welcome_and_the_tour(name, greeted):
     user = _User(welcome_sent_at=None)

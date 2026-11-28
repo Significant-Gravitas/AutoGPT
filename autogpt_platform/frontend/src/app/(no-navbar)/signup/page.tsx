@@ -96,6 +96,24 @@ export default function SignupPage() {
         >
           <FormField
             control={form.control}
+            name="name"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="What may we call you?"
+                hint="Optional"
+                placeholder="Your first name or a nickname"
+                type="text"
+                autoComplete="given-name"
+                spellCheck={false}
+                maxLength={50}
+                error={form.formState.errors.name?.message}
+                {...field}
+              />
+            )}
+          />
+          <FormField
+            control={form.control}
             name="email"
             render={({ field }) => (
               <Input

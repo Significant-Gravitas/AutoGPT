@@ -9,6 +9,7 @@ from backend.data.onboarding import (
     _reward_user,
     complete_onboarding_step,
     ensure_user_onboarding,
+    format_brain_dump_for_extraction,
     format_onboarding_for_extraction,
     get_user_onboarding,
 )
@@ -46,6 +47,23 @@ def test_format_onboarding_for_extraction_with_other():
     assert "A: Jane" in result
     assert "A: Data Scientist" in result
     assert "Research, Building dashboards" in result
+
+
+@pytest.mark.parametrize(
+    "formatted",
+    [
+        lambda: format_onboarding_for_extraction(
+            user_name=" ", user_role="Founder/CEO", pain_points=["Finding leads"]
+        ),
+        lambda: format_brain_dump_for_extraction(
+            user_name="", user_role="Founder/CEO", transcript="leads eat my week"
+        ),
+    ],
+    ids=["wizard", "brain_dump"],
+)
+def test_a_user_without_a_name_is_not_asked_for_one(formatted):
+    # An empty answer invites the extractor to make a name up.
+    assert "What is your name?" not in formatted()
 
 
 @pytest.mark.asyncio(loop_scope="function")
