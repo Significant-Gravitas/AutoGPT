@@ -19,6 +19,7 @@ const MAX: RecommendedExpert = {
   template_id: "tpl-max",
   name: "Max",
   role: "Sales",
+  job_title: "Account Executive",
   avatar_url: null,
 };
 const MINA: RecommendedExpert = {
@@ -283,7 +284,7 @@ describe("PlanPanel task cards", () => {
     const leads = getTaskCards()[1];
     // Title and owner line only: no third line of text in between.
     expect(leads.textContent).toBe(
-      `${LEADS.title}Max, Sales Development Rep · joins your team`,
+      `${LEADS.title}Max, Account Executive · joins your team`,
     );
   });
 
