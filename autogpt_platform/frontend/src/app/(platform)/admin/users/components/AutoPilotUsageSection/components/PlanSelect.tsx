@@ -13,7 +13,7 @@ interface Props {
 export function PlanSelect({ tier, multipliers, disabled, onPick }: Props) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Text variant="small-medium" as="span" aria-hidden>
+      <Text variant="small" weight="medium" as="span" aria-hidden>
         Plan
       </Text>
       <Select

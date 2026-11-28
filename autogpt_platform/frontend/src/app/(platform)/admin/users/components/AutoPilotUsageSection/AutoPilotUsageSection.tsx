@@ -98,7 +98,7 @@ function UsageRow({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small-medium" as="span">
+      <Text variant="small" weight="medium" as="span">
         {label}
       </Text>
       <UsageBar used={used} limit={limit} />

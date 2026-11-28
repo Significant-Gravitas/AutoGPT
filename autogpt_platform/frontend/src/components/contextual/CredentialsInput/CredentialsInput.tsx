@@ -135,6 +135,7 @@ export function CredentialsInput({
         provider={provider}
         displayName={displayName}
         credentials={allCredentials}
+        allProviderCredentials={hookData.allProviderCredentials}
         selectedCredential={selectedCredential}
         onSelectCredential={handleCredentialSelect}
         onClearCredential={handleClearCredential}

@@ -23,7 +23,7 @@ export function RecentMemoriesCard({
 }: Props) {
   return (
     <div className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Recent memories
       </Text>
       <Text variant="small" as="span" tone="muted">

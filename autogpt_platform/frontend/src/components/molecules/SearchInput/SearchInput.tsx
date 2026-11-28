@@ -115,7 +115,7 @@ export const SearchInput = forwardRef<HTMLInputElement, Props>(
             aria-label="Clear search"
             data-slot="search-input-clear"
             className={cn(
-              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-foreground-tertiary transition hover:bg-surface-hover hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
+              "absolute top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-pill text-foreground-tertiary transition hover:bg-surface-hover hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none",
               iconRightOffset[size],
             )}
           >

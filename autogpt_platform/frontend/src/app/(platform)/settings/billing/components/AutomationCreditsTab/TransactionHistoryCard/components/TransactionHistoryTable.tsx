@@ -50,13 +50,14 @@ export function TransactionHistoryTable({
         <thead className="border-b border-border-base bg-surface-muted">
           <tr>
             <th scope="col" className="py-3 pr-2 pl-3 sm:pl-5">
-              <Text variant="small-medium" as="span" tone="secondary">
+              <Text variant="small" weight="medium" as="span" tone="secondary">
                 Activity
               </Text>
             </th>
             <th scope="col" className="p-0 sm:px-2 sm:py-3">
               <Text
-                variant="small-medium"
+                variant="small"
+                weight="medium"
                 as="span"
                 tone="secondary"
                 className="sr-only sm:not-sr-only"
@@ -65,7 +66,7 @@ export function TransactionHistoryTable({
               </Text>
             </th>
             <th scope="col" className="px-2 py-3 text-right">
-              <Text variant="small-medium" as="span" tone="secondary">
+              <Text variant="small" weight="medium" as="span" tone="secondary">
                 Amount
               </Text>
             </th>

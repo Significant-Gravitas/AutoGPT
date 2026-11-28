@@ -22,7 +22,7 @@ export function HandoffRetry({ title, name, expertId, onSend }: Props) {
   const { asked, markAsked, known, threadId } = useHandoffRetry(expertId);
   if (asked) {
     return (
-      <Text variant="body-tight" as="span" tone="muted">
+      <Text variant="body" leading="5" as="span" tone="muted">
         Asked Otto to try again.
       </Text>
     );

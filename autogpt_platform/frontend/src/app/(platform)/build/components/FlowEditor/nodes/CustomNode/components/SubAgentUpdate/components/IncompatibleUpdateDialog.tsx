@@ -60,7 +60,7 @@ export function IncompatibleUpdateDialog({
     >
       <Dialog.Content>
         <div className="space-y-4">
-          <Text variant="body-tight" tone="secondary">
+          <Text variant="body" leading="5" tone="secondary">
             Updating <strong>{beautifyString(agentName)}</strong> from v
             {currentVersion} to v{latestVersion} will break some connections.
           </Text>
@@ -189,14 +189,21 @@ function TwoColumnSection({
 }: TwoColumnSectionProps) {
   return (
     <div className="rounded-md border border-border-base p-3">
-      <Text variant="large-medium-tight" as="span" tone="inherit">
+      <Text
+        variant="large"
+        weight="medium"
+        leading="6"
+        as="span"
+        tone="inherit"
+      >
         {title}
       </Text>
       <div className="mt-2 grid grid-cols-2 items-start gap-4">
         {/* Left column - Breaking changes */}
         <div className="min-w-0">
           <Text
-            variant="body-tight"
+            variant="body"
+            leading="5"
             tone="muted"
             as="div"
             className="flex items-center gap-1.5"
@@ -207,9 +214,11 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {leftItems.length > 0 ? (
               leftItems.map((item) => (
-                <Text variant="body-tight" tone="body" as="li" key={item}>
+                <Text variant="body" leading="5" tone="body" as="li" key={item}>
                   <Text
-                    variant="small-mono-tight"
+                    variant="small"
+                    mono
+                    leading="4"
                     as="code"
                     tone="error-strong"
                     className="rounded bg-error-surface px-1 py-0.5"
@@ -219,7 +228,7 @@ function TwoColumnSection({
                 </Text>
               ))
             ) : (
-              <Text variant="body-tight-italic" tone="subtle" as="li">
+              <Text variant="body" italic leading="5" tone="subtle" as="li">
                 None
               </Text>
             )}
@@ -229,7 +238,8 @@ function TwoColumnSection({
         {/* Right column - Possible solutions */}
         <div className="min-w-0">
           <Text
-            variant="body-tight"
+            variant="body"
+            leading="5"
             tone="muted"
             as="div"
             className="flex items-center gap-1.5"
@@ -240,9 +250,11 @@ function TwoColumnSection({
           <ul className="mt-1.5 space-y-1">
             {rightItems.length > 0 ? (
               rightItems.map((item) => (
-                <Text variant="body-tight" tone="body" as="li" key={item}>
+                <Text variant="body" leading="5" tone="body" as="li" key={item}>
                   <Text
-                    variant="small-mono-tight"
+                    variant="small"
+                    mono
+                    leading="4"
                     as="code"
                     tone="success-strong"
                     className="rounded bg-success-surface px-1 py-0.5"
@@ -252,7 +264,7 @@ function TwoColumnSection({
                 </Text>
               ))
             ) : (
-              <Text variant="body-tight-italic" tone="subtle" as="li">
+              <Text variant="body" italic leading="5" tone="subtle" as="li">
                 None
               </Text>
             )}
@@ -280,24 +292,33 @@ function SingleColumnSection({
     <div className="rounded-md border border-border-base p-3">
       <div className="flex items-center gap-2">
         {icon}
-        <Text variant="large-medium-tight" as="span" tone="inherit">
+        <Text
+          variant="large"
+          weight="medium"
+          leading="6"
+          as="span"
+          tone="inherit"
+        >
           {title}
         </Text>
       </div>
-      <Text variant="body-tight" tone="muted" className="mt-1">
+      <Text variant="body" leading="5" tone="muted" className="mt-1">
         {description}
       </Text>
       <ul className="mt-2 list-disc space-y-1">
         {items.map((item) => (
           <Text
-            variant="body-tight"
+            variant="body"
+            leading="5"
             tone="body"
             as="li"
             key={item}
             className="ml-4"
           >
             <Text
-              variant="small-mono-tight"
+              variant="small"
+              mono
+              leading="4"
               tone="inherit"
               as="code"
               className="rounded bg-surface-hover px-1 py-0.5"

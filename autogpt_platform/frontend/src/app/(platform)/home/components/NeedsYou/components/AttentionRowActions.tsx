@@ -40,6 +40,7 @@ export function AttentionRowActions({
       <Button
         variant="primary"
         size="icon-sm"
+        shape="soft"
         leadingIcon={Tick02Icon}
         disabled={isProcessing}
         aria-label={`Approve: ${item.title}`}
@@ -48,6 +49,7 @@ export function AttentionRowActions({
       <Button
         variant={confirmDecline ? "destructive" : "icon"}
         size="icon-sm"
+        shape="soft"
         leadingIcon={Cancel01Icon}
         disabled={isProcessing}
         aria-label={`${confirmDecline ? "Confirm decline" : "Decline"}: ${item.title}`}

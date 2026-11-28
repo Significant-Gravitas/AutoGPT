@@ -63,7 +63,7 @@ export function StepHeader({
           <div className="flex flex-col items-center gap-4">
             <p className="max-w-xl font-sans text-body-lg font-normal text-foreground-tertiary md:text-lead">
               Tell me what you do and what eats up your week.{" "}
-              <Text variant="body-medium" as="span">
+              <Text variant="body" weight="medium" as="span">
                 Otto uses it to pick your experts and plan your first week.
               </Text>{" "}
               A minute is plenty, and you can type instead.
@@ -89,7 +89,7 @@ export function StepHeader({
           ) : (
             <Text variant="body" tone="muted" className="max-w-2xl">
               What repeats every week, and what would you hand off first?{" "}
-              <Text variant="body-medium" as="span">
+              <Text variant="body" weight="medium" as="span">
                 {FEW_SENTENCES_HINT}
               </Text>
             </Text>

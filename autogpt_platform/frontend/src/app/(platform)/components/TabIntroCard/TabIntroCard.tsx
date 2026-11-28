@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { getFocusableElements } from "./helpers";
 import { isKey, isKeyIgnoringComposition } from "@/lib/keyboard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Action {
   label: string;
@@ -113,13 +114,13 @@ export function TabIntroCard({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+          transition={{ duration: duration.slower, ease: ease.standard }}
           // Only the backdrop itself dismisses — a click that started on the
           // card and drifted out (text selection) must not close it.
           onClick={(event) => {
             if (event.target === event.currentTarget) onDismiss();
           }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-surface/30 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-blocking flex items-center justify-center bg-surface/30 px-4 backdrop-blur-sm"
           data-testid="tab-intro-overlay"
           role="dialog"
           aria-modal="true"
@@ -128,7 +129,7 @@ export function TabIntroCard({
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.45, ease: [0, 0, 0.2, 1] }}
+            transition={{ duration: duration.slower, ease: ease.out }}
             className="w-full max-w-[26rem] overflow-hidden rounded-3xl bg-surface shadow-2xl outline-none"
             ref={dialogRef}
             tabIndex={-1}
@@ -144,7 +145,7 @@ export function TabIntroCard({
             </div>
 
             <div className="flex flex-col gap-3 px-7 pt-6 pb-7 text-left">
-              <Text variant="lead-semibold" tone="primary" as="h3">
+              <Text variant="lead" weight="semibold" tone="primary" as="h3">
                 {title}
               </Text>
               <Text variant="large" tone="secondary">

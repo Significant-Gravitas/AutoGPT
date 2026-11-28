@@ -41,7 +41,7 @@ export function BillingPlanOffer({
         <span className="flex size-7 items-center justify-center rounded-lg bg-accent-surface text-accent-strong">
           <Icon icon={SparklesIcon} size={17} />
         </span>
-        <Text variant="small-medium" tone="accent">
+        <Text variant="small" weight="medium" tone="accent">
           AutoGPT {target}
         </Text>
       </div>
@@ -100,7 +100,8 @@ export function BillingPlanOffer({
         {actionLabel}
       </Button>
       <Text
-        variant="small-loose"
+        variant="small"
+        leading="5"
         tone="secondary"
         className="mt-2.5 text-center"
       >

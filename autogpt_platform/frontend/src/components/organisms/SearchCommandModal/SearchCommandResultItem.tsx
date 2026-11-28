@@ -50,13 +50,13 @@ export function SearchCommandResultItem({
         aria-hidden="true"
         data-slot="search-command-result-item-indicator"
         className={cn(
-          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-full bg-action-hover transition-opacity duration-150",
+          "absolute inset-y-0 left-0 my-auto h-5 w-[3px] rounded-pill bg-action-hover transition-opacity duration-150",
           isHighlighted ? "opacity-100" : "opacity-0",
         )}
       />
       <div
         data-slot="search-command-result-item-body"
-        className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5"
+        className="relative z-raised flex min-w-0 flex-1 items-center gap-2.5"
       >
         {Icon ? (
           <span
@@ -79,7 +79,8 @@ export function SearchCommandResultItem({
           className="min-w-0 flex-1"
         >
           <Text
-            variant="body-tight"
+            variant="body"
+            leading="5"
             as="div"
             data-slot="search-command-result-item-title"
             tone={isHighlighted ? "base" : "emphasis"}
@@ -98,7 +99,9 @@ export function SearchCommandResultItem({
           </Text>
           {item.subtitle ? (
             <Text
-              variant="small-medium-tight"
+              variant="small"
+              weight="medium"
+              leading="4"
               as="div"
               tone="muted"
               data-slot="search-command-result-item-subtitle"
@@ -119,8 +122,7 @@ export function SearchCommandResultItem({
             aria-hidden="true"
             data-slot="search-command-result-item-key"
             className={cn(
-              // oxlint-disable-next-line design-system/no-arbitrary-values -- key-cap shadow, no shadow token holds it
-              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-[inset_0_-1px_0_rgba(15,15,20,0.04),0_1px_1px_rgba(15,15,20,0.04)] transition-opacity duration-150",
+              "inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md border border-border-base bg-surface px-1 font-sans text-caption-sm leading-inherit text-foreground-secondary shadow-keycap transition-opacity duration-150",
               isHighlighted ? "opacity-100" : "opacity-0",
             )}
           >

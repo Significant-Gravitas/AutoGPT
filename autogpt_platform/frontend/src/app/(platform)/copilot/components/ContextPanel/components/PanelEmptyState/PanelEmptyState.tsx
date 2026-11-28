@@ -19,7 +19,7 @@ interface Props {
 const TILE_POSITIONS = [
   "left-2 top-3 -rotate-12 group-hover:-translate-x-1.5 group-hover:-rotate-[16deg]",
   "right-2 top-3 rotate-12 group-hover:translate-x-1.5 group-hover:rotate-[16deg]",
-  "left-1/2 top-0 z-10 -translate-x-1/2 group-hover:-translate-y-1",
+  "left-1/2 top-0 z-raised -translate-x-1/2 group-hover:-translate-y-1",
 ];
 
 /** The side panel's empty state: three white tiles, the outer two tilted out
@@ -47,7 +47,7 @@ export function PanelEmptyState({
           </div>
         ))}
       </div>
-      <Text tone="primary" variant="large-medium">
+      <Text tone="primary" variant="large" weight="medium">
         {title}
       </Text>
       <Text tone="muted" variant={textSize} className="mt-1.5 max-w-[17rem]">

@@ -73,7 +73,7 @@ export function CheckYourInbox({
       </Button>
 
       <div className="mt-6 inline-flex items-center justify-center gap-1">
-        <Text variant="body-medium" tone="muted">
+        <Text variant="body" weight="medium" tone="muted">
           {copy.backPrompt}
         </Text>
         <Button type="button" variant="link" size="inline" onClick={onBack}>

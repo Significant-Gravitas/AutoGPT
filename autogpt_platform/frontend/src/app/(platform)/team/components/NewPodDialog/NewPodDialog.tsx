@@ -45,7 +45,7 @@ export function NewPodDialog({ open, onClose, onCreate, isCreating }: Props) {
             id="pod-name"
             size="small"
             label="Pod name"
-            labelVariant="small-medium"
+            labelVariant="small"
             placeholder="e.g. Growth"
             value={name}
             maxLength={POD_NAME_MAX_LENGTH}

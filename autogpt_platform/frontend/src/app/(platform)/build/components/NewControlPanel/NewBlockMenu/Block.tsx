@@ -139,7 +139,8 @@ function BlockCard({
         <div className="flex flex-1 flex-col items-start gap-0.5">
           {title && (
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               as="span"
               tone={rest.disabled ? "subtle" : "emphasis"}
               className="line-clamp-1"
@@ -152,18 +153,19 @@ function BlockCard({
           )}
           {description && (
             <Text
-              variant="small-loose"
+              variant="small"
+              leading="5"
               as="span"
               tone={rest.disabled ? "subtle" : "muted"}
               className="line-clamp-1"
             >
-              {highlightText(description, highlightedText, "small-bold-loose")}
+              {highlightText(description, highlightedText, "small", "5")}
             </Text>
           )}
         </div>
         <div
           className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-lg bg-foreground-body group-disabled:bg-foreground-subtle",
+            "flex h-7 w-7 items-center justify-center rounded-lg bg-fill-bold group-disabled:bg-fill-subtle",
           )}
         >
           <Icon icon={PlusSignIcon} tone="inverse" className="h-5 w-5" />
@@ -182,12 +184,14 @@ function BlockCard({
 
 const BlockSkeleton = () => {
   return (
-    <Skeleton className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-xl bg-surface-hover px-3.5 py-2.5">
-      <div className="flex flex-1 flex-col items-start gap-0.5">
-        <Skeleton className="h-[1.375rem] w-24 rounded bg-surface-active" />
-        <Skeleton className="h-5 w-32 rounded bg-surface-active" />
+    <Skeleton className="flex h-16 w-full min-w-[7.5rem] items-center justify-start rounded-xl">
+      <div className="flex w-full items-center justify-start space-x-3 px-3.5 py-2.5">
+        <div className="flex flex-1 flex-col items-start gap-0.5">
+          <Skeleton variant="nested" className="h-[1.375rem] w-24 rounded" />
+          <Skeleton variant="nested" className="h-5 w-32 rounded" />
+        </div>
+        <Skeleton variant="nested" className="h-7 w-7 rounded-lg" />
       </div>
-      <Skeleton className="h-7 w-7 rounded-lg bg-surface-active" />
     </Skeleton>
   );
 };

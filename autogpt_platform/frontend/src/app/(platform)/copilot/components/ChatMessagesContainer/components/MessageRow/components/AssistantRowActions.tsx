@@ -1,6 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { MessageActions } from "@/components/organisms/Message/Message";
-import { cn } from "@/lib/utils";
 import { AssistantMessageActions } from "../../AssistantMessageActions";
 import { CopyButton } from "../../CopyButton";
 
@@ -12,9 +11,6 @@ interface Props {
   sessionID?: string | null;
   savedMessageId?: string | null;
 }
-
-const HOVER_REVEAL =
-  "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100";
 
 export function AssistantRowActions({
   message,
@@ -30,16 +26,14 @@ export function AssistantRowActions({
         message={message}
         sessionID={sessionID ?? null}
         savedMessageId={savedMessageId}
-        className={cn(!isLastAssistant && HOVER_REVEAL)}
+        reveal={isLastAssistant ? undefined : "hover"}
       />
     );
   }
   return (
     <MessageActions
-      className={cn(
-        "mt-1 items-center justify-start gap-2",
-        !isLastAssistant && HOVER_REVEAL,
-      )}
+      reveal={isLastAssistant ? undefined : "hover"}
+      className="mt-1 items-center justify-start gap-2"
     >
       <CopyButton text={copyText} />
     </MessageActions>

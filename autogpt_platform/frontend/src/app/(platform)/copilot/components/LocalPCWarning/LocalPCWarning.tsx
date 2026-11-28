@@ -74,24 +74,24 @@ export function LocalPCWarning({ onResolved, onCancel }: Props = {}) {
               <Icon icon={Alert02Icon} className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="flex flex-col gap-2">
-              <Text variant="body-medium" tone="primary">
+              <Text variant="body" weight="medium" tone="primary">
                 Code will run on your real machine.
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 This chat can read and change files in the folder you choose on
                 your connected computer. File contents, command output, and any
                 screen or clipboard data returned to the chat travel through
                 this AutoGPT deployment and may be sent to its configured AI
                 provider. Your deployment&apos;s data policy applies.
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 The folder you choose limits only file tools. It does not
                 sandbox shell commands: if you enable shell access, commands run
                 with your full user-level permissions and can read or change
                 anything your OS account can access. Computer control requires
                 separate approval.
               </Text>
-              <Text variant="body-tight" tone="body">
+              <Text variant="body" leading="5" tone="body">
                 Use a dedicated workspace or OS account. Keep shell access
                 disabled when file tools are enough, and never run the executor
                 as root or administrator. Stop the executor to disconnect.

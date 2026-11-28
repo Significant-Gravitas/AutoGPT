@@ -34,7 +34,7 @@ export function OnboardingReview({ steps, answers, labelId, onEdit }: Props) {
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="sr-only">Change your answer to </span>
-                <Text variant="body-tight" as="span" tone="muted">
+                <Text variant="body" leading="5" as="span" tone="muted">
                   {step.question}
                 </Text>
                 <span className="text-body-lg break-words text-foreground-strong sm:text-body-md">
