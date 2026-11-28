@@ -647,6 +647,67 @@ describe("a field left to pick waits for the user's pick", () => {
     await waitFor(() => expect(executeBodies).toHaveLength(1));
     expect(keyIn(executeBodies[0], llmField.name)).toBe(openAIPlatformKey.id);
   });
+
+  test("a field whose steps refuse the platform's keys offers only the user's own, and still waits for their pick", async () => {
+    // An Exa Websets step keeps what it creates in the user's Exa account
+    const websetsField: WorkflowField = {
+      name: "exa_credentials",
+      providers: ["exa"],
+      schema: {
+        credentials_provider: ["exa"],
+        credentials_types: ["api_key"],
+        refuses_platform_credentials: true,
+        title: "Credentials",
+        type: "object",
+        properties: {
+          id: { title: "Id", type: "string" },
+          provider: { const: "exa", type: "string" },
+          type: { const: "api_key", type: "string" },
+        },
+        required: ["id", "provider", "type"],
+      },
+    };
+    const exaPlatformKey = {
+      id: "exa-default",
+      provider: "exa",
+      type: "api_key",
+      title: "Exa API Key",
+      is_system: true,
+    };
+    const otherExaKey = {
+      id: "other-exa-key",
+      provider: "exa",
+      type: "api_key",
+      title: "Other Exa key",
+      is_system: false,
+    };
+    // The user's Exa key the task used, since deleted
+    const { executeBodies } = setup({
+      field: websetsField,
+      runKey: { id: "user-exa-key", provider: "exa", title: "My Exa key" },
+      savedCredentials: () => [exaPlatformKey, otherExaKey],
+    });
+    await waitForRunView();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    const picker = await within(form).findByRole("combobox", {
+      name: "Select Exa credential",
+    });
+    // The empty choice and the user's own key: not the platform's
+    expect(
+      Array.from((picker as HTMLSelectElement).options, ({ value }) => value),
+    ).toEqual(["__none__", otherExaKey.id]);
+    expect((picker as HTMLSelectElement).value).toBe("__none__");
+    expect(isDisabled("Start Task", form)).toBe(true);
+
+    await userEvent.selectOptions(picker, otherExaKey.id);
+    await clickWhenEnabled("Start Task", form);
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0], websetsField.name)).toBe(otherExaKey.id);
+  });
 });
 
 describe("the run form reruns the workflow version the task ran", () => {
