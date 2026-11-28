@@ -60,7 +60,7 @@ export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
           <div
             className={
               stacked
-                ? "relative order-first w-full px-0.5 py-1"
+                ? "relative order-first w-full [&_textarea]:px-0.5 [&_textarea]:py-1"
                 : isMultiline
                   ? "relative order-first w-full"
                   : "relative min-w-0 flex-1 max-md:order-first max-md:w-full max-md:basis-full"
@@ -78,7 +78,8 @@ export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
             className={
               stacked
                 ? "ml-auto flex items-center gap-1.5"
-                : "ml-auto flex gap-1 py-1 pr-1.5"
+                : // The chat's row is as tall as its 42px mic button on a phone.
+                  "ml-auto flex gap-1 py-1 pr-1.5 max-md:min-h-[3.125rem]"
             }
           >
             <button
@@ -92,9 +93,9 @@ export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
                 stacked
                   ? cn(
                       CARD_SEND_BUTTON_CLASS,
-                      "inline-flex shrink-0 items-center justify-center border group-has-[textarea:placeholder-shown]/frame:bg-fill-strong/[0.06] group-has-[textarea:placeholder-shown]/frame:text-foreground-subtle",
+                      "inline-flex shrink-0 items-center justify-center border group-has-[textarea:placeholder-shown]/frame:bg-fill-strong/[0.06] group-has-[textarea:placeholder-shown]/frame:text-foreground-subtle focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
                     )
-                  : "inline-flex size-[2.625rem] shrink-0 items-center justify-center rounded-pill border border-action bg-action text-action-foreground group-has-[textarea:placeholder-shown]/frame:border-border-base group-has-[textarea:placeholder-shown]/frame:bg-surface-active max-md:size-10"
+                  : "inline-flex size-[2.625rem] shrink-0 items-center justify-center rounded-pill border border-action bg-action text-action-foreground transition-colors group-has-[textarea:placeholder-shown]/frame:border-border-base group-has-[textarea:placeholder-shown]/frame:bg-surface-active hover:border-action-hover hover:bg-action-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none max-md:size-10"
               }
             >
               <Icon

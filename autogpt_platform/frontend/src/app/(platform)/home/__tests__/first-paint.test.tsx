@@ -226,7 +226,7 @@ describe("/home first paint", () => {
       render(page);
 
       await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
-      expect(screen.getByTestId("loader")).toBeDefined();
+      expect(screen.getByTestId("chat-frame")).toBeDefined();
       expect(screen.queryByTestId("chat")).toBeNull();
 
       lookup.resolve({ user: USER });
