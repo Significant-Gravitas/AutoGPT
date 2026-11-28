@@ -1902,6 +1902,37 @@ async def test_new_inputs_need_credentials_alongside_which_may_be_empty(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "description, written",
+    [("", {"description": ""}), (None, {})],
+    ids=["emptied", "not-sent"],
+)
+async def test_update_preset_saves_an_emptied_description(mocker, description, written):
+    """The Library's template view sends "" when its Description field is
+    emptied; only None leaves the description as it was."""
+    mocker.patch.object(
+        db, "get_preset", new=AsyncMock(return_value=MagicMock(expert_id=None))
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    preset_client = AsyncMock()
+    mocker.patch.object(prisma.models.AgentPreset, "prisma", return_value=preset_client)
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset, "from_db", return_value=MagicMock()
+    )
+
+    await db.update_preset(
+        user_id="owner", preset_id="preset-1", description=description
+    )
+
+    assert preset_client.update.await_args.kwargs["data"] == written
+
+
+@pytest.mark.asyncio
 async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
     current = MagicMock(
         id="preset-1",
@@ -2147,7 +2178,8 @@ async def test_set_expert_preset_webhook_rehomes_legacy_preset(mocker):
     update_data = mock_preset_client.update.await_args.kwargs["data"]
     assert update_data["Webhook"] == {"connect": {"id": "personal-webhook"}}
     assert update_data["organizationId"] == "personal-org"
-    assert update_data["teamId"] == "personal-team"
+    assert update_data["Team"] == {"connect": {"id": "personal-team"}}
+    assert "teamId" not in update_data
 
 
 @pytest.mark.asyncio
@@ -3046,3 +3078,41 @@ async def test_list_library_agents_filters_on_folder_ids(mocker):
     await db.list_library_agents("test-user", folder_ids=["f1", "f2"])
 
     assert find_many.call_args.kwargs["where"]["folderId"] == {"in": ["f1", "f2"]}
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_search_escapes_like_wildcards(mocker):
+    """`_` in the search term reaches Prisma's `contains` escaped exactly once,
+    so it matches a literal underscore (#15660)."""
+    mocker.patch("prisma.models.AgentGraph.prisma").return_value.find_many = (
+        mocker.AsyncMock(return_value=[])
+    )
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", search_term="send_email")
+
+    where = mock_find_many.call_args.kwargs["where"]
+    pattern = {"contains": r"send\_email", "mode": "insensitive"}
+    assert where["OR"] == [
+        {"name": pattern},
+        {"description": pattern},
+        {"AgentGraph": {"is": {"name": pattern}}},
+        {"AgentGraph": {"is": {"description": pattern}}},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_search_rejects_nul(mocker):
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    with pytest.raises(ValueError, match="NUL"):
+        await db.list_library_agents("test-user", search_term="a\x00b")
+    mock_library_agent.return_value.find_many.assert_not_called()

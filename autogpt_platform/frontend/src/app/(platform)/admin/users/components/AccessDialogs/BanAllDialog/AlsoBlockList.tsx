@@ -31,7 +31,7 @@ export function AlsoBlockList({
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="small-medium" tone="body">
+      <Text variant="small" weight="medium" tone="body">
         Also block
       </Text>
       {options.map((option) => (

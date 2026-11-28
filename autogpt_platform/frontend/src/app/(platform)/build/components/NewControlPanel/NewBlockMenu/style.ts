@@ -11,14 +11,13 @@ export const blockMenuContainerStyle =
 // comes from the role classes below. leading-inherit keeps the line-height it
 // inherits from <body>, as the old inline font-size (with no line-height) did.
 export const blockDragPreviewClassName =
-  "text-body font-medium leading-inherit";
+  "text-body font-medium leading-inherit shadow-md";
 
 export const blockDragPreviewStyle = `
     padding: 0.625rem 0.875rem;
     background: rgb(var(--color-surface-hover));
-    border-radius: 0.75rem;
+    border-radius: var(--radius-xl);
     color: rgb(var(--color-foreground-emphasis));
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     position: absolute;
     top: -9999px;
   `;

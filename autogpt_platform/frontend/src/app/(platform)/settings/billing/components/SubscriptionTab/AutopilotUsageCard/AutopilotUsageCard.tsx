@@ -34,7 +34,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
       className="flex h-full min-h-80 flex-col rounded-2xl border border-border-base bg-surface p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Text variant="large-medium" as="h2">
+        <Text variant="large" weight="medium" as="h2">
           Usage
         </Text>
         {!state.inactive && (
@@ -45,7 +45,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
       </div>
       {state.inactive || state.unlimited ? (
         <div className="my-auto py-8">
-          <Text variant="large-medium" className="mb-2">
+          <Text variant="large" weight="medium" className="mb-2">
             {state.unlimited
               ? "No usage limit"
               : "Choose a plan to keep working"}
@@ -67,7 +67,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           )}
           {state.lifetime && (
             <div className="mt-6 border-t border-separator pt-5">
-              <Text variant="small-medium" className="mb-1">
+              <Text variant="small" weight="medium" className="mb-1">
                 One allowance for your whole trial
               </Text>
               {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
@@ -80,7 +80,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
         </>
       )}
       <div className="mt-auto pt-6">
-        <Text variant="small-loose" tone="secondary">
+        <Text variant="small" leading="5" tone="secondary">
           {state.inactive
             ? "Your work stays saved."
             : "Bigger requests use more of your allowance. Hitting the limit never adds a charge."}
@@ -105,7 +105,11 @@ function UsageBar({
       data-testid={primary ? "featured-usage" : undefined}
     >
       <div className="mb-3 flex items-end justify-between gap-3">
-        <Text variant="body-medium" className={primary ? "mb-1.5" : ""}>
+        <Text
+          variant="body"
+          weight="medium"
+          className={primary ? "mb-1.5" : ""}
+        >
           {window.label}
         </Text>
         {primary ? (
@@ -139,16 +143,16 @@ function UsageBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className="h-2 overflow-hidden rounded-full bg-surface-hover"
+        className="h-2 overflow-hidden rounded-pill bg-surface-hover"
       >
         <div
-          className={`h-full w-[var(--usage-percent)] rounded-full transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange" : "bg-brand"}`}
+          className={`h-full w-[var(--usage-percent)] rounded-pill transition-[width] duration-300 motion-reduce:transition-none ${percent >= 100 ? "bg-orange" : "bg-brand"}`}
           style={{ "--usage-percent": `${percent}%` } as CSSProperties}
         />
       </div>
       <div className="mt-3 flex items-start gap-1.5 text-foreground-tertiary">
         <Icon icon={Clock01Icon} size={14} className="mt-0.5 shrink-0" />
-        <Text variant="small-loose" tone="secondary">
+        <Text variant="small" leading="5" tone="secondary">
           {window.prefix} {window.value}
         </Text>
       </div>

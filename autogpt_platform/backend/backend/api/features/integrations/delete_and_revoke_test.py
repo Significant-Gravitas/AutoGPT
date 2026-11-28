@@ -288,3 +288,80 @@ def test_route_reports_the_provider_revocation_result(
     manager.delete.assert_awaited_once_with(test_user_id, "cred-oauth")
     get_handler.assert_called_once_with(ProviderName.GITHUB)
     handler.revoke_tokens.assert_awaited_once_with(creds)
+
+
+def _pasted_mcp_token(metadata: dict) -> OAuth2Credentials:
+    """An MCP credential the user pasted (POST /api/mcp/token): stored like an
+    OAuth grant, with no refresh token and no OAuth endpoints."""
+    return OAuth2Credentials(
+        id="cred-mcp",
+        provider="mcp",
+        title="MCP: api.example.com",
+        access_token=SecretStr("Bearer pasted-secret"),
+        scopes=[],
+        metadata=metadata,
+    )
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"mcp_server_url": "https://api.example.com/mcp", "mcp_auth_scheme": "bearer"},
+        {"mcp_server_url": "https://api.example.com/mcp", "mcp_auth_scheme": "basic"},
+        # Stored before the scheme was recorded: a bare token, sent as Bearer.
+        {"mcp_server_url": "https://api.example.com/mcp"},
+    ],
+)
+def test_route_deletes_a_pasted_mcp_token_with_nothing_to_revoke(
+    authenticated: None, test_user_id: str, metadata: dict
+):
+    # The real handler factory stays in place: it can't build an OAuth handler
+    # for a pasted token, and the delete must not need one.
+    creds = _pasted_mcp_token(metadata)
+    with (
+        patch(f"{ROUTER}.remove_all_webhooks_for_credentials", new=AsyncMock()),
+        patch(f"{ROUTER}.creds_manager") as manager,
+    ):
+        manager.store.get_creds_by_id = AsyncMock(return_value=creds)
+        manager.delete = AsyncMock()
+
+        resp = client.delete("/mcp/credentials/cred-mcp")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"deleted": True, "revoked": None}
+    manager.delete.assert_awaited_once_with(test_user_id, "cred-mcp")
+
+
+@pytest.mark.parametrize(
+    "oauth_metadata",
+    [
+        {"mcp_token_url": "https://auth.example.com/token"},
+        {"mcp_client_id": "client-1"},
+    ],
+)
+@pytest.mark.asyncio
+async def test_an_mcp_oauth_grant_without_a_refresh_token_is_still_revoked(
+    oauth_metadata: dict,
+):
+    # Some servers grant no refresh token: the OAuth metadata, not the refresh
+    # token, is what tells the grant apart from a pasted token.
+    creds = _pasted_mcp_token(
+        {"mcp_server_url": "https://api.example.com/mcp", **oauth_metadata}
+    )
+    handler = MagicMock()
+    handler.revoke_tokens = AsyncMock(return_value=True)
+    with (
+        patch(f"{ROUTER}.remove_all_webhooks_for_credentials", new=AsyncMock()),
+        patch(f"{ROUTER}.creds_manager") as manager,
+        patch(f"{ROUTER}.create_mcp_oauth_handler", return_value=handler) as create_mcp,
+    ):
+        manager.delete = AsyncMock()
+
+        revoked = await delete_and_revoke_credentials(
+            USER_ID, creds, ProviderName.MCP, force=True
+        )
+
+    assert revoked is True
+    manager.delete.assert_awaited_once_with(USER_ID, "cred-mcp")
+    create_mcp.assert_called_once_with(creds)
+    handler.revoke_tokens.assert_awaited_once_with(creds)

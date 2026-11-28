@@ -14,14 +14,14 @@ export function UsageUnavailable({ onRetry }: Props) {
       aria-label="Usage"
       className="flex h-full min-h-80 flex-col rounded-2xl border border-border-base bg-surface p-6"
     >
-      <Text variant="large-medium" as="h2">
+      <Text variant="large" weight="medium" as="h2">
         Usage
       </Text>
       <div className="my-auto py-8">
         <span className="mb-4 flex size-9 items-center justify-center rounded-xl bg-surface-hover text-foreground-secondary">
           <Icon icon={Alert02Icon} size={18} />
         </span>
-        <Text variant="large-medium" className="mb-2">
+        <Text variant="large" weight="medium" className="mb-2">
           We couldn’t load your usage
         </Text>
         {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}

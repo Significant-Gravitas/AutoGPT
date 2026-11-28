@@ -57,7 +57,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
             data-testid="folder-breadcrumb-root"
           >
             <Icon icon={Home01Icon} size={compact ? 14 : 16} />
-            <Text variant="small-medium" as="span">
+            <Text variant="small" weight="medium" as="span">
               Files
             </Text>
           </button>
@@ -73,7 +73,7 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   className={CRUMB_BUTTON_CLASS}
                   data-testid="folder-breadcrumb-overflow"
                 >
-                  <Text variant="small-medium" as="span">
+                  <Text variant="small" weight="medium" as="span">
                     …
                   </Text>
                 </button>
@@ -104,7 +104,8 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
               {separator}
               {isCurrent ? (
                 <Text
-                  variant="small-medium"
+                  variant="small"
+                  weight="medium"
                   as="span"
                   aria-current="page"
                   tone="emphasis"
@@ -121,7 +122,8 @@ export function FolderBreadcrumb({ items, onNavigate, compact }: Props) {
                   title={item.name}
                 >
                   <Text
-                    variant="small-medium"
+                    variant="small"
+                    weight="medium"
                     as="span"
                     className="max-w-[12rem] truncate"
                   >

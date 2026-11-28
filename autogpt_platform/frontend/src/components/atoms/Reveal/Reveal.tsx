@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion, Variants } from "framer-motion";
 import { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 const ITEM: Variants = {
   hidden: { opacity: 0, y: 14, filter: "blur(8px)" },
@@ -9,7 +10,7 @@ const ITEM: Variants = {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slower, ease: ease.emphasized },
   },
 };
 
@@ -18,13 +19,13 @@ const ITEM_UNBLURRED: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slower, ease: ease.emphasized },
   },
 };
 
 const ITEM_REDUCED: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };
 
 export function RevealGroup({

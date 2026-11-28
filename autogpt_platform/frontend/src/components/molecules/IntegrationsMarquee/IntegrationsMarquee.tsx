@@ -126,14 +126,14 @@ function GhostIntegrationCard({
         <div
           data-slot="integrations-marquee-card-line"
           className={cn(
-            "h-2 w-3/4 rounded-full",
+            "h-2 w-3/4 rounded-pill",
             isDark ? "bg-surface/15" : "bg-surface-hover/80",
           )}
         />
         <div
           data-slot="integrations-marquee-card-line"
           className={cn(
-            "h-2 w-1/2 rounded-full",
+            "h-2 w-1/2 rounded-pill",
             isDark ? "bg-surface/10" : "bg-surface-hover/80",
           )}
         />

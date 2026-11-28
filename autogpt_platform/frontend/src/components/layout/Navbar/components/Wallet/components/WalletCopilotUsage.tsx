@@ -13,7 +13,6 @@ import { Progress } from "@/components/atoms/Progress/Progress";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTrialEnd } from "@/components/organisms/TrialCard/helpers";
-import { cn } from "@/lib/utils";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
 
 export function WalletCopilotUsage() {
@@ -23,7 +22,7 @@ export function WalletCopilotUsage() {
   return (
     <section aria-label="Chat usage" className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <Text variant="large-medium" as="h2">
+        <Text variant="large" weight="medium" as="h2">
           Chat usage
         </Text>
         {tierLabel && (
@@ -85,7 +84,7 @@ function TrialUsage() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <Text variant="body-medium" tone="body">
+        <Text variant="body" weight="medium" tone="body">
           Trial allowance
         </Text>
         <Text variant="body" tone="muted" tabular>
@@ -99,10 +98,8 @@ function TrialUsage() {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        className={cn(
-          "bg-surface-active [&>div]:rounded-full",
-          percent >= 80 ? "[&>div]:bg-orange" : "[&>div]:bg-info",
-        )}
+        tone={percent >= 80 ? "orange" : "info"}
+        roundedFill
       />
       <Text variant="small" tone="muted">
         {trial.active ? "Ends" : "Ended"} {formatTrialEnd(trial.ends_at)}
@@ -132,7 +129,7 @@ function UsageLoading() {
             <Skeleton className="h-4 w-16" />
             <Skeleton className="h-4 w-14" />
           </div>
-          <Skeleton className="h-2 w-full rounded-full" />
+          <Skeleton className="h-2 w-full rounded-pill" />
           <Skeleton className="h-3 w-24" />
         </div>
       ))}

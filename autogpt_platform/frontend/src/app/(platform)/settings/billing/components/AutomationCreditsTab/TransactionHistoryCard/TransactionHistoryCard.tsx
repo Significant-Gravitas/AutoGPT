@@ -30,7 +30,8 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
       <div className="flex flex-wrap items-end justify-between gap-2 px-4">
         <div>
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h2"
             id={headingID}
             tabIndex={-1}
@@ -113,7 +114,9 @@ function HistorySkeleton() {
 function EmptyHistory() {
   return (
     <div className="rounded-large border border-border-base bg-surface px-5 py-10 text-center">
-      <Text variant="body-medium">No transactions yet.</Text>
+      <Text variant="body" weight="medium">
+        No transactions yet.
+      </Text>
       <Text variant="small" tone="secondary" className="mt-2">
         Credit purchases and paid activity will appear here.
       </Text>

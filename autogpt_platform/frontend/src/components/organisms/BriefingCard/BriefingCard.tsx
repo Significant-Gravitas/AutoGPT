@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { RunRow } from "./components/RunRow";
 import { COLLAPSED_ROWS, formatBriefingDate, hasRecapContent } from "./helpers";
 import { useBriefingCard } from "./useBriefingCard";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   briefing: BriefingResponse;
@@ -121,7 +122,7 @@ export function BriefingCard({ briefing, className }: Props) {
             // Separator would move the button, and its focus outline, 1px.
             className="flex w-full items-center justify-center gap-1.5 border-t border-separator px-4 py-3 text-foreground-tertiary transition-colors hover:bg-surface-muted hover:text-foreground-strong"
           >
-            <Text variant="small-medium" tone="inherit">
+            <Text variant="small" weight="medium" tone="inherit">
               {isShowingAll
                 ? "Show less"
                 : `Show all results (${run_items.length})`}
@@ -155,7 +156,7 @@ function ScrollArrow({
     <motion.div
       initial={false}
       animate={{ opacity: isVisible ? 1 : 0 }}
-      transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
+      transition={{ duration: shouldReduceMotion ? 0 : duration.fast }}
       data-slot="briefing-card-scroll-arrow"
       className={cn(
         "pointer-events-none absolute inset-x-0 flex h-12 items-center justify-center",
@@ -172,7 +173,7 @@ function ScrollArrow({
         aria-label={isUp ? "Scroll up" : "Scroll down"}
         data-slot="briefing-card-scroll-arrow-control"
         className={cn(
-          "flex size-8 items-center justify-center rounded-full bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-foreground-base transition-colors hover:text-foreground-strong",
+          "flex size-8 items-center justify-center rounded-pill bg-surface text-foreground-tertiary smooth-shadow-ring-sm shadow-scrim transition-colors hover:text-foreground-strong",
           isVisible && "pointer-events-auto",
         )}
       >

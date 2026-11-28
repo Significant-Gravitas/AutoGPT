@@ -17,7 +17,7 @@ export function StatTile({ label, icon, value, detail, isLoading }: Props) {
     <div className="flex flex-col gap-1 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm">
       <div className="flex items-center gap-1.5 text-foreground-tertiary">
         <Icon icon={icon} size={14} aria-hidden />
-        <Text variant="small-medium" tone="muted">
+        <Text variant="small" weight="medium" tone="muted">
           {label}
         </Text>
       </div>

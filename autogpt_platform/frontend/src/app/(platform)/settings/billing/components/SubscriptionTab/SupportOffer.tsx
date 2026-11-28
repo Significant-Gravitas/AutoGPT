@@ -29,7 +29,7 @@ export function SupportOffer({
         <span className="flex size-7 items-center justify-center rounded-lg bg-surface text-foreground-secondary ring-1 ring-border-base">
           <Icon icon={ready ? SparklesIcon : Message01Icon} size={17} />
         </span>
-        <Text variant="small-medium" tone="secondary">
+        <Text variant="small" weight="medium" tone="secondary">
           {eyebrow}
         </Text>
       </div>

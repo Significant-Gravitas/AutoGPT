@@ -2,9 +2,9 @@
 
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatWhen } from "../helpers";
 
 interface Props {
   facts: MemoryFact[];
@@ -23,7 +23,7 @@ export function RecentMemoriesCard({
 }: Props) {
   return (
     <div className="flex flex-col rounded-large border border-border-base bg-surface px-4 py-4 shadow-message-table">
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Recent memories
       </Text>
       <Text variant="small" as="span" tone="muted">
@@ -56,7 +56,7 @@ export function RecentMemoriesCard({
                 tone="subtle"
                 className="hidden shrink-0 sm:inline"
               >
-                {formatWhen(fact.created_at)}
+                <RelativeTime date={fact.created_at} />
               </Text>
               <Button
                 variant="ghost"

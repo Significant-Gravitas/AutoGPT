@@ -1,0 +1,24 @@
+/*
+  Motion: how long a change takes and the curve it follows. globals.css
+  registers each value as a class (`duration-fast`, `ease-standard`), which
+  follows these values at runtime. Bare numbers (`duration-200`) still work.
+
+  src/components/styles/motion.ts holds the same values for Framer Motion,
+  and a test keeps the two equal: change both.
+*/
+:root {
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 400ms;
+  --duration-slowest: 500ms;
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1); /* accordions */
+  --ease-glide: cubic-bezier(0.22, 1, 0.36, 1); /* the onboarding scenes */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}

@@ -39,6 +39,9 @@ PAUSE = TurnPause(
 )
 
 
+pytestmark = pytest.mark.usefixtures("own_ledger_holds")
+
+
 @pytest.fixture(autouse=True)
 def no_trial_attribution(mocker):
     store = MagicMock()

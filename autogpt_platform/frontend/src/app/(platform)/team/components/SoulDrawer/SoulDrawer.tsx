@@ -111,7 +111,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
       <Input
         id="soul-name"
         label="Name"
-        labelVariant="small-medium"
+        labelVariant="small"
         // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
         labelClassName="!text-foreground-body"
         value={soul.name}
@@ -122,7 +122,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
       <Input
         id="soul-identity"
         label="Identity and personality"
-        labelVariant="small-medium"
+        labelVariant="small"
         // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
         labelClassName="!text-foreground-body"
         type="textarea"
@@ -135,7 +135,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
       <Input
         id="soul-voice"
         label="Voice"
-        labelVariant="small-medium"
+        labelVariant="small"
         // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
         labelClassName="!text-foreground-body"
         type="textarea"
@@ -150,7 +150,7 @@ function SoulFields({ soul, updateField }: SoulFieldsProps) {
       <Input
         id="soul-boundaries"
         label="Boundaries"
-        labelVariant="small-medium"
+        labelVariant="small"
         // oxlint-disable-next-line design-system/no-restyle -- Input has no label tone prop (src/components is P9's)
         labelClassName="!text-foreground-body"
         type="textarea"
@@ -177,7 +177,7 @@ function ProtectedRules({ rules }: { rules: string[] }) {
         {rules.map((rule) => (
           <div key={rule} className="flex gap-2 text-foreground-secondary">
             <Icon icon={LockIcon} size={14} className="mt-0.5 shrink-0" />
-            <Text variant="body-tight" as="span" tone="secondary">
+            <Text variant="body" leading="5" as="span" tone="secondary">
               {rule}
             </Text>
           </div>

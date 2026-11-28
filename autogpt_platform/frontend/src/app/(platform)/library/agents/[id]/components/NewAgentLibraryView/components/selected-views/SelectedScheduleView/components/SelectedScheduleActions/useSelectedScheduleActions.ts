@@ -12,6 +12,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 interface UseSelectedScheduleActionsProps {
   agent: LibraryAgent;
@@ -73,8 +74,6 @@ export function useSelectedScheduleActions({
     }
 
     try {
-      toast({ title: "Run started" });
-
       const res = await executeAgent({
         graphId: schedule.graph_id,
         graphVersion: schedule.graph_version,
@@ -84,6 +83,7 @@ export function useSelectedScheduleActions({
           source: "library",
         },
       });
+      toast({ title: "Run started" });
 
       const newRunID = okData(res)?.id;
 
@@ -106,7 +106,7 @@ export function useSelectedScheduleActions({
     }
   }
 
-  const openInBuilderHref = `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`;
+  const openInBuilderHref = getBuilderHref(agent.graph_id);
 
   return {
     openInBuilderHref,

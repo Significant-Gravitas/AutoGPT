@@ -33,7 +33,7 @@ export function RunSummary({ run }: Props) {
               Success Estimate:
             </span>
             <div className="flex items-center gap-2">
-              <div className="relative h-2 w-16 overflow-hidden rounded-full bg-surface-active">
+              <div className="relative h-2 w-16 overflow-hidden rounded-pill bg-surface-active">
                 <div
                   className={`h-full w-[var(--score)] transition-all ${
                     correctnessScore >= 0.8

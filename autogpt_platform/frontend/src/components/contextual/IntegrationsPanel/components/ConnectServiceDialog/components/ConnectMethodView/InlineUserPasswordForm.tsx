@@ -91,7 +91,7 @@ export function InlineUserPasswordForm({
   }
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={handleSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="title"
@@ -103,7 +103,7 @@ export function InlineUserPasswordForm({
                 id={field.name}
                 autoComplete="off"
                 label="Name"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 placeholder={`My ${providerName} account`}
                 wrapperClassName="!mb-0"
@@ -123,7 +123,7 @@ export function InlineUserPasswordForm({
               <Select
                 id={field.name}
                 label="Database type"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 value={field.value}
                 onValueChange={field.onChange}
@@ -148,7 +148,7 @@ export function InlineUserPasswordForm({
                   autoComplete="off"
                   spellCheck={false}
                   label="Server"
-                  labelVariant="small-medium"
+                  labelVariant="small"
                   size="small"
                   placeholder="host or host:port"
                   hint="This login is only ever sent to this server."
@@ -173,7 +173,7 @@ export function InlineUserPasswordForm({
                 autoComplete="off"
                 spellCheck={false}
                 label="Username"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 wrapperClassName="!mb-0"
               />
@@ -195,7 +195,7 @@ export function InlineUserPasswordForm({
                 type="password"
                 autoComplete="new-password"
                 label="Password"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 wrapperClassName="!mb-0"
               />

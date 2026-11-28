@@ -2,12 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  RefreshIcon,
-  CheckmarkCircle02Icon,
-  ComputerIcon,
-} from "@hugeicons/core-free-icons";
+import { RefreshIcon, ComputerIcon } from "@hugeicons/core-free-icons";
 import { useLocalExecutorSetup } from "./useLocalExecutorSetup";
 
 interface Props {
@@ -41,7 +38,8 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
         <div className="min-w-0 flex-1">
           <Text
             id="local-executor-setup-title"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="h3"
             tone="primary"
           >
@@ -63,10 +61,10 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
               {index + 1}
             </span>
             <div className="min-w-0 flex-1">
-              <Text variant="small-medium" tone="emphasis">
+              <Text variant="small" weight="medium" tone="emphasis">
                 {step.title}
               </Text>
-              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
+              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-left font-mono text-caption text-foreground-inverse">
                 <code translate="no">
                   {step.command ?? "Loading deployment settings…"}
                 </code>
@@ -86,13 +84,13 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
       </a>
 
       <div className="mt-4 border-t border-border-base pt-4">
-        <Text variant="small-medium" tone="emphasis">
+        <Text variant="small" weight="medium" tone="emphasis">
           Keep the computer connected
         </Text>
         <Text variant="small" tone="secondary" className="mt-1">
           Run this in your terminal (PowerShell on Windows):
         </Text>
-        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-left font-mono text-caption text-action-foreground">
+        <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-left font-mono text-caption text-foreground-inverse">
           <code translate="no">
             {deployment?.startCommand ?? "Loading deployment settings…"}
           </code>
@@ -123,12 +121,12 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
             </li>
             <li>Windows: %APPDATA%\autogpt-local-executor\config.toml</li>
           </ul>
-          <pre className="max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
+          <pre className="max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-caption text-foreground-inverse">
             <code translate="no">
               {deployment?.config ?? "Loading deployment settings…"}
             </code>
           </pre>
-          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-action-hover px-3 py-2 text-caption text-action-foreground">
+          <pre className="mt-2 max-w-full overflow-x-auto rounded-lg bg-surface-inverse-hover px-3 py-2 text-caption text-foreground-inverse">
             <code translate="no">autogpt-shim install</code>
           </pre>
           <Text variant="small" tone="secondary" className="mt-2">
@@ -139,9 +137,11 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border-base pt-4">
         <div className="flex items-center gap-2 text-caption text-foreground-secondary">
-          <span className="flex text-success">
-            <Icon icon={CheckmarkCircle02Icon} size={16} aria-hidden="true" />
-          </span>
+          <LoadingSpinner
+            size="small"
+            className="shrink-0"
+            aria-hidden="true"
+          />
           Waiting for a signed-in executor…
         </div>
         <Button

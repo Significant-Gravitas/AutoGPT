@@ -41,7 +41,7 @@ export function NameStep({
             disabled={Boolean(selectedName)}
             aria-pressed={selectedName ? true : undefined}
             className={cn(
-              "rounded-full border px-5 py-2.5 text-body font-medium text-foreground-base transition-colors",
+              "rounded-pill border px-5 py-2.5 text-body font-medium text-foreground-base transition-colors",
               selectedName
                 ? (bubbleClassFor(color) ?? "border-brand bg-brand/5")
                 : "border-border-base bg-canvas hover:border-brand hover:bg-brand/5",

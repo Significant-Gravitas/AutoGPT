@@ -107,7 +107,8 @@ export function FolderRow({
           <Icon icon={Folder01Icon} size={20} />
         </div>
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone="primary"
           className="truncate"

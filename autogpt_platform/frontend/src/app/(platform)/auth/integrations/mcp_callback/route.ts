@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isNativeState, redirectToNativeApp } from "../native-return";
 
 /**
  * Safely encode a value as JSON for embedding in a script tag.
@@ -26,6 +27,9 @@ export async function GET(request: Request) {
   const iss = searchParams.get("iss");
   const error = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
+  if (isNativeState(state)) {
+    return redirectToNativeApp({ state, code, iss, error, errorDescription });
+  }
 
   const success = Boolean(code && state);
   const message = success

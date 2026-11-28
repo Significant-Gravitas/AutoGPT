@@ -1,9 +1,21 @@
 // @vitest-environment node
 import { getV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { server } from "@/mocks/mock-server";
+import {
+  hangUp,
+  startLoopbackBackend,
+} from "@/tests/integrations/loopback-backend";
 import * as Sentry from "@sentry/nextjs";
 import { http, HttpResponse } from "msw";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // A signed-in render; reading the session cookie needs a live Next request.
 vi.mock("@/lib/autogpt-server-api/helpers", async (importActual) => ({
@@ -78,5 +90,70 @@ describe("a request that fails while rendering on the server", () => {
     expect(consoleInfo).toHaveBeenCalledWith(
       "Request failed on server: GET /api/library/agents/{id} 404: Library agent not found",
     );
+  });
+});
+
+// During a server render, Next's fetch gives an identical GET that has no
+// signal the first call's promise instead of sending it again
+// (next/dist/server/lib/dedupe-fetch.js); a signal opts out. This keeps those
+// rules, so a resend that doesn't opt out gets the first failure back.
+function memoizeLikeANextRender(realFetch: typeof fetch): typeof fetch {
+  const sent = new Map<string, Promise<Response>>();
+  return (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (init?.signal || (method !== "GET" && method !== "HEAD")) {
+      return realFetch(input, init);
+    }
+    const url = input instanceof Request ? input.url : String(input);
+    const first = sent.get(url);
+    if (first) return first.then((response) => response.clone());
+    const promise = realFetch(input, init);
+    sent.set(url, promise);
+    return promise.then((response) => response.clone());
+  };
+}
+
+describe("a read whose backend connection drops while rendering on the server", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("is sent again even though the render reuses identical reads", async () => {
+    const backend = await startLoopbackBackend((request, response, count) => {
+      if (count === 1) return hangUp(request);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ id: AGENT }));
+    });
+    vi.stubEnv("AGPT_SERVER_URL", `${backend.url}/api`);
+    vi.stubGlobal("fetch", memoizeLikeANextRender(globalThis.fetch));
+
+    const response = await getV2GetLibraryAgent(AGENT);
+
+    expect(response.status).toBe(200);
+    expect(backend.requests).toHaveLength(2);
+  });
+
+  it("is sent once more on a new connection, and only logged at info", async () => {
+    consoleError.mockClear();
+    consoleInfo.mockClear();
+    const backend = await startLoopbackBackend((request, response, count) => {
+      if (count === 1) return hangUp(request);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ id: AGENT }));
+    });
+    vi.stubEnv("AGPT_SERVER_URL", `${backend.url}/api`);
+
+    const response = await getV2GetLibraryAgent(AGENT);
+
+    expect(response.status).toBe(200);
+    expect(backend.requests).toEqual([
+      `GET /api/library/agents/${AGENT}`,
+      `GET /api/library/agents/${AGENT}`,
+    ]);
+    expect(consoleInfo).toHaveBeenCalledExactlyOnceWith(
+      "Retried GET /api/library/agents/{id} after a dropped connection (UND_ERR_SOCKET): 200",
+    );
+    expect(consoleError).not.toHaveBeenCalled();
   });
 });

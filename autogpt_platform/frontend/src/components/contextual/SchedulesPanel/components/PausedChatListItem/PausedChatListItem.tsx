@@ -31,7 +31,11 @@ export function PausedChatListItem({ paused }: Props) {
         <Icon icon={PauseIcon} size={18} tone="warning" />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text variant="body-medium" className="block w-full text-ellipsis">
+        <Text
+          variant="body"
+          weight="medium"
+          className="block w-full text-ellipsis"
+        >
           {paused.title}
         </Text>
         <Text variant="small" tone="warning">

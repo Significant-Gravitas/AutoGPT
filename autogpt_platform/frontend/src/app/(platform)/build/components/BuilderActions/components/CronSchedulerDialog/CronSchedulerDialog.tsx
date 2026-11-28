@@ -96,7 +96,7 @@ export function CronSchedulerDialog({
               </span>
               <Text variant="body">
                 Schedule will run in your timezone:{" "}
-                <Text variant="body-medium" as="span">
+                <Text variant="body" weight="medium" as="span">
                   {timezoneDisplay}
                 </Text>
               </Text>

@@ -12,8 +12,11 @@ from fastapi import HTTPException, WebSocket
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
-from backend.api import ws_api
+from backend.api import conn_manager, ws_api
 from backend.api.conn_manager import ConnectionManager
+
+# Only a step that never comes keeps a wait going this long.
+_HANG_SECONDS = 10.0
 
 
 @pytest_asyncio.fixture
@@ -21,6 +24,9 @@ async def websocket_server(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[str, ConnectionManager]]:
     manager = ConnectionManager()
+    # A runner that stalls must not run out the sign-in wait; the test of that
+    # wait sets its own.
+    monkeypatch.setattr(ws_api, "AUTH_MESSAGE_TIMEOUT_S", _HANG_SECONDS)
     monkeypatch.setattr(ws_api, "is_user_banned", AsyncMock(return_value=False))
     _stub_account_closed(monkeypatch, closed=False)
     monkeypatch.setattr(manager, "_start_notification_subscription", AsyncMock())
@@ -53,6 +59,24 @@ async def websocket_server(
         await asyncio.wait_for(serving, timeout=5)
 
 
+def _auth_frame() -> str:
+    return json.dumps({"method": "authenticate", "data": {"token": "wire-test"}})
+
+
+async def test_a_socket_that_never_signs_in_is_closed_for_a_retry(
+    websocket_server: tuple[str, ConnectionManager],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url, manager = websocket_server
+    monkeypatch.setattr(ws_api, "AUTH_MESSAGE_TIMEOUT_S", 0.2)
+    async with connect(url, open_timeout=_HANG_SECONDS, close_timeout=1) as websocket:
+        with pytest.raises(ConnectionClosedError) as closed:
+            await asyncio.wait_for(websocket.recv(), timeout=_HANG_SECONDS)
+        assert closed.value.rcvd is not None
+        assert closed.value.rcvd.code == 1013
+    assert not manager.active_connections
+
+
 def _stub_account_closed(monkeypatch: pytest.MonkeyPatch, *, closed: bool) -> None:
     accounts = Mock(is_account_closed=AsyncMock(return_value=closed))
     monkeypatch.setattr(ws_api, "user_db", Mock(return_value=accounts))
@@ -68,6 +92,7 @@ def _stub_account_closed(monkeypatch: pytest.MonkeyPatch, *, closed: bool) -> No
         ("invalid-token", 4003, "Invalid token"),
         ("missing-sub", 4002, "Invalid token"),
         ("missing-token", 4001, "Missing authentication token"),
+        ("binary-frame", 4001, "Missing authentication token"),
     ],
 )
 async def test_auth_failure_reaches_the_client_as_a_close_frame(
@@ -93,8 +118,13 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
     track_connection = Mock()
     monkeypatch.setattr(ws_api, "update_websocket_connections", track_connection)
 
-    target = url if failure == "missing-token" else f"{url}?token=wire-test"
-    async with connect(target, open_timeout=3, close_timeout=1) as websocket:
+    async with connect(url, open_timeout=3, close_timeout=1) as websocket:
+        if failure == "missing-token":
+            await websocket.send(json.dumps({"method": "heartbeat", "data": "ping"}))
+        elif failure == "binary-frame":
+            await websocket.send(_auth_frame().encode())
+        else:
+            await websocket.send(_auth_frame())
         with pytest.raises(ConnectionClosedError) as closed:
             await asyncio.wait_for(websocket.recv(), timeout=3)
         assert closed.value.rcvd is not None
@@ -120,7 +150,12 @@ async def test_disconnected_auth_failure_does_not_register_socket(
     )
     websocket = WebSocket(
         {"type": "websocket", "query_string": b""},
-        receive=AsyncMock(return_value={"type": "websocket.connect"}),
+        receive=AsyncMock(
+            side_effect=[
+                {"type": "websocket.connect"},
+                {"type": "websocket.receive", "text": "not a sign-in"},
+            ]
+        ),
         send=send,
     )
     manager = ConnectionManager()
@@ -159,23 +194,55 @@ async def test_auth_failure_propagates_unrelated_errors(
         )
 
 
+@pytest.mark.parametrize("token_in", ["first-message", "url"])
 async def test_valid_socket_is_accepted_once_and_serves_heartbeats(
     websocket_server: tuple[str, ConnectionManager],
     monkeypatch: pytest.MonkeyPatch,
+    token_in: str,
 ) -> None:
+    """The token comes in the first message; a frontend from before that
+    change still sends it in the URL."""
     url, manager = websocket_server
-    monkeypatch.setattr(
-        ws_api, "parse_jwt_token_async", AsyncMock(return_value={"sub": "user"})
-    )
+    parse = AsyncMock(return_value={"sub": "user"})
+    monkeypatch.setattr(ws_api, "parse_jwt_token_async", parse)
     monkeypatch.setattr(ws_api, "require_active_auth_session", AsyncMock())
-    async with connect(f"{url}?token=wire-test", open_timeout=3) as websocket:
+    target = url if token_in == "first-message" else f"{url}?token=wire-test"
+    async with connect(target, open_timeout=3) as websocket:
+        if token_in == "first-message":
+            await websocket.send(_auth_frame())
         await websocket.send(json.dumps({"method": "heartbeat"}))
         response = json.loads(await asyncio.wait_for(websocket.recv(), timeout=3))
         assert response == {"method": "heartbeat", "data": "pong", "success": True}
         assert len(manager.active_connections) == 1
+        parse.assert_awaited_once_with("wire-test")
 
     async def wait_until_disconnected() -> None:
         while manager.active_connections:
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(wait_until_disconnected(), timeout=3)
+
+
+async def test_a_full_server_refuses_a_first_message_sign_in_with_1013(
+    websocket_server: tuple[str, ConnectionManager],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The socket is already accepted when it signs in, so the refusal only
+    closes it."""
+    url, manager = websocket_server
+    monkeypatch.setattr(conn_manager, "MAX_SOCKETS_PER_USER", 1)
+    monkeypatch.setattr(
+        ws_api, "parse_jwt_token_async", AsyncMock(return_value={"sub": "user"})
+    )
+    monkeypatch.setattr(ws_api, "require_active_auth_session", AsyncMock())
+    async with connect(url, open_timeout=_HANG_SECONDS) as first:
+        await first.send(_auth_frame())
+        await first.send(json.dumps({"method": "heartbeat", "data": "ping"}))
+        await asyncio.wait_for(first.recv(), timeout=_HANG_SECONDS)
+        async with connect(url, open_timeout=_HANG_SECONDS, close_timeout=1) as second:
+            await second.send(_auth_frame())
+            with pytest.raises(ConnectionClosedError) as closed:
+                await asyncio.wait_for(second.recv(), timeout=_HANG_SECONDS)
+            assert closed.value.rcvd is not None
+            assert closed.value.rcvd.code == 1013
+        assert len(manager.active_connections) == 1

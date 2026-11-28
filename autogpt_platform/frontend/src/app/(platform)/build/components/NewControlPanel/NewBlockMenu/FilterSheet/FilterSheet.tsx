@@ -10,6 +10,7 @@ import { useFilterSheet } from "./useFilterSheet";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 export function FilterSheet({
   categories,
@@ -45,12 +46,16 @@ export function FilterSheet({
         {isOpen && (
           <motion.div
             className={cn(
-              "absolute top-2 bottom-2 left-2 z-20 w-3/4 max-w-[22.5rem] space-y-4 overflow-hidden rounded-xl bg-surface pb-4 shadow-md",
+              "absolute top-2 bottom-2 left-2 z-sticky w-3/4 max-w-[22.5rem] space-y-4 overflow-hidden rounded-xl bg-surface pb-4 shadow-md",
             )}
             initial={{ x: "-100%", filter: "blur(10px)" }}
             animate={{ x: 0, filter: "blur(0px)" }}
             exit={{ x: "-110%", filter: "blur(10px)" }}
-            transition={{ duration: 0.4, type: "spring", bounce: 0.2 }}
+            transition={{
+              duration: duration.slower,
+              type: "spring",
+              bounce: 0.2,
+            }}
           >
             {/* Top section */}
             <div className="flex items-center justify-between px-5 pt-4">
@@ -65,7 +70,7 @@ export function FilterSheet({
               </Button>
             </div>
 
-            <Separator className="h-[1px] w-full text-foreground-disabled" />
+            <Separator className="h-[1px] w-full" />
 
             {/* Category section */}
             <div className="space-y-4 px-5">
@@ -82,7 +87,7 @@ export function FilterSheet({
                       onCheckedChange={() =>
                         handleLocalCategoryChange(category.key)
                       }
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-action-foreground"
+                      tone="accent"
                     />
                     <Text
                       variant="body"
@@ -99,7 +104,7 @@ export function FilterSheet({
 
             {/* Created by section */}
             <div className="space-y-4 px-5">
-              <Text variant="large-medium-tight" tone="emphasis">
+              <Text variant="large" weight="medium" leading="6" tone="emphasis">
                 Created by
               </Text>
               <div className="space-y-2">
@@ -109,7 +114,7 @@ export function FilterSheet({
                       id={`creator-${creator}`}
                       checked={localCreators.includes(creator)}
                       onCheckedChange={() => handleLocalCreatorChange(creator)}
-                      className="border border-border-strong shadow-none data-[state=checked]:border-none data-[state=checked]:bg-accent-strong data-[state=checked]:text-action-foreground"
+                      tone="accent"
                     />
                     <Text
                       variant="body"
@@ -129,7 +134,7 @@ export function FilterSheet({
                   className="m-0 p-0 hover:text-foreground-secondary"
                   onClick={handleToggleShowMoreCreators}
                 >
-                  <Text variant="body-medium" as="span" tone="inherit">
+                  <Text variant="body" weight="medium" as="span" tone="inherit">
                     {displayedCreatorsCount < creators.length ? "More" : "Less"}
                   </Text>
                 </Button>

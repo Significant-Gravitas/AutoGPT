@@ -88,7 +88,8 @@ export function Table({
                     {readOnly ? (
                       <div className="px-3 py-2">
                         <Text
-                          variant="body-tight"
+                          variant="body"
+                          leading="5"
                           data-slot="table-cell-text"
                           tone="emphasis"
                         >

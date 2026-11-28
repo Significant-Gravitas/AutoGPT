@@ -39,7 +39,7 @@ export function SwitchCycleDialog({
               className="flex flex-wrap gap-1"
             >
               {line.label ? (
-                <Text variant="body-semibold" as="span" tone="body">
+                <Text variant="body" weight="semibold" as="span" tone="body">
                   {line.label}
                 </Text>
               ) : null}

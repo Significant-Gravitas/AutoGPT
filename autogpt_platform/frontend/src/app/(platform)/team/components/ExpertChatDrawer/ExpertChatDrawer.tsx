@@ -69,6 +69,7 @@ export function ExpertChatDrawer({
             type="button"
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={NoteEditIcon}
             aria-label="New task"
             disabled={!chat.sessionId}
@@ -79,6 +80,7 @@ export function ExpertChatDrawer({
             href={copilotHref}
             variant="ghost"
             size="icon-xs"
+            shape="sharp"
             leadingIcon={ArrowExpandIcon}
             aria-label="Open in Chat"
           />
@@ -154,7 +156,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
               imageSize={192}
             />
             <div className="space-y-0.5">
-              <Text variant="body-medium" tone="primary">
+              <Text variant="body" weight="medium" tone="primary">
                 What can I do for you?
               </Text>
               <Text variant="small" tone="muted">

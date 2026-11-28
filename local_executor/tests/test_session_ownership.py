@@ -1,0 +1,855 @@
+"""Tests for shim-side session ownership (#36).
+
+Covers:
+  * SESSION_REVOKED frame: shim audits, closes WS, disables auto-reconnect,
+    and does NOT send further frames after receipt.
+  * WS close-code translation (4426/4427/4428): each fatal application
+    code sets _disable_reconnect and emits a SESSION_REVOKED audit row.
+  * Non-fatal WS close codes (e.g. 1011, and 4429 for a platform going down
+    gracefully) do NOT disable reconnect.
+
+All tests mock the WebSocket — no live network.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import pytest
+import websockets
+
+from autogpt_local_executor.config import ShimConfig
+from autogpt_local_executor.daemon import (
+    WS_CLOSE_PLATFORM_SHUTDOWN,
+    WS_CLOSE_SESSION_REVOKED,
+    WS_CLOSE_SESSION_TAKEN_OVER,
+    ShimDaemon,
+)
+from autogpt_local_executor.protocol import (
+    SESSION_REVOKED_REASONS,
+    FileStatMessage,
+    FileStatPayload,
+    HelloAckMessage,
+    HelloAckPayload,
+    MessageType,
+    PingMessage,
+    SessionRevokedMessage,
+    SessionRevokedPayload,
+    dump_message,
+    make_ack,
+    new_id,
+    now_ts,
+)
+
+# ── Fakes ────────────────────────────────────────────────────────────────────
+
+
+class _FakeWebSocketCloseCode:
+    """websockets.ConnectionClosed-compatible carrier for our tests.
+
+    We construct a real ConnectionClosed with an Rcvd close frame so the
+    daemon's `getattr(exc, "code", None)` finds the expected wire code.
+    """
+
+
+def _make_connection_closed(code: int, reason: str = "") -> websockets.exceptions.ConnectionClosed:
+    from websockets.frames import Close
+
+    rcvd = Close(code=code, reason=reason)
+    return websockets.exceptions.ConnectionClosed(rcvd=rcvd, sent=None)
+
+
+class _FakeWebSocket:
+    """WS double that supports both async-iteration (for _run_session) and
+    direct recv()/close(). Inbound items can be raw strings (yielded as
+    frames) OR a websockets.exceptions.ConnectionClosed exception (raised
+    when reached, simulating server-initiated close)."""
+
+    def __init__(self, inbound: list[Any]) -> None:
+        self._inbound = list(inbound)
+        self.sent: list[str] = []
+        self.close_calls: list[dict[str, Any]] = []
+        self._closed = False
+
+    async def send(self, raw: str) -> None:
+        if self._closed:
+            raise RuntimeError("send after close")
+        self.sent.append(raw)
+
+    async def recv(self) -> str:
+        if not self._inbound:
+            await asyncio.sleep(3600)
+            raise AssertionError("recv blocked unexpectedly")
+        nxt = self._inbound.pop(0)
+        if isinstance(nxt, BaseException):
+            raise nxt
+        payload = json.loads(nxt)
+        if payload.get("type") == "HELLO_ACK" and payload.get("id") == "__HELLO_ID__":
+            payload["id"] = json.loads(self.sent[0])["id"]
+            return json.dumps(payload)
+        return nxt
+
+    def __aiter__(self) -> _FakeWebSocket:
+        return self
+
+    async def __anext__(self) -> str:
+        if not self._inbound:
+            raise StopAsyncIteration
+        nxt = self._inbound.pop(0)
+        if isinstance(nxt, BaseException):
+            raise nxt
+        return nxt
+
+    async def close(self, *, code: int = 1000, reason: str = "") -> None:
+        self.close_calls.append({"code": code, "reason": reason})
+        self._closed = True
+
+
+@pytest.fixture()
+def shim_config(tmp_path: Path) -> ShimConfig:
+    return ShimConfig(
+        allowed_root=tmp_path / "workspace",
+        audit_log_path=tmp_path / "audit.log",
+        session_id="test-session",
+        machine_id="test-machine",
+    )
+
+
+class _RecordingAudit:
+    """Audit double — captures (op, details) tuples."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict[str, Any]]] = []
+        self.disconnects: list[str] = []
+
+    def set_machine_id(self, _mid: str) -> None:
+        pass
+
+    def set_session_id(self, _sid: str) -> None:
+        pass
+
+    async def write(
+        self, op: str, *, request_id: Any = None, details: dict[str, Any], result: Any = None
+    ) -> None:
+        self.events.append((op, details))
+
+    async def shim_start(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+    async def shim_stop(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+    async def ws_connected(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+    async def ws_disconnected(self, reason: str = "", *_a: Any, **_k: Any) -> None:
+        self.disconnects.append(reason)
+
+    async def config_reloaded(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+    async def token_refreshed(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+    async def jail_violation(self, *_a: Any, **_k: Any) -> None:
+        pass
+
+
+@pytest.fixture()
+def audit() -> _RecordingAudit:
+    return _RecordingAudit()
+
+
+@pytest.fixture()
+def daemon(shim_config: ShimConfig, audit: _RecordingAudit) -> ShimDaemon:
+    return ShimDaemon(shim_config, token_store=None, audit=audit)
+
+
+def _hello_ack() -> str:
+    payload = HelloAckPayload(
+        session_id="test-session",
+        granted_capabilities=["files"],
+        max_file_size_bytes=1024,
+        command_timeout_seconds=30,
+        max_concurrent=4,
+    )
+    return dump_message(HelloAckMessage(id="__HELLO_ID__", ts=now_ts(), payload=payload))
+
+
+def _session_revoked_frame(
+    reason: str = "another_shim_connected", new_mid: str | None = None
+) -> str:
+    return dump_message(
+        SessionRevokedMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=SessionRevokedPayload(reason=reason, new_shim_machine_id=new_mid),
+        )
+    )
+
+
+# ── SESSION_REVOKED frame handling ───────────────────────────────────────────
+
+
+async def test_session_revoked_audits_closes_disables_reconnect(
+    daemon: ShimDaemon, audit: _RecordingAudit
+) -> None:
+    """Receipt of SESSION_REVOKED → audit row, ws.close called, no further sends."""
+    ws = _FakeWebSocket([_session_revoked_frame(new_mid="other-machine-1")])
+    # Bypass handshake by pre-seeding the semaphore.
+    daemon._semaphore = asyncio.Semaphore(4)
+
+    raw = await ws.__anext__()
+    await daemon._on_frame(ws, raw)
+
+    assert daemon._disable_reconnect is True
+    # Exactly one close call, with the SESSION_REVOKED close code.
+    assert len(ws.close_calls) == 1
+    assert ws.close_calls[0]["code"] == WS_CLOSE_SESSION_REVOKED
+    # Nothing was sent (no PONG, no ack — silent close).
+    assert ws.sent == []
+    # SESSION_REVOKED audit row exists with the right reason + machine.
+    revoked = [(op, d) for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert len(revoked) == 1
+    _, details = revoked[0]
+    assert details["reason"] == "another_shim_connected"
+    assert details["source"] == "frame"
+    assert details["new_shim_machine_id"] == "other-machine-1"
+
+
+async def test_a_revoked_session_closes_while_its_audit_record_waits(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The close waited for the SESSION_REVOKED record, so an audit writer
+    held up (its lock taken by `audit verify` on a large log, say) kept the
+    revoked connection open until it was done."""
+    ws = _FakeWebSocket([_session_revoked_frame()])
+    daemon._semaphore = asyncio.Semaphore(4)
+    writer_free = asyncio.Event()
+    real_write = audit.write
+
+    async def held_write(op: str, **kwargs: Any) -> None:
+        await writer_free.wait()
+        await real_write(op, **kwargs)
+
+    monkeypatch.setattr(audit, "write", held_write)
+    handling = asyncio.ensure_future(daemon._on_frame(ws, await ws.__anext__()))
+    try:
+        async with asyncio.timeout(10):
+            while not ws.close_calls:
+                await asyncio.sleep(0.01)
+        assert ws.close_calls[0]["code"] == WS_CLOSE_SESSION_REVOKED
+        assert not handling.done()
+    finally:
+        writer_free.set()
+    await asyncio.wait_for(handling, timeout=10)
+
+    assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
+
+
+@pytest.mark.parametrize("reason", SESSION_REVOKED_REASONS)
+async def test_session_revoked_accepts_each_spec_reason(
+    daemon: ShimDaemon, audit: _RecordingAudit, reason: str
+) -> None:
+    """The three reasons in the spec all flow through unchanged."""
+    ws = _FakeWebSocket([_session_revoked_frame(reason=reason)])
+    daemon._semaphore = asyncio.Semaphore(4)
+    await daemon._on_frame(ws, await ws.__anext__())
+    revoked = [d for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert revoked[-1]["reason"] == reason
+
+
+async def test_session_revoked_tolerates_unknown_reason(
+    daemon: ShimDaemon, audit: _RecordingAudit
+) -> None:
+    """Forward-compat: an unknown future reason still parses and revokes."""
+    ws = _FakeWebSocket([_session_revoked_frame(reason="future_reason_xyz")])
+    daemon._semaphore = asyncio.Semaphore(4)
+    await daemon._on_frame(ws, await ws.__anext__())
+    assert daemon._disable_reconnect is True
+    revoked = [d for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert revoked[-1]["reason"] == "future_reason_xyz"
+
+
+async def test_session_revoked_is_a_recognized_message_type() -> None:
+    """The new MessageType enum value round-trips through parse_message."""
+    from autogpt_local_executor.protocol import parse_message
+
+    raw = _session_revoked_frame()
+    msg = parse_message(raw)
+    assert isinstance(msg, SessionRevokedMessage)
+    assert msg.type == MessageType.SESSION_REVOKED
+
+
+# ── WS close-code semantics ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "close_code,expected_reason_label",
+    [
+        (4427, "session_taken_over"),
+        (4428, "session_revoked"),
+    ],
+)
+async def test_fatal_close_codes_disable_reconnect(
+    daemon: ShimDaemon,
+    audit: _RecordingAudit,
+    close_code: int,
+    expected_reason_label: str,
+) -> None:
+    """When the server closes with one of the fatal app codes, the shim
+    sets _disable_reconnect and writes a SESSION_REVOKED audit row tagged
+    with source=ws_close_code."""
+    ws = _FakeWebSocket(
+        inbound=[
+            _hello_ack(),
+            _make_connection_closed(code=close_code, reason="bye"),
+        ]
+    )
+    with pytest.raises(websockets.exceptions.ConnectionClosed):
+        await daemon._run_session(ws)
+    assert daemon._disable_reconnect is True
+    revoked = [d for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert len(revoked) == 1
+    assert revoked[0]["source"] == "ws_close_code"
+    assert revoked[0]["close_code"] == close_code
+    assert revoked[0]["reason"] == expected_reason_label
+
+
+@pytest.mark.parametrize("close_code", [1011, 4401, 4429])
+async def test_non_fatal_close_code_does_NOT_disable_reconnect(
+    daemon: ShimDaemon, audit: _RecordingAudit, close_code: int
+) -> None:
+    """Transient and access-token-expiry closes allow reconnect and refresh.
+    So does 4429: a platform going down gracefully comes back, and halting
+    left every machine offline until someone restarted its shim (under
+    launchd and systemd, which saw exit 0, nobody would)."""
+    ws = _FakeWebSocket(
+        inbound=[
+            _hello_ack(),
+            _make_connection_closed(code=close_code, reason="retryable"),
+        ]
+    )
+    with pytest.raises(websockets.exceptions.ConnectionClosed):
+        await daemon._run_session(ws)
+    assert daemon._disable_reconnect is False
+    # And no SESSION_REVOKED audit row — that's reserved for fatal codes.
+    revoked = [d for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert revoked == []
+
+
+async def test_fatal_close_code_4426_disables_reconnect(
+    daemon: ShimDaemon, audit: _RecordingAudit
+) -> None:
+    """Cross-cutting: a 4426 close (already covered by Task A's version
+    mismatch path) hitting us mid-session ALSO maps through the close-code
+    table and disables reconnect — defense in depth."""
+    ws = _FakeWebSocket(
+        inbound=[
+            _hello_ack(),
+            _make_connection_closed(code=4426, reason="version drift"),
+        ]
+    )
+    with pytest.raises(websockets.exceptions.ConnectionClosed):
+        await daemon._run_session(ws)
+    assert daemon._disable_reconnect is True
+    revoked = [d for op, d in audit.events if op == "SESSION_REVOKED"]
+    assert revoked[0]["reason"] == "protocol_version_mismatch"
+
+
+async def test_close_code_constants_match_spec() -> None:
+    """Lock the wire numbers — these are spec'd and platform code reads them."""
+    assert WS_CLOSE_SESSION_TAKEN_OVER == 4427
+    assert WS_CLOSE_SESSION_REVOKED == 4428
+    assert WS_CLOSE_PLATFORM_SHUTDOWN == 4429
+
+
+# ── Cross-cutting: SESSION_REVOKED frame, then attempt to send ──────────────
+
+
+async def test_session_revoked_blocks_further_sends(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A request still in flight when SESSION_REVOKED arrives emits nothing,
+    even if it would finish while the revocation is still being audited and
+    the socket is still open (the real audit writer hands the write to a
+    thread, so other tasks run meanwhile)."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    handling = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_handle(msg, *, send):
+        handling.set()
+        await release.wait()
+        return make_ack(msg.id)
+
+    record = audit.write
+
+    async def write_while_the_request_finishes(op: str, **kwargs: Any) -> None:
+        if op == "SESSION_REVOKED":
+            release.set()
+            in_flight = set(daemon._dispatch_tasks)
+            if in_flight:
+                await asyncio.wait(in_flight, timeout=30)
+        await record(op, **kwargs)
+
+    monkeypatch.setattr(daemon, "_handle", slow_handle)
+    monkeypatch.setattr(audit, "write", write_while_the_request_finishes)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(handling.wait(), timeout=30)
+
+    sent_before_revocation = list(ws.sent)
+    await daemon._on_frame(ws, _session_revoked_frame())
+    await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert release.is_set()
+    assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
+    assert ws.close_calls
+    assert ws.sent == sent_before_revocation
+
+
+# ── Fatal handshake errors ───────────────────────────────────────────────────
+
+
+async def test_a_handshake_the_platform_refuses_is_not_audited_as_a_clean_exit(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def refuse(_ws: Any) -> None:
+        daemon._disable_reconnect = True
+        raise RuntimeError("Platform does not support the persistent machine-control protocol")
+
+    monkeypatch.setattr(daemon, "_handshake", refuse)
+    with pytest.raises(RuntimeError):
+        await daemon._run_session(_FakeWebSocket([]))
+
+    assert audit.disconnects == ["handshake_failed: RuntimeError"]
+
+
+async def test_run_says_why_it_stops_after_an_error_it_will_not_retry(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The process then exits 0 so no supervisor restarts it; the log is the
+    only place the reason shows up."""
+
+    async def refuse() -> None:
+        daemon._disable_reconnect = True
+        raise RuntimeError("HELLO_ACK id does not match HELLO id")
+
+    monkeypatch.setattr(daemon, "_session", refuse)
+    with caplog.at_level(logging.ERROR, logger="autogpt_local_executor.daemon"):
+        await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert "HELLO_ACK id does not match HELLO id" in caplog.text
+
+
+# ── Reconnect backoff ────────────────────────────────────────────────────────
+
+
+async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session that ran and then dropped must reconnect promptly, not at
+    the delay built up by the failures before it."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "STABLE_SESSION_SECONDS", 0.0)
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise OSError("connection refused")
+        if calls == 4:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2, 0]
+
+
+async def test_sessions_the_platform_ends_right_away_keep_the_backoff_growing(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A platform that answered HELLO_ACK and then closed with 1011 (while
+    overloaded, say) had every shim reconnect after the base delay, again
+    and again, since any session that came up started the backoff over."""
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2]
+
+
+@pytest.mark.parametrize(("stable_after", "expected"), [(60.0, [0, 1, 2]), (0.0, [0, 0, 0])])
+async def test_sessions_the_platform_closes_cleanly_count_as_the_others_do(
+    daemon: ShimDaemon,
+    monkeypatch: pytest.MonkeyPatch,
+    stable_after: float,
+    expected: list[int],
+) -> None:
+    """A clean close (1000, 1001) ends the socket's iteration with no error,
+    and that path reconnected after the base delay and started the count
+    over every time, so a platform that closed right after HELLO_ACK had
+    every shim reconnect every few seconds. Only a session that stayed up
+    starts the backoff over."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "STABLE_SESSION_SECONDS", stable_after)
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            await daemon._run_session(_FakeWebSocket([]))  # closed cleanly
+            return
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == expected
+
+
+def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:
+    """2 ** attempt times a float delay overflows at attempt 1024."""
+    delay = daemon._backoff_delay(5000)
+
+    cap = daemon.config.reconnect_max_delay
+    assert cap <= delay <= cap + daemon.config.reconnect_jitter_seconds
+
+
+# ── Idle tracking ────────────────────────────────────────────────────────────
+
+
+async def test_a_ping_does_not_count_as_activity(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform's keepalive must not keep an idle child session from
+    being reaped; a request still counts."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    daemon._last_request_at = 1000.0
+
+    await daemon._on_frame(ws, dump_message(PingMessage(id=new_id(), ts=now_ts())))
+
+    assert daemon._last_request_at == 1000.0
+
+    async def handle(msg, *, send):
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert daemon._last_request_at > 1000.0
+
+
+# ── Frames after the handshake ───────────────────────────────────────────────
+
+
+async def test_a_frame_from_another_major_version_is_dropped(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """PROTOCOL.md: a non-HELLO frame whose major differs from the negotiated
+    one MUST be dropped and logged loudly; a different minor is processed."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    daemon._negotiated_version = "1.1"
+    handled: list[str] = []
+
+    async def handle(msg, *, send):
+        handled.append(msg.version)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    with caplog.at_level(logging.ERROR, logger="autogpt_local_executor.daemon"):
+        for version in ("2.0", "garbage", "1.0"):
+            request = FileStatMessage(
+                id=new_id(), ts=now_ts(), version=version, payload=FileStatPayload(path="/tmp/x")
+            )
+            await daemon._on_frame(ws, dump_message(request))
+        await asyncio.wait_for(asyncio.gather(*daemon._dispatch_tasks), timeout=30)
+
+    assert handled == ["1.0"]
+    assert "'2.0'" in caplog.text and "'garbage'" in caplog.text
+
+
+async def test_work_queued_by_a_revoked_session_never_starts(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A request waiting for a free slot when SESSION_REVOKED arrives used to
+    start once one freed up: the revoked session's work kept running."""
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(1)
+    started: list[str] = []
+    handling = asyncio.Event()
+    release = asyncio.Event()
+
+    async def handle(msg, *, send):
+        started.append(msg.payload.path)
+        handling.set()
+        await release.wait()
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    for path in ("/tmp/first", "/tmp/queued"):
+        request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path=path))
+        await daemon._on_frame(ws, dump_message(request))
+    await asyncio.wait_for(handling.wait(), timeout=30)
+
+    await daemon._on_frame(ws, _session_revoked_frame())
+    release.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+    assert started == ["/tmp/first"]
+    assert not daemon._dispatch_tasks
+    assert ws.sent == []
+
+
+async def test_a_change_queued_for_a_thread_never_starts_once_its_session_is_revoked(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancel reaches a task only when it next runs. A worker thread that
+    freed up between SESSION_REVOKED cancelling a request and the request's
+    task taking in the cancel started its queued change anyway: a write,
+    move or delete after revocation."""
+    import autogpt_local_executor.handlers as handlers_module
+
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    loop = asyncio.get_running_loop()
+    a_thread_frees_up: asyncio.Future[None] = loop.create_future()
+    queued: list[Any] = []
+    ran: list[str] = []
+
+    async def busy_pool(func, /, *args, **kwargs):
+        queued.append(func)
+        await a_thread_frees_up
+        return func(*args, **kwargs)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(lambda: ran.append("write"))
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(handlers_module.asyncio, "to_thread", busy_pool)
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    async with asyncio.timeout(10):
+        while not queued:
+            await asyncio.sleep(0)
+    work = tuple(daemon._dispatch_tasks)
+
+    # A thread frees up, and the revocation cancels the request, before the
+    # request's task runs again: the thread takes the change first.
+    a_thread_frees_up.set_result(None)
+    daemon._cancel_dispatch_requests()
+    await asyncio.wait(work, timeout=10)
+
+    assert ran == []
+    assert ws.sent == []
+
+
+async def test_an_unsupported_architecture_stops_at_preflight(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Building HELLO raised ValueError on every attempt (armv7l, i686,
+    FreeBSD), so the reconnect loop retried forever."""
+    from autogpt_local_executor import platform_info
+    from autogpt_local_executor.daemon import DaemonPreflightError
+
+    def unsupported() -> str:
+        raise ValueError("Unsupported architecture: 'armv7l'")
+
+    monkeypatch.setattr(platform_info, "detect_arch", unsupported)
+    sessions = 0
+
+    async def session() -> None:
+        nonlocal sessions
+        sessions += 1
+
+    monkeypatch.setattr(daemon, "_session", session)
+
+    with pytest.raises(DaemonPreflightError, match="armv7l") as stopped:
+        await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert stopped.value.permanent is True
+    assert sessions == 0
+
+
+async def test_a_handler_that_finishes_after_revocation_sends_nothing(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Revocation cancels in-flight work, but a side effect already running in
+    a thread finishes anyway, and its handler then tries to send the reply:
+    the revoked-connection guard is what stops it."""
+    import threading
+
+    import autogpt_local_executor.handlers as handlers_module
+
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    running = threading.Event()
+    release = threading.Event()
+
+    def side_effect() -> None:
+        running.set()
+        release.wait(30)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(side_effect)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    assert await asyncio.to_thread(running.wait, 30)
+    work = tuple(daemon._dispatch_tasks)
+
+    # The revocation's close is still under way (its handshake) until the
+    # handler has finished, so the socket is open when the handler tries to
+    # reply: only the guard can stop that reply. (A timer that freed the
+    # thread after the close let a closed socket refuse it instead.)
+    closing = asyncio.Event()
+    closed = asyncio.Event()
+    real_close = ws.close
+
+    async def slow_close(**kwargs: Any) -> None:
+        closing.set()
+        await closed.wait()
+        await real_close(**kwargs)
+
+    monkeypatch.setattr(ws, "close", slow_close)
+    revocation = asyncio.create_task(daemon._on_frame(ws, _session_revoked_frame()))
+    await asyncio.wait_for(closing.wait(), timeout=30)
+    release.set()
+    await asyncio.wait(work, timeout=30)
+
+    assert all(task.done() for task in work)
+    assert ws.close_calls == []
+    assert ws.sent == []
+
+    closed.set()
+    await asyncio.wait_for(revocation, timeout=30)
+    assert ws.close_calls
+    assert ws.sent == []
+
+
+async def test_revocation_audits_and_closes_while_a_side_effect_hangs(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Revocation waited for in-flight work before its audit record and the
+    close, and a side effect blocked in a thread may never finish: the
+    revoked socket stayed open, with no record of the revocation. The wait
+    that follows is bounded, and work let go then settles nothing in the
+    counters, which are the next session's by the time it ends."""
+    import threading
+
+    import autogpt_local_executor.daemon as daemon_module
+    import autogpt_local_executor.handlers as handlers_module
+
+    monkeypatch.setattr(daemon_module, "DISPATCH_DRAIN_SECONDS", 0.1, raising=False)
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    running = threading.Event()
+    release = threading.Event()
+
+    def side_effect() -> None:
+        running.set()
+        release.wait(60)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(side_effect)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    assert await asyncio.to_thread(running.wait, 30)
+    (task,) = daemon._dispatch_tasks
+    try:
+        await asyncio.wait_for(daemon._on_frame(ws, _session_revoked_frame()), timeout=30)
+
+        assert [op for op, _ in audit.events].count("SESSION_REVOKED") == 1
+        assert [c["code"] for c in ws.close_calls] == [WS_CLOSE_SESSION_REVOKED]
+        assert daemon._disable_reconnect is True
+        assert not task.done()
+    finally:
+        release.set()
+    await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=30)
+
+    assert ws.sent == []
+    assert (daemon._in_flight, daemon._queue_depth, daemon._pending_requests) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("base", "cap"), [(1e-12, 60.0), (1.0, 86_400.0)], ids=["tiny-base", "largest-cap"]
+)
+def test_the_backoff_reaches_its_cap_from_any_base(
+    shim_config: ShimConfig, audit: _RecordingAudit, base: float, cap: float
+) -> None:
+    """The exponent stopped at 2**32, so with a base below cap / 2**32 the
+    delay never grew past a few milliseconds, and the shim reconnected that
+    often."""
+    shim_config.reconnect_base_delay = base
+    shim_config.reconnect_max_delay = cap
+    shim_config.reconnect_jitter_seconds = 0
+    daemon = ShimDaemon(shim_config, token_store=None, audit=audit)
+
+    assert daemon._backoff_delay(5000) == cap
+    assert daemon._backoff_delay(0) == min(base, cap)

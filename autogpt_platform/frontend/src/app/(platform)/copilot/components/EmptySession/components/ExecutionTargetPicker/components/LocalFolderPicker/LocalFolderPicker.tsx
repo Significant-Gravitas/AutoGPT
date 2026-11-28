@@ -4,7 +4,6 @@ import type { DirectoryEntry } from "@/app/api/__generated__/models/directoryEnt
 import type { ExecutorMachine } from "@/app/api/__generated__/models/executorMachine";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Select } from "@/components/atoms/Select/Select";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -17,12 +16,15 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useEffect, useState } from "react";
 import { LocalExecutorSetup } from "../LocalExecutorSetup/LocalExecutorSetup";
+import { ComputerSelect } from "./components/ComputerSelect";
+import type { useAnotherComputer } from "../../useAnotherComputer";
 import { useLocalFolderPicker } from "./useLocalFolderPicker";
 
 interface Props {
   isOpen: boolean;
   machines: ExecutorMachine[];
   selectedMachineID: string | null;
+  anotherComputer: ReturnType<typeof useAnotherComputer>;
   isLoadingMachines: boolean;
   isMachinesError: boolean;
   isRefreshingMachines: boolean;
@@ -41,6 +43,7 @@ export function LocalFolderPicker({
   isOpen,
   machines,
   selectedMachineID,
+  anotherComputer,
   isLoadingMachines,
   isMachinesError,
   isRefreshingMachines,
@@ -102,7 +105,7 @@ export function LocalFolderPicker({
       <Dialog.Content>
         <div className="flex min-h-[24rem] flex-col gap-4">
           <span role="status" aria-live="polite" className="sr-only">
-            {machineAnnouncement}
+            {anotherComputer.connectedNotice || machineAnnouncement}
           </span>
           {isLoadingMachines ? (
             <div role="status" aria-live="polite" className="space-y-3">
@@ -117,7 +120,7 @@ export function LocalFolderPicker({
               className="flex flex-col items-center gap-3 rounded-2xl border border-error/20 bg-error-surface p-6 text-center text-error-foreground"
             >
               <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
-              <Text variant="body-medium" tone="inherit">
+              <Text variant="body" weight="medium" tone="inherit">
                 Could Not Check Your Computers
               </Text>
               <Text variant="small" tone="inherit">
@@ -139,16 +142,15 @@ export function LocalFolderPicker({
             />
           ) : (
             <>
-              <Select
-                id="local-executor-machine"
-                label="Computer"
-                value={machine?.machine_id ?? ""}
-                onValueChange={onSelectMachine}
-                options={machines.map((item) => ({
-                  value: item.machine_id,
-                  label: `${item.display_name} · ${platformLabel(item.platform)}`,
-                }))}
-                wrapperClassName="!mb-0"
+              <ComputerSelect
+                machines={machines}
+                selectedMachineID={machine?.machine_id ?? null}
+                isRefreshingMachines={isRefreshingMachines}
+                isSetupOpen={anotherComputer.isSetupOpen}
+                connectedNotice={anotherComputer.connectedNotice}
+                onSelectMachine={onSelectMachine}
+                onRefreshMachines={onRefreshMachines}
+                onToggleSetup={anotherComputer.toggleSetup}
               />
 
               <FolderPath
@@ -189,7 +191,7 @@ export function LocalFolderPicker({
                     <span className="flex text-warning-foreground">
                       <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
                     </span>
-                    <Text variant="small-medium" tone="primary">
+                    <Text variant="small" weight="medium" tone="primary">
                       {browser.error}
                     </Text>
                     <Button
@@ -367,14 +369,4 @@ function FolderPath({
       ) : null}
     </div>
   );
-}
-
-function platformLabel(platform: string) {
-  const labels: Record<string, string> = {
-    darwin: "macOS",
-    linux: "Linux",
-    windows: "Windows",
-    wsl2: "Windows (WSL2)",
-  };
-  return labels[platform.toLowerCase()] ?? platform;
 }

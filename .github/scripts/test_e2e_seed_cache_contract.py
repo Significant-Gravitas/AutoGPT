@@ -1,7 +1,9 @@
+import ast
 import os
 import re
 import subprocess
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -15,9 +17,12 @@ SEED_VERIFY_CACHED_STEP = (
 )
 FRONTEND_WAIT_STEP = "Wait for frontend image build"
 SERVICES_START_STEP = "Set up Platform - Start (all other services)"
+STORE_AGENTS_STEP = "Set up tests - Load the official marketplace agents"
 SEED_SAVE_STEP = "Push E2E test data to GHCR"
 PLAYWRIGHT_STEP = "Run Playwright E2E suite"
 PLAYWRIGHT_REPORT_STEP = "Validate Playwright JSON report"
+INVENTORY_STEP = "Set up tests - Count the shard's tests"
+STACK_WAIT_STEP = "Wait for backend image build and database"
 # What the seed prints once every item has an embedding.
 EMBEDDINGS_COMPLETE = "Embeddings complete:"
 # Backend modules whose functions the seed calls to write rows into the dump.
@@ -43,10 +48,56 @@ def _step(workflow: str, name: str) -> str:
     return workflow.split(f"- name: {name}\n", 1)[1].split("\n      - name:", 1)[0]
 
 
-def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
+def _matrix_legs(workflow: str, suite: str) -> list[dict[str, str]]:
+    """Every e2e matrix leg of a suite, as its `key: value` lines."""
     e2e_job = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
-    leg = e2e_job.split(f"- suite: {suite}\n", 1)[1].split("- suite:", 1)[0]
-    return dict(re.findall(r"^\s+(\w+): (\S+)$", leg, re.MULTILINE))
+    legs: list[dict[str, str]] = []
+    for line in e2e_job.split("\n        include:\n", 1)[1].splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith(" " * 10):
+            break
+        entry = re.fullmatch(r"\s+(- )?(\w+): (.+?)\s*", line)
+        assert entry, line
+        if entry[1]:
+            legs.append({})
+        legs[-1][entry[2]] = entry[3]
+    return [leg for leg in legs if leg["suite"] == suite]
+
+
+def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
+    legs = _matrix_legs(workflow, suite)
+    assert (
+        len(legs) == 1
+    ), f"expected one {suite} leg in the e2e matrix, found {len(legs)}"
+    return legs[0]
+
+
+def _render(template: str, leg: dict[str, str]) -> str:
+    """Expands the e2e job's `${{ matrix.* }}` and shard expressions for a leg."""
+
+    def expand(expression: re.Match[str]) -> str:
+        if plain := re.fullmatch(r"matrix\.(\w+)", expression[1]):
+            return leg.get(plain[1], "")
+        sharded = re.fullmatch(
+            r"matrix\.shard_index && format\('([^']*)'((?:, matrix\.\w+)+)\) \|\| ''",
+            expression[1],
+        )
+        assert sharded, expression[1]
+        if "shard_index" not in leg:
+            return ""
+        keys = re.findall(r"matrix\.(\w+)", sharded[2])
+        return sharded[1].format(*(leg[key] for key in keys))
+
+    return re.sub(r"\$\{\{ (.+?) \}\}", expand, template)
+
+
+def _shard_expressions(text: str) -> list[str]:
+    return [
+        expression
+        for expression in re.findall(r"\$\{\{ .+? \}\}", text)
+        if "matrix.shard_index &&" in expression
+    ]
 
 
 def _e2e_step_names(workflow: str) -> list[str]:
@@ -61,7 +112,10 @@ class E2EMatrixContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("matrix.embeddings", _step(workflow, SEED_KEY_STEP))
         self.assertEqual(_matrix_leg(workflow, "smoke")["embeddings"], "true")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["embeddings"], "false")
+        self.assertEqual(
+            {leg["embeddings"] for leg in _matrix_legs(workflow, "journeys")},
+            {"false"},
+        )
 
     def test_only_smoke_writes_shared_caches(self):
         workflow = (
@@ -87,19 +141,142 @@ class E2EMatrixContractTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
         self.assertEqual(_matrix_leg(workflow, "smoke")["scripted_model"], "false")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["scripted_model"], "true")
+        self.assertEqual(
+            {leg["scripted_model"] for leg in _matrix_legs(workflow, "journeys")},
+            {"true"},
+        )
         prepare = workflow.split("- name: Set up Platform - Prepare Docker build\n", 1)[
             1
         ].split("\n      - name:", 1)[0]
         self.assertIn("-f docker-compose.journeys.yml", prepare)
         self.assertIn("matrix.scripted_model", prepare)
 
-    def test_journeys_check_is_advisory(self):
+    def test_journeys_load_the_roster_workflows_before_the_roster_publishes(self):
+        # publish_skills resolves each roster workflow to an official listing
+        # when it starts, and skips any it can't find: loaded after it, a hired
+        # expert gets no workflows. Beside the Next.js build it could also run
+        # the runner out of memory, like the seed.
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["store_agents"], "false")
+        self.assertEqual(
+            {leg["store_agents"] for leg in _matrix_legs(workflow, "journeys")},
+            {"true"},
+        )
+        load = _step(workflow, STORE_AGENTS_STEP)
+        # The whole condition: a widened one, such as `|| matrix.suite ==
+        # 'smoke'`, would load the listings on smoke too.
+        self.assertEqual(
+            [
+                line.strip()
+                for line in load.splitlines()
+                if line.strip().startswith("if:")
+            ],
+            ["if: matrix.store_agents"],
+        )
+        # With images the stack serves itself: the CSV's production images on
+        # GCS had the image optimizer fetch from outside the stack (#17298).
+        self.assertIn("python -m test.load_store_agents --local-media", load)
+        steps = _e2e_step_names(workflow)
+        self.assertLess(steps.index(FRONTEND_WAIT_STEP), steps.index(STORE_AGENTS_STEP))
+        self.assertLess(
+            steps.index(STORE_AGENTS_STEP), steps.index(SERVICES_START_STEP)
+        )
+
+    def test_journeys_run_as_identical_shards(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        legs = _matrix_legs(workflow, "journeys")
+        self.assertEqual([leg.get("shard_index") for leg in legs], ["1", "2"])
+        self.assertEqual({leg.get("shard_total") for leg in legs}, {str(len(legs))})
+        # Everything else, the pinned total included, is the same on each.
+        first = {key: value for key, value in legs[0].items() if key != "shard_index"}
+        for leg in legs[1:]:
+            with self.subTest(shard=leg["shard_index"]):
+                self.assertEqual(
+                    {key: value for key, value in leg.items() if key != "shard_index"},
+                    first,
+                )
+        self.assertNotIn("shard_index", _matrix_leg(workflow, "smoke"))
+
+        # Each leg hands Playwright its own shard; smoke runs whole.
+        (shard_flag,) = _shard_expressions(_step(workflow, PLAYWRIGHT_STEP))
+        self.assertEqual(
+            [_render(shard_flag, leg) for leg in legs], ["--shard=1/2", "--shard=2/2"]
+        )
+        self.assertEqual(_render(shard_flag, _matrix_leg(workflow, "smoke")), "")
+
+    def test_each_leg_has_its_own_job_and_artifact_names(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        e2e_job = workflow.split("\n  e2e_test:\n", 1)[1]
+        name = re.search(r"^    name: (.+)$", e2e_job, re.M)
+        leg_name = re.search(r"^      E2E_LEG: (.+)$", e2e_job, re.M)
+        assert name and leg_name
+        legs = [_matrix_leg(workflow, "smoke"), *_matrix_legs(workflow, "journeys")]
+        self.assertEqual(
+            [_render(name[1], leg) for leg in legs],
+            [
+                "end-to-end tests (smoke)",
+                "end-to-end tests (journeys 1/2)",
+                "end-to-end tests (journeys 2/2)",
+            ],
+        )
+        self.assertEqual(
+            [_render(leg_name[1], leg) for leg in legs],
+            ["smoke", "journeys-1", "journeys-2"],
+        )
+        # Two uploads of one artifact name in a run fail the second.
+        for step, artifact in (
+            ("Upload Playwright report", "playwright-report-${{ env.E2E_LEG }}"),
+            (
+                "Upload Playwright test results",
+                "playwright-test-results-${{ env.E2E_LEG }}",
+            ),
+        ):
+            with self.subTest(step=step):
+                self.assertIn(f"name: {artifact}\n", _step(workflow, step))
+
+    def test_every_journeys_shard_is_advisory(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
         checker = (
             Path(__file__).resolve().parents[1]
             / "workflows/scripts/check_actions_status.py"
         ).read_text(encoding="utf-8")
-        self.assertIn('"end-to-end tests (journeys)"', checker)
+
+        def literal(target: str):
+            return next(
+                ast.literal_eval(node.value)
+                for node in ast.parse(checker).body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(each, ast.Name) and each.id == target
+                    for each in node.targets
+                )
+            )
+
+        names = literal("ADVISORY_CHECK_RUNS")
+        prefixes = literal("ADVISORY_CHECK_RUN_PREFIXES")
+
+        # check_actions_status.is_advisory, without importing its requests.
+        def is_advisory(check: str) -> bool:
+            return check in names or check.startswith(prefixes)
+
+        name = re.search(
+            r"^    name: (.+)$", workflow.split("\n  e2e_test:\n", 1)[1], re.M
+        )
+        assert name
+        for leg in _matrix_legs(workflow, "journeys"):
+            with self.subTest(leg=_render(name[1], leg)):
+                self.assertTrue(is_advisory(_render(name[1], leg)))
+        self.assertFalse(is_advisory(_render(name[1], _matrix_leg(workflow, "smoke"))))
+        # A shard added later is advisory with no checker edit.
+        self.assertTrue(is_advisory("end-to-end tests (journeys 3/3)"))
 
 
 class E2ESeedCacheContractTests(unittest.TestCase):
@@ -356,16 +533,21 @@ class E2ESeedCacheContractTests(unittest.TestCase):
 
 
 class E2EImageBuildContractTests(unittest.TestCase):
-    def test_backend_images_reinstall_os_packages_daily(self):
+    def test_backend_images_reinstall_os_packages_when_debian_publishes(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
         build = workflow.split(
             "- name: Set up Platform - Build backend Docker images\n", 1
         )[1].split("\n      - name:", 1)[0]
-        # APT_REFRESH in backend/Dockerfile: the date re-runs the package
-        # installs once a day, so E2E tests the OS packages that ship.
-        self.assertIn('--set "*.args.APT_REFRESH=$(date -u +%F)"', build)
+        # APT_REFRESH in backend/Dockerfile: the key changes daily and when
+        # Debian publishes security updates, re-running the package installs,
+        # so E2E tests the OS packages that ship.
+        key = 'apt_refresh="$(python3 "$GITHUB_WORKSPACE/.github/scripts/apt_refresh.py")"'
+        bake = '--set "*.args.APT_REFRESH=$apt_refresh"'
+        self.assertIn(key, build)
+        self.assertIn(bake, build)
+        self.assertLess(build.index(key), build.index(bake))
 
 
 class E2ECoverageContractTests(unittest.TestCase):
@@ -373,11 +555,56 @@ class E2ECoverageContractTests(unittest.TestCase):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
-        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "29")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "12")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "37")
+        # The whole journeys suite's inventory, one total on every shard.
+        self.assertEqual(
+            {leg["min_tests"] for leg in _matrix_legs(workflow, "journeys")}, {"81"}
+        )
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
+
+    def test_a_shard_is_held_to_its_listed_count_and_the_suite_to_its_pin(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        inventory = _step(workflow, INVENTORY_STEP)
+        report = _step(workflow, PLAYWRIGHT_REPORT_STEP)
+        run = _step(workflow, PLAYWRIGHT_STEP)
+        self.assertIn("id: e2e-inventory\n", inventory)
+        self.assertIn("if: matrix.shard_index\n", inventory)
+        # A shard's floor is its own count; smoke keeps its pin.
+        self.assertIn(
+            "MIN_TESTS: ${{ matrix.shard_index && steps.e2e-inventory.outputs.tests"
+            " || matrix.min_tests }}\n",
+            report,
+        )
+        self.assertIn('--min-tests "$MIN_TESTS"', report)
+        self.assertNotIn("continue-on-error", inventory)
+        # The count lists what the run runs.
+        for listed, ran in (
+            ("E2E_CONFIG: ${{ matrix.config }}", "--config ${{ matrix.config }}"),
+            (
+                "E2E_PLAYWRIGHT_ARGS: ${{ matrix.playwright_args }}",
+                " ${{ matrix.playwright_args }} ",
+            ),
+            (
+                "E2E_SHARD: ${{ matrix.shard_index }}/${{ matrix.shard_total }}",
+                "format('--shard={0}/{1}', matrix.shard_index, matrix.shard_total)",
+            ),
+            (
+                "E2E_REPEAT_EACH: ${{ matrix.suite == 'journeys' && "
+                "inputs.journeys_repeat_each || 1 }}",
+                "matrix.suite == 'journeys' && "
+                "format('--repeat-each={0}', inputs.journeys_repeat_each || 1)",
+            ),
+        ):
+            with self.subTest(listed=listed):
+                self.assertIn(f"{listed}\n", inventory)
+                self.assertIn(ran, run)
+        self.assertIn("E2E_MIN_TESTS: ${{ matrix.min_tests }}\n", inventory)
+        # Counted while the stack builds, so a short inventory fails early.
+        steps = _e2e_step_names(workflow)
+        self.assertLess(steps.index(INVENTORY_STEP), steps.index(STACK_WAIT_STEP))
 
     def test_codecov_requires_validated_coverage(self):
         workflow = (
@@ -394,6 +621,125 @@ class E2ECoverageContractTests(unittest.TestCase):
             "if: ${{ !cancelled() && steps.validate-e2e-coverage.outcome == 'success' }}",
             upload,
         )
+
+
+# Stands in for `pnpm exec playwright test ... --list`: records its arguments
+# and lists FAKE_TOTAL tests, or FAKE_SHARD for a --shard listing.
+FAKE_PNPM = """#!/usr/bin/env bash
+echo "$*" >> "$FAKE_CALLS"
+if [[ -n $FAKE_FAIL ]]; then
+  echo "Error: broken-journey.spec.ts: Unexpected token"
+  exit 1
+fi
+echo "Listing tests:"
+if [[ -n $FAKE_NO_TOTAL ]]; then exit 0; fi
+if [[ " $* " == *" --shard="* ]]; then n=$FAKE_SHARD; else n=$FAKE_TOTAL; fi
+if (( n == 1 )); then echo "Total: 1 test in 1 file"; else echo "Total: $n tests in 3 files"; fi
+"""
+
+
+class E2EShardInventoryTests(unittest.TestCase):
+    """Runs the "Count the shard's tests" step's script against a fake pnpm."""
+
+    def _count(
+        self,
+        total: int,
+        shard: int,
+        min_tests: int | str,
+        fail: bool = False,
+        no_total: bool = False,
+    ) -> tuple[subprocess.CompletedProcess[str], str, list[str]]:
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        script = textwrap.dedent(
+            _step(workflow, INVENTORY_STEP).split("run: |\n", 1)[1]
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            (folder / "pnpm").write_text(FAKE_PNPM, encoding="utf-8")
+            (folder / "pnpm").chmod(0o755)
+            output = folder / "github_output"
+            output.touch()
+            result = subprocess.run(
+                # GitHub's `shell: bash`
+                ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+                env={
+                    **os.environ,
+                    "PATH": f"{folder}{os.pathsep}{os.environ['PATH']}",
+                    "GITHUB_OUTPUT": str(output),
+                    "E2E_CONFIG": "playwright.journeys.config.ts",
+                    "E2E_PLAYWRIGHT_ARGS": "--project hosted",
+                    "E2E_MIN_TESTS": str(min_tests),
+                    "E2E_SHARD": "2/2",
+                    "E2E_REPEAT_EACH": "3",
+                    "FAKE_CALLS": str(folder / "calls"),
+                    "FAKE_TOTAL": str(total),
+                    "FAKE_SHARD": str(shard),
+                    "FAKE_FAIL": "1" if fail else "",
+                    "FAKE_NO_TOTAL": "1" if no_total else "",
+                },
+                capture_output=True,
+                text=True,
+            )
+            log = folder / "calls"
+            calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+            return result, output.read_text(encoding="utf-8"), calls
+
+    def test_outputs_the_shards_own_count(self):
+        result, output, calls = self._count(total=41, shard=21, min_tests=41)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(output, "tests=21\n")
+        listing = (
+            "exec playwright test --config playwright.journeys.config.ts"
+            " --project hosted --list --reporter=list"
+        )
+        # The whole suite as pinned, then this shard with the run's repeats.
+        self.assertEqual(calls, [listing, f"{listing} --shard=2/2 --repeat-each=3"])
+
+    def test_reads_a_single_test(self):
+        result, output, _ = self._count(total=1, shard=1, min_tests=1)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(output, "tests=1\n")
+
+    def test_fails_when_the_suite_lists_fewer_tests_than_the_pin(self):
+        result, output, _ = self._count(total=40, shard=20, min_tests=41)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "::error title=Fewer tests than min_tests::The suite lists 40 tests,"
+            " below its pinned min_tests of 41",
+            result.stdout,
+        )
+        self.assertEqual(output, "")
+
+    def test_fails_on_an_empty_shard(self):
+        result, output, _ = self._count(total=41, shard=0, min_tests=41)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("::error title=Empty shard::", result.stdout)
+        self.assertEqual(output, "")
+
+    def test_fails_when_the_listing_has_no_total(self):
+        result, output, _ = self._count(total=41, shard=21, min_tests=41, no_total=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("::error title=No test count::", result.stdout)
+        self.assertEqual(output, "")
+
+    def test_fails_when_min_tests_is_not_a_number(self):
+        # An empty pin would make every comparison false and skip the floor.
+        for pin in ("", "forty"):
+            with self.subTest(pin=pin):
+                result, output, calls = self._count(total=41, shard=21, min_tests=pin)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("::error title=No pinned min_tests::", result.stdout)
+                self.assertEqual(output, "")
+                self.assertEqual(calls, [])
+
+    def test_fails_and_shows_why_when_listing_fails(self):
+        result, output, _ = self._count(total=41, shard=21, min_tests=41, fail=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unexpected token", result.stderr)
+        self.assertIn("::error title=Listing the tests failed::", result.stdout)
+        self.assertEqual(output, "")
 
 
 if __name__ == "__main__":

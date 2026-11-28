@@ -253,10 +253,14 @@ async def test_team_pinned_key_resolves_to_its_team(
     "team_member",
     [
         None,
-        Mock(status="INACTIVE", Team=Mock(orgId=ORG_A)),
-        Mock(status="ACTIVE", Team=Mock(orgId=ORG_B)),
+        Mock(status="INACTIVE", Team=Mock(orgId=ORG_A, archivedAt=None)),
+        Mock(status="ACTIVE", Team=Mock(orgId=ORG_B, archivedAt=None)),
+        Mock(
+            status="ACTIVE",
+            Team=Mock(orgId=ORG_A, archivedAt=datetime.now(tz=timezone.utc)),
+        ),
     ],
-    ids=["removed", "inactive", "team-moved-orgs"],
+    ids=["removed", "inactive", "team-moved-orgs", "team-deleted"],
 )
 async def test_team_pinned_key_is_rejected_once_its_team_membership_ends(
     mocker: pytest_mock.MockFixture, team_member: Mock | None
@@ -315,7 +319,7 @@ async def test_team_header_selects_a_team_the_caller_belongs_to(
 ) -> None:
     prisma = _mock_membership(mocker, org_id=ORG_A)
     prisma.teammember.find_unique = AsyncMock(
-        return_value=Mock(status="ACTIVE", Team=Mock(orgId=ORG_A))
+        return_value=Mock(status="ACTIVE", Team=Mock(orgId=ORG_A, archivedAt=None))
     )
 
     tenant = await resolve_tenant(
@@ -344,7 +348,7 @@ async def test_team_header_cannot_reach_another_orgs_team(
 ) -> None:
     prisma = _mock_membership(mocker, org_id=ORG_A)
     prisma.teammember.find_unique = AsyncMock(
-        return_value=Mock(status="ACTIVE", Team=Mock(orgId=ORG_B))
+        return_value=Mock(status="ACTIVE", Team=Mock(orgId=ORG_B, archivedAt=None))
     )
 
     with pytest.raises(NotAuthorizedError):
@@ -790,7 +794,7 @@ def _mock_membership(
         return_value=Mock(status=status, Org=Mock(id=org_id, deletedAt=deleted_at))
     )
     prisma.teammember.find_unique = AsyncMock(
-        return_value=Mock(status="ACTIVE", Team=Mock(orgId=org_id))
+        return_value=Mock(status="ACTIVE", Team=Mock(orgId=org_id, archivedAt=None))
     )
     return prisma
 
