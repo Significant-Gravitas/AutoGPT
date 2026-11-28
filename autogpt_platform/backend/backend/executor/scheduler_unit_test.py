@@ -57,7 +57,6 @@ from backend.executor.scheduler import (
     Scheduler,
     _best_effort_unschedule,
     _build_trigger,
-    _cleanup_old_schedules_without_id,
     _execute_copilot_turn,
     _execute_graph,
     _expert_scope_status,
@@ -1247,53 +1246,17 @@ async def test_self_delete_switches_off_the_routine_that_lost_the_job():
 
 
 # ---------------------------------------------------------------------------
-# _best_effort_unschedule / _cleanup_old_schedules_without_id
+# _best_effort_unschedule
 # ---------------------------------------------------------------------------
 
 
-def _schedule_info(schedule_id: str | None, job_id: str) -> MagicMock:
-    info = MagicMock()
-    info.schedule_id = schedule_id
-    info.id = job_id
-    return info
-
-
 @pytest.mark.asyncio
-async def test_unschedule_without_id_runs_targeted_graph_cleanup():
-    mock_client = AsyncMock()
-    mock_client.get_execution_schedules.return_value = [
-        _schedule_info(None, "legacy-job"),
-        _schedule_info("sched-9", "valid-job"),
-    ]
-    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
-        await _best_effort_unschedule(None, "graph-1", "user-1", reason="test")
-    # Only the schedule_id-less legacy job is deleted; valid ones survive.
-    mock_client.delete_schedule.assert_awaited_once_with(
-        schedule_id="legacy-job", user_id="user-1"
-    )
-
-
-@pytest.mark.asyncio
-async def test_unschedule_without_id_or_graph_is_a_no_op():
+async def test_unschedule_without_id_is_a_no_op():
     mock_client = AsyncMock()
     with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
-        await _best_effort_unschedule(None, None, "user-1", reason="test")
+        await _best_effort_unschedule(None, "user-1", reason="test")
     mock_client.delete_schedule.assert_not_awaited()
     mock_client.get_execution_schedules.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_cleanup_old_schedules_swallows_per_schedule_delete_errors():
-    mock_client = AsyncMock()
-    mock_client.get_execution_schedules.return_value = [
-        _schedule_info(None, "legacy-1"),
-        _schedule_info(None, "legacy-2"),
-    ]
-    mock_client.delete_schedule.side_effect = [RuntimeError("boom"), None]
-    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
-        # Must not raise, and must still attempt the second delete.
-        await _cleanup_old_schedules_without_id("graph-1", user_id="user-1")
-    assert mock_client.delete_schedule.await_count == 2
 
 
 # ---------------------------------------------------------------------------
