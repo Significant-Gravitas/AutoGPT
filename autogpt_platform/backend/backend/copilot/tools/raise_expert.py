@@ -38,7 +38,6 @@ from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
     capacity_error,
-    user_turn_watermark,
 )
 from .models import (
     ErrorResponse,
@@ -267,7 +266,6 @@ class RaiseExpertTool(BaseTool):
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
-                user_turn_watermark=user_turn_watermark(session),
                 handoff=handoff,
             )
         )

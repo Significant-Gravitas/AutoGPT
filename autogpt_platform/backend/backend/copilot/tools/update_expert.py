@@ -28,7 +28,6 @@ from .expert_proposal import (
     ExpertSoulSnapshot,
     autopilot_session_guard,
     store_proposal,
-    user_turn_watermark,
 )
 from .models import (
     ErrorResponse,
@@ -189,7 +188,6 @@ class UpdateExpertTool(BaseTool):
                     voice_preferences=expert.voice_preferences,
                     boundaries=expert.boundaries,
                 ),
-                user_turn_watermark=user_turn_watermark(session),
             ),
         )
         return ExpertChangeProposedResponse(
