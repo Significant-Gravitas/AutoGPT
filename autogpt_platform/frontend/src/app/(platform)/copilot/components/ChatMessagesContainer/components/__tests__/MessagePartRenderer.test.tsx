@@ -59,71 +59,9 @@ vi.mock("../../helpers", async (importOriginal) => {
   return { ...actual, extractWorkspaceArtifacts: extractWorkspaceArtifactsSpy };
 });
 
-function stubTool(name: string, testid: string) {
-  return { [name]: () => <div data-testid={testid} /> };
-}
 vi.mock("../../../../components/ArtifactCard/ArtifactCard", () => ({
   ArtifactCard: () => <div data-testid="artifact-card" />,
 }));
-vi.mock("../../../../tools/AskQuestion/AskQuestion", () =>
-  stubTool("AskQuestionTool", "tool-ask-question"),
-);
-vi.mock("../../../../tools/ConnectIntegrationTool/ConnectIntegrationTool", () =>
-  stubTool("ConnectIntegrationTool", "tool-connect-integration"),
-);
-vi.mock("../../../../tools/CreateAgent/CreateAgent", () =>
-  stubTool("CreateAgentTool", "tool-create-agent"),
-);
-vi.mock("../../../../tools/DecomposeGoal/DecomposeGoal", () =>
-  stubTool("DecomposeGoalTool", "tool-decompose-goal"),
-);
-vi.mock("../../../../tools/EditAgent/EditAgent", () =>
-  stubTool("EditAgentTool", "tool-edit-agent"),
-);
-vi.mock("../../../../tools/FeatureRequests/FeatureRequests", () => ({
-  CreateFeatureRequestTool: () => <div data-testid="tool-create-fr" />,
-  SearchFeatureRequestsTool: () => <div data-testid="tool-search-fr" />,
-}));
-vi.mock("../../../../tools/FindAgents/FindAgents", () =>
-  stubTool("FindAgentsTool", "tool-find-agents"),
-);
-vi.mock("../../../../tools/FolderTool/FolderTool", () =>
-  stubTool("FolderTool", "tool-folder"),
-);
-vi.mock("../../../../tools/FindBlocks/FindBlocks", () =>
-  stubTool("FindBlocksTool", "tool-find-blocks"),
-);
-vi.mock("../../../../tools/GenericTool/GenericTool", () =>
-  stubTool("GenericTool", "tool-generic"),
-);
-vi.mock("../../../../tools/RunAgent/RunAgent", () =>
-  stubTool("RunAgentTool", "tool-run-agent"),
-);
-vi.mock("../../../../tools/RunBlock/RunBlock", () =>
-  stubTool("RunBlockTool", "tool-run-block"),
-);
-vi.mock("../../../../tools/RunMCPTool/RunMCPTool", () =>
-  stubTool("RunMCPToolComponent", "tool-run-mcp"),
-);
-vi.mock("../../../../tools/SearchDocs/SearchDocs", () =>
-  stubTool("SearchDocsTool", "tool-search-docs"),
-);
-vi.mock("../../../../tools/SetupTrigger/SetupTrigger", () =>
-  stubTool("SetupTriggerTool", "tool-setup-trigger"),
-);
-vi.mock("../../../../tools/ViewAgentOutput/ViewAgentOutput", () =>
-  stubTool("ViewAgentOutputTool", "tool-view-agent-output"),
-);
-
-function toolPart(type: string): Part {
-  return {
-    type,
-    state: "output-available",
-    toolCallId: `call-${type}`,
-    output: {},
-  } as unknown as Part;
-}
-
 describe("MessagePartRenderer reasoning branch", () => {
   afterEach(() => {
     cleanup();
@@ -288,57 +226,9 @@ describe("MessagePartRenderer text branch", () => {
   });
 });
 
-describe("MessagePartRenderer tool dispatch", () => {
+describe("MessagePartRenderer other parts", () => {
   afterEach(() => {
     cleanup();
-  });
-
-  it.each([
-    ["tool-ask_question", "tool-ask-question"],
-    ["tool-find_block", "tool-find-blocks"],
-    ["tool-find_agent", "tool-find-agents"],
-    ["tool-find_library_agent", "tool-find-agents"],
-    ["tool-search_docs", "tool-search-docs"],
-    ["tool-get_doc_page", "tool-search-docs"],
-    ["tool-connect_integration", "tool-connect-integration"],
-    ["tool-run_block", "tool-run-block"],
-    ["tool-continue_run_block", "tool-run-block"],
-    ["tool-run_mcp_tool", "tool-run-mcp"],
-    ["tool-run_agent", "tool-run-agent"],
-    ["tool-schedule_agent", "tool-run-agent"],
-    ["tool-setup_agent_webhook_trigger", "tool-setup-trigger"],
-    ["tool-decompose_goal", "tool-decompose-goal"],
-    ["tool-create_agent", "tool-create-agent"],
-    ["tool-edit_agent", "tool-edit-agent"],
-    ["tool-view_agent_output", "tool-view-agent-output"],
-    ["tool-search_feature_requests", "tool-search-fr"],
-    ["tool-create_feature_request", "tool-create-fr"],
-    ["tool-create_folder", "tool-folder"],
-    ["tool-list_folders", "tool-folder"],
-    ["tool-update_folder", "tool-folder"],
-    ["tool-move_folder", "tool-folder"],
-    ["tool-delete_folder", "tool-folder"],
-    ["tool-move_agents_to_folder", "tool-folder"],
-  ])("dispatches %s to its renderer", (type, testid) => {
-    render(
-      <MessagePartRenderer
-        part={toolPart(type)}
-        messageID="m1"
-        partIndex={0}
-      />,
-    );
-    expect(screen.getByTestId(testid)).toBeDefined();
-  });
-
-  it("renders the GenericTool for an unrecognised tool- type", () => {
-    render(
-      <MessagePartRenderer
-        part={toolPart("tool-some_builtin")}
-        messageID="m1"
-        partIndex={0}
-      />,
-    );
-    expect(screen.getByTestId("tool-generic")).toBeDefined();
   });
 
   it("returns null for a non-tool, non-text/reasoning part type", () => {

@@ -1,9 +1,6 @@
 import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
-import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
-import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
-import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
 import { isQuestionTool } from "../QuestionDock/helpers";
 import {
   type ClarifyingQuestion,
@@ -210,19 +207,6 @@ export function isExpertChangePart(part: MessagePart): boolean {
   return target !== null && EXPERT_CHANGE_TOOLS.has(target);
 }
 
-export function isChainPart(part: MessagePart): boolean {
-  if (
-    part.type === COMPACTION_PART_TYPE ||
-    part.type === EXPERT_ONBOARDING_PART_TYPE ||
-    part.type === RENDER_UI_PART_TYPE ||
-    isFeedbackCardPart(part) ||
-    isExpertChangePart(part)
-  ) {
-    return false;
-  }
-  return part.type === "reasoning" || part.type.startsWith("tool-");
-}
-
 // Short assistant text sandwiched between tool calls is progress narration
 // ("Now searching for hotels."), not an answer — fold it into the chain so
 // back-to-back tool calls collapse into one group instead of splitting on
@@ -418,7 +402,7 @@ export type ChainSegment =
 
 export function buildChainSegments(
   parts: MessagePart[],
-  isChainable: (part: MessagePart) => boolean = isChainPart,
+  isChainable: (part: MessagePart) => boolean,
 ): ChainSegment[] {
   const segments: ChainSegment[] = [];
   let chain: Extract<ChainSegment, { kind: "chain" }> | null = null;
