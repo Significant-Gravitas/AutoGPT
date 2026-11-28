@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 
 import {
+  postV1ConfigureAutoTopUp,
   useGetV1GetAutoTopUp,
   usePostV1ConfigureAutoTopUp,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export function useAutoRefillCard() {
   const {
@@ -25,8 +28,27 @@ export function useAutoRefillCard() {
     },
   });
 
+  const pendingSave = useRef<{ data: AutoTopUpConfig; key: string } | null>(
+    null,
+  );
   const { mutateAsync: configureAutoTopUp, isPending: isSaving } =
-    usePostV1ConfigureAutoTopUp();
+    usePostV1ConfigureAutoTopUp({
+      mutation: {
+        mutationFn: ({ data }) => {
+          if (data.amount === 0) return postV1ConfigureAutoTopUp(data);
+          const previous = pendingSave.current;
+          const attempt =
+            previous?.data.amount === data.amount &&
+            previous.data.threshold === data.threshold
+              ? previous
+              : { data, key: uuidv4({}) };
+          pendingSave.current = attempt;
+          return postV1ConfigureAutoTopUp(data, {
+            headers: { "Idempotency-Key": attempt.key },
+          });
+        },
+      },
+    });
 
   const isEnabled = Boolean(config && (config.amount || config.threshold));
 
@@ -34,6 +56,10 @@ export function useAutoRefillCard() {
   const [threshold, setThreshold] = useState("");
   const [refillAmount, setRefillAmount] = useState("");
   const initializedForOpenRef = useRef(false);
+  // `isSaving` disables the buttons only after a re-render, so both clicks of
+  // a double-click would get through, and a save below the threshold charges
+  // the card.
+  const configuringRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
@@ -50,8 +76,11 @@ export function useAutoRefillCard() {
     initializedForOpenRef.current = true;
     // Backend minimum is $5 — pre-fill with the floor so the form is valid
     // by default and matches the "$5 minimum" copy in the empty state.
-    setThreshold(config?.threshold ? (config.threshold / 100).toString() : "5");
-    setRefillAmount(config?.amount ? (config.amount / 100).toString() : "5");
+    const initial = pendingSave.current?.data ?? config;
+    setThreshold(
+      initial?.threshold ? (initial.threshold / 100).toString() : "5",
+    );
+    setRefillAmount(initial?.amount ? (initial.amount / 100).toString() : "5");
   }, [open, config, isLoading]);
 
   const thresholdValue = Number.parseFloat(threshold);
@@ -67,15 +96,33 @@ export function useAutoRefillCard() {
     // Backend rejects refill < threshold with 422 — gate it client-side too.
     refillValue >= thresholdValue;
 
+  // Sends the request unless one is already in flight, and frees the guard as
+  // soon as it settles, when `isSaving` re-enables the buttons.
+  async function configureOnce(data: AutoTopUpConfig) {
+    if (configuringRef.current) return false;
+    configuringRef.current = true;
+    try {
+      await configureAutoTopUp({ data });
+      pendingSave.current = null;
+    } catch (error) {
+      if (data.amount && error instanceof ApiError && error.status === 402) {
+        pendingSave.current = null;
+      }
+      throw error;
+    } finally {
+      configuringRef.current = false;
+    }
+    return true;
+  }
+
   async function save() {
     if (!isValid) return;
     try {
-      await configureAutoTopUp({
-        data: {
-          amount: Math.round(refillValue * 100),
-          threshold: Math.round(thresholdValue * 100),
-        },
+      const sent = await configureOnce({
+        amount: Math.round(refillValue * 100),
+        threshold: Math.round(thresholdValue * 100),
       });
+      if (!sent) return;
       await refetch();
       setOpen(false);
     } catch (error) {
@@ -92,7 +139,8 @@ export function useAutoRefillCard() {
 
   async function disable() {
     try {
-      await configureAutoTopUp({ data: { amount: 0, threshold: 0 } });
+      const sent = await configureOnce({ amount: 0, threshold: 0 });
+      if (!sent) return;
       await refetch();
       setOpen(false);
     } catch (error) {

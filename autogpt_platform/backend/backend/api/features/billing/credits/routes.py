@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import Annotated
 
@@ -12,6 +13,7 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
 from backend.api.features.billing.client_country import ClientCountry
+from backend.api.features.billing.credits.auto_top_up_lock import auto_top_up_setup_lock
 from backend.api.model import RequestTopUp
 from backend.data.account_deletion import refuse_closed_account
 from backend.data.checkout_audience import schedule_checkout_opened
@@ -22,6 +24,7 @@ from backend.data.credit import (
     InvoiceListItem,
     RefundRequest,
     TransactionHistory,
+    UserCreditBase,
     get_auto_top_up,
     get_credit_model,
     set_auto_top_up,
@@ -125,6 +128,18 @@ async def configure_user_auto_top_up(
     request: AutoTopUpConfig,
     user_id: Annotated[str, Security(get_user_id)],
     ctx: BillingManagerContext,
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=200,
+            description=(
+                "Identifies this save. A repeat with the same key charges at "
+                "most once; without one, every request is a separate save."
+            ),
+        ),
+    ] = None,
 ) -> str:
     """Configure auto top-up settings and perform an immediate top-up if needed.
 
@@ -150,12 +165,51 @@ async def configure_user_auto_top_up(
     # Past the auth cache, before a charge: closing switched auto top-up off.
     await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
+    async with auto_top_up_setup_lock(user_id) as lock_state:
+        # Turning auto top-up off still waits for a save that is charging, or
+        # that save would write its settings back on after this one. It
+        # charges nothing, so it may go ahead when Redis can't be reached.
+        turning_off = not request.amount
+        if lock_state == "busy" or (lock_state != "held" and not turning_off):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Your auto top-up settings couldn't be saved right now."
+                    " Nothing was charged; please try again in a moment."
+                ),
+            )
+        # Waiting for another save can take a while; the account may have
+        # closed meanwhile, so look again before charging.
+        await refuse_closed_account(user_id)
+        await _charge_and_save_auto_top_up(
+            user_id,
+            request,
+            credit_model,
+            None if turning_off else idempotency_key or uuid.uuid4().hex,
+        )
+    return "Auto top-up settings updated"
+
+
+async def _charge_and_save_auto_top_up(
+    user_id: str,
+    request: AutoTopUpConfig,
+    credit_model: UserCreditBase,
+    request_key: str | None,
+) -> None:
+    """Charge now if the balance is under the new threshold, then save the
+    settings. Only a save holding ``auto_top_up_setup_lock`` passes a
+    ``request_key`` and charges. Under that lock the balance read here already
+    includes any earlier save's charge, and a repeat of a save that already
+    charged (same key) finds its credited top-up and doesn't charge again,
+    even when one refill from a negative balance left it under the threshold."""
     current_balance = await credit_model.get_credits(user_id)
 
     try:
         # An amount of 0 turns auto top-up off: nothing to charge or check.
-        if request.amount and current_balance < request.threshold:
-            await credit_model.top_up_credits(user_id, request.amount)
+        if request.amount and request_key and current_balance < request.threshold:
+            await credit_model.top_up_credits(
+                user_id, request.amount, idempotency_key=request_key
+            )
         elif request.amount:
             await credit_model.top_up_credits(user_id, 0)
     except NotImplementedError as e:
@@ -206,7 +260,6 @@ async def configure_user_auto_top_up(
     except HTTPException:
         await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
         raise
-    return "Auto top-up settings updated"
 
 
 @router.get(

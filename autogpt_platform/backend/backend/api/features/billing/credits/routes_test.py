@@ -1,25 +1,35 @@
 """Tests for the credit ledger routes."""
 
+import asyncio
+import contextlib
 import json
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock
 
 import fastapi
 import fastapi.testclient
+import httpx
 import pytest
 import pytest_mock
 import stripe
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
+from fakeredis.aioredis import FakeRedis
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
-from backend.api.features.billing.credits.routes import get_credit_history, router
+from backend.api.features.billing.credits.routes import (
+    configure_user_auto_top_up,
+    get_credit_history,
+    router,
+)
 from backend.api.rest_api import app as real_app
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.credit import (
     MAX_TOP_UP_AMOUNT,
     AutoTopUpConfig,
+    CardDeclinedError,
     UserCredit,
     UserCreditBase,
 )
@@ -65,6 +75,19 @@ def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
         "backend.api.features.billing.credits.routes.track_checkout_started",
         new_callable=AsyncMock,
     )
+
+
+@pytest.fixture(autouse=True)
+async def auto_top_up_lock_redis(
+    mocker: pytest_mock.MockFixture,
+) -> AsyncIterator[AsyncMock]:
+    """The auto top-up route locks the save in Redis before it charges."""
+    redis = FakeRedis()
+    yield mocker.patch(
+        "backend.api.features.billing.credits.auto_top_up_lock.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    )
+    await redis.aclose()
 
 
 @pytest.fixture(autouse=True)
@@ -366,12 +389,38 @@ def test_a_closed_account_cannot_set_auto_top_up(
     saved.assert_not_called()
 
 
+def test_an_account_closed_while_the_save_waits_for_its_lock_is_not_charged(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """The save waited behind another one, and the account closed meanwhile."""
+    account_open.side_effect = [
+        None,
+        fastapi.HTTPException(status_code=401, detail="This account is closed."),
+    ]
+    saved = mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    model = mocker.AsyncMock()
+    model.get_credits.return_value = 300
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 401
+    model.top_up_credits.assert_not_called()
+    saved.assert_not_called()
+
+
 def test_auto_top_up_set_as_the_account_closed_is_switched_off(
     mocker: pytest_mock.MockFixture, account_open: AsyncMock
 ) -> None:
     """The account closed while the request ran: closing's sweep may have
     switched auto top-up off already, so the write is undone here."""
     account_open.side_effect = [
+        None,
         None,
         fastapi.HTTPException(status_code=401, detail="This account is closed."),
     ]
@@ -503,6 +552,307 @@ def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
     assert "at most $999,999" in response.json()["detail"]
     credit_model.top_up_credits.assert_not_called()
     set_auto_top_up.assert_not_called()
+
+
+class _Ledger:
+    """A credit model whose top-ups, like the real ledger's, are idempotent per
+    request key: a key it already credited charges nothing."""
+
+    def __init__(self, start: int) -> None:
+        self.balance = start
+        self.charges: list[int] = []
+        self.credited: set[str | None] = set()
+
+    async def get_credits(self, user_id: str) -> int:
+        return self.balance
+
+    async def top_up_credits(
+        self, user_id: str, amount: int, idempotency_key: str | None = None
+    ) -> None:
+        if not amount or idempotency_key in self.credited:
+            return
+        self.charges.append(amount)
+        # The charge is a Stripe round trip; the balance moves after it.
+        await asyncio.sleep(0)
+        self.balance += amount
+        self.credited.add(idempotency_key)
+
+
+def _use_ledger(mocker: pytest_mock.MockFixture, ledger: _Ledger) -> AsyncMock:
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.side_effect = ledger.get_credits
+    credit_model.top_up_credits.side_effect = ledger.top_up_credits
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    return credit_model
+
+
+AUTO_TOP_UP_CTX = RequestContext(
+    user_id="user-1",
+    org_id="org-1",
+    team_id=None,
+    is_org_owner=True,
+    is_org_admin=True,
+    is_org_billing_manager=False,
+    is_team_admin=True,
+    is_team_billing_manager=False,
+    seat_status="ACTIVE",
+)
+
+
+async def _save(config: AutoTopUpConfig, key: str | None) -> str:
+    return await configure_user_auto_top_up(
+        request=config, user_id="user-1", ctx=AUTO_TOP_UP_CTX, idempotency_key=key
+    )
+
+
+@pytest.mark.parametrize(
+    "start, threshold, amount, key",
+    [
+        # Two separate saves: the second sees the first's credit in the balance.
+        (300, 500, 1000, None),
+        # The same save twice. From a negative balance one refill still leaves
+        # it under the threshold, so only the request's key stops the repeat.
+        (-100, 500, 500, "click-1"),
+    ],
+)
+async def test_concurrent_auto_top_up_saves_charge_the_card_once(
+    mocker: pytest_mock.MockFixture,
+    start: int,
+    threshold: int,
+    amount: int,
+    key: str | None,
+) -> None:
+    """#16840: two saves arrive together while the balance is under the new
+    threshold. Only the first may charge; the second must see its credit."""
+    ledger = _Ledger(start)
+    credit_model = _use_ledger(mocker, ledger)
+    both_reading = asyncio.Barrier(2)
+
+    async def get_credits(user_id: str) -> int:
+        # Forces the bad order: without a lock, both saves read the balance
+        # before either charge lands. With one, the second never gets here
+        # while the first waits, so the wait times out and the first goes on.
+        credits = ledger.balance
+        with contextlib.suppress(TimeoutError, asyncio.BrokenBarrierError):
+            async with asyncio.timeout(2):
+                await both_reading.wait()
+        return credits
+
+    credit_model.get_credits.side_effect = get_credits
+    config = AutoTopUpConfig(threshold=threshold, amount=amount)
+
+    results = await asyncio.gather(_save(config, key), _save(config, key))
+
+    assert results == ["Auto top-up settings updated"] * 2
+    assert ledger.charges == [amount]
+    assert ledger.balance == start + amount
+
+
+async def test_a_repeat_of_a_save_that_charged_does_not_charge_again(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A repeat of the same save can arrive after the first one let go of the
+    lock (it was still checking the account), so it takes the lock at once.
+    From -$1 the first refill leaves $4, under $5; the key stops the repeat,
+    and a separate save with its own key still charges."""
+    ledger = _Ledger(-100)
+    _use_ledger(mocker, ledger)
+    config = AutoTopUpConfig(threshold=500, amount=500)
+
+    await _save(config, "click-1")
+    await _save(config, "click-1")
+
+    assert ledger.charges == [500]
+    assert ledger.balance == 400
+
+    await _save(config, "click-2")
+
+    assert ledger.charges == [500, 500]
+
+
+def test_auto_top_up_charges_under_the_request_key(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The header names the save; without one each request is its own save."""
+    # Far enough under the threshold that every save charges.
+    credit_model = _use_ledger(mocker, _Ledger(-10_000))
+    body = {"threshold": 500, "amount": 1000}
+
+    client.post("/credits/auto-top-up", json=body, headers={"Idempotency-Key": "abc"})
+    client.post("/credits/auto-top-up", json=body)
+    client.post("/credits/auto-top-up", json=body)
+
+    keys = [
+        c.kwargs["idempotency_key"] for c in credit_model.top_up_credits.await_args_list
+    ]
+    assert keys[0] == "abc"
+    assert keys[1] and keys[2] and keys[1] != keys[2]
+
+
+def test_an_empty_request_key_is_refused(mocker: pytest_mock.MockFixture) -> None:
+    """An empty key can't name a save, and replacing it with a fresh one would
+    let two saves that sent it both charge."""
+    credit_model = _use_ledger(mocker, _Ledger(-100))
+
+    response = client.post(
+        "/credits/auto-top-up",
+        json={"threshold": 500, "amount": 500},
+        headers={"Idempotency-Key": ""},
+    )
+
+    assert response.status_code == 422
+    credit_model.top_up_credits.assert_not_called()
+
+
+async def test_saves_without_a_key_are_separate_saves(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Without a key nothing says two saves are the same one, so each charges
+    while the balance is under the threshold: from -$1 one $5 refill leaves $4.
+    The app sends a key per save; this is what a client that doesn't gets."""
+    ledger = _Ledger(-100)
+    _use_ledger(mocker, ledger)
+    config = AutoTopUpConfig(threshold=500, amount=500)
+
+    await asyncio.gather(_save(config, None), _save(config, None))
+
+    assert ledger.charges == [500, 500]
+    assert ledger.balance == 900
+
+
+def test_auto_top_up_is_not_charged_when_the_save_cannot_be_locked(
+    mocker: pytest_mock.MockFixture, auto_top_up_lock_redis: AsyncMock
+) -> None:
+    """Without the lock a concurrent save could charge too, so nothing is
+    charged or saved."""
+    auto_top_up_lock_redis.side_effect = ConnectionError("redis is down")
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 300
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 500, "amount": 1000}
+    )
+
+    assert response.status_code == 503
+    assert "Nothing was charged" in response.json()["detail"]
+    credit_model.top_up_credits.assert_not_called()
+    set_auto_top_up.assert_not_called()
+
+
+async def test_turning_auto_top_up_off_waits_for_a_save_that_is_charging(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """Tab A saves and is charging when tab B turns auto top-up off. B must wait,
+    or A writes its settings back on after B's and auto top-up stays on."""
+    charging = asyncio.Event()
+    finish_charge = asyncio.Event()
+    saved: list[AutoTopUpConfig] = []
+
+    async def top_up_credits(
+        user_id: str, amount: int, idempotency_key: str | None = None
+    ) -> None:
+        if amount:
+            charging.set()
+            async with asyncio.timeout(5):
+                await finish_charge.wait()
+
+    async def set_auto_top_up(user_id: str, config: AutoTopUpConfig) -> None:
+        saved.append(config)
+
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = -100
+    credit_model.top_up_credits.side_effect = top_up_credits
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up",
+        side_effect=set_auto_top_up,
+    )
+
+    save = asyncio.create_task(_save(AutoTopUpConfig(threshold=500, amount=500), "a"))
+    async with asyncio.timeout(5):
+        await charging.wait()
+    turn_off = asyncio.create_task(_save(AutoTopUpConfig(threshold=0, amount=0), None))
+    # Let the second save get as far as it can while the first is charging.
+    async with asyncio.timeout(5):
+        while account_open.await_count < 3:
+            await asyncio.sleep(0)
+    for _ in range(20):
+        await asyncio.sleep(0.01)
+    finish_charge.set()
+    await asyncio.gather(save, turn_off)
+
+    assert saved[-1] == AutoTopUpConfig(threshold=0, amount=0)
+
+
+def test_auto_top_up_can_be_turned_off_while_redis_is_down(
+    mocker: pytest_mock.MockFixture, auto_top_up_lock_redis: AsyncMock
+) -> None:
+    """Turning it off charges nothing, so it mustn't need the lock."""
+    auto_top_up_lock_redis.side_effect = ConnectionError("redis is down")
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 300
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post("/credits/auto-top-up", json={"threshold": 0, "amount": 0})
+
+    assert response.status_code == 200
+    credit_model.top_up_credits.assert_not_called()
+    assert set_auto_top_up.await_args_list[-1].args[1] == AutoTopUpConfig(
+        threshold=0, amount=0
+    )
+
+
+async def test_a_declined_save_frees_the_lock_for_the_retry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Both saves share one Redis, so a lock left behind by the decline would
+    make the retry wait it out and answer 503."""
+    mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 300
+    credit_model.top_up_credits.side_effect = [
+        CardDeclinedError("Your card was declined."),
+        None,
+    ]
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        declined = await async_client.post(
+            "/credits/auto-top-up", json={"threshold": 500, "amount": 1000}
+        )
+        retried = await asyncio.wait_for(
+            async_client.post(
+                "/credits/auto-top-up", json={"threshold": 500, "amount": 1000}
+            ),
+            timeout=5,
+        )
+
+    assert declined.status_code == 402
+    assert retried.status_code == 200
 
 
 def test_list_invoices_returns_mapped_payload(
@@ -664,6 +1014,10 @@ def test_configure_auto_top_up_with_a_declined_card_says_why(
     )
     credit_model = UserCredit()
     mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=balance))
+    mocker.patch(
+        "backend.data.credit._top_up_credited_for_request",
+        AsyncMock(return_value=False),
+    )
     mocker.patch.object(
         credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
     )

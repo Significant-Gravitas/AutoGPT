@@ -39,6 +39,16 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
 
+// Every request the handler holds waits on one promise, so releasing it
+// lets all of them finish, however many a regression sends.
+function holdRequests() {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { released, release: () => release() };
+}
+
 function makeWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -126,6 +136,40 @@ describe("useBalanceCard", () => {
     // Hook treats a no-checkout_url response as an error → modal stays open.
     // `surface` feeds the backend's checkout_started event.
     expect(capturedBody).toEqual({ credit_amount: 2500, surface: "billing" });
+  });
+
+  it("a double-click on handleSubmit starts one checkout", async () => {
+    let posts = 0;
+    const held = holdRequests();
+    server.use(
+      jsonHandler("get", "/api/credits", { credits: 1000 }),
+      http.post("*/api/credits", async () => {
+        posts += 1;
+        await held.released;
+        return HttpResponse.json({ checkout_url: null });
+      }),
+    );
+
+    const { result } = renderHook(() => useBalanceCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => result.current.setAmount("20"));
+
+      act(() => {
+        result.current.handleSubmit();
+        result.current.handleSubmit();
+      });
+
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
+    await waitFor(() => expect(result.current.isAdding).toBe(false));
+    expect(posts).toBe(1);
   });
 
   it("handleSubmit catches API failures and stops the spinner", async () => {
@@ -287,6 +331,173 @@ describe("useAutoRefillCard", () => {
 
     await waitFor(() => expect(result.current.isSaving).toBe(false));
     expect(capturedBody).toEqual({ amount: 0, threshold: 0 });
+  });
+
+  it("a double-click on save() sends one request, since a save can charge the card", async () => {
+    let posts = 0;
+    const held = holdRequests();
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+      http.post("*/api/credits/auto-top-up", async () => {
+        posts += 1;
+        await held.released;
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => {
+        result.current.setThreshold("5");
+        result.current.setRefillAmount("10");
+      });
+
+      act(() => {
+        result.current.save();
+        result.current.save();
+        result.current.disable();
+      });
+
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
+    await waitFor(() => expect(result.current.isSaving).toBe(false));
+    expect(posts).toBe(1);
+  });
+
+  it("a click once the save has answered goes through while the settings reload", async () => {
+    const bodies: { amount: number; threshold: number }[] = [];
+    let gets = 0;
+    const reload = holdRequests();
+    server.use(
+      http.get("*/api/credits/auto-top-up", async () => {
+        gets += 1;
+        if (gets > 1) await reload.released;
+        return HttpResponse.json({ amount: 0, threshold: 0 });
+      }),
+      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+        bodies.push((await request.json()) as (typeof bodies)[number]);
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      act(() => {
+        result.current.setThreshold("5");
+        result.current.setRefillAmount("10");
+      });
+
+      act(() => result.current.save());
+      await waitFor(() => expect(gets).toBe(2));
+      await waitFor(() => expect(result.current.isSaving).toBe(false));
+
+      act(() => result.current.disable());
+      await waitFor(() => expect(bodies).toHaveLength(2));
+    } finally {
+      act(() => reload.release());
+    }
+    expect(bodies[1]).toEqual({ amount: 0, threshold: 0 });
+  });
+
+  function renderAutoRefillWithResponses(
+    statuses: number[],
+    config = { amount: 1000, threshold: 500 },
+  ) {
+    const requests: { key: string | null; body: JsonBodyType }[] = [];
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", config),
+      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+        requests.push({
+          key: request.headers.get("Idempotency-Key"),
+          body: await request.json(),
+        });
+        const status = statuses[requests.length - 1];
+        return HttpResponse.json({}, { status });
+      }),
+    );
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+    async function submit(action: "save" | "disable" = "save") {
+      const count = requests.length;
+      act(() => result.current[action]());
+      await waitFor(() => expect(requests).toHaveLength(count + 1));
+      await waitFor(() => expect(result.current.isSaving).toBe(false));
+      return requests[count];
+    }
+    return { result, submit };
+  }
+
+  it("reopens an uncertain save with the submitted values and retries the same request", async () => {
+    const { result, submit } = renderAutoRefillWithResponses([504, 200], {
+      amount: 0,
+      threshold: 0,
+    });
+    act(() => result.current.setOpen(true));
+    await waitFor(() => expect(result.current.threshold).toBe("5"));
+    act(() => {
+      result.current.setThreshold("10");
+      result.current.setRefillAmount("10");
+    });
+    const first = await submit();
+    expect(first).toEqual({
+      key: expect.any(String),
+      body: { amount: 1000, threshold: 1000 },
+    });
+    act(() => result.current.setOpen(false));
+    act(() => result.current.setOpen(true));
+    expect(result.current.threshold).toBe("10");
+    expect(result.current.refillAmount).toBe("10");
+    act(() => result.current.setRefillAmount("10.00"));
+    expect(await submit()).toEqual(first);
+  });
+
+  it.each([
+    ["a successful save", 200],
+    ["a card decline", 402],
+    ["a changed threshold", 504],
+    ["a changed refill amount", 504],
+    ["a successful disable", 504],
+  ] as const)("uses a fresh key after %s", async (reason, status) => {
+    const { result, submit } = renderAutoRefillWithResponses([
+      status,
+      200,
+      200,
+    ]);
+    act(() => result.current.setOpen(true));
+    await waitFor(() => expect(result.current.refillAmount).toBe("10"));
+    const first = await submit();
+    if (reason === "a successful disable") {
+      expect((await submit("disable")).body).toEqual({
+        amount: 0,
+        threshold: 0,
+      });
+    }
+    if (reason === "a successful save" || reason === "a successful disable") {
+      await waitFor(() => expect(result.current.open).toBe(false));
+      act(() => result.current.setOpen(true));
+    }
+    if (reason === "a changed threshold")
+      act(() => result.current.setThreshold("6"));
+    if (reason === "a changed refill amount")
+      act(() => result.current.setRefillAmount("11"));
+    const next = await submit();
+    expect(next.key).toEqual(expect.any(String));
+    expect(next.key).not.toBe(first.key);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {

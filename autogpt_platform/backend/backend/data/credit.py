@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -267,7 +268,11 @@ class UserCreditBase(ABC):
 
     @abstractmethod
     async def top_up_credits(
-        self, user_id: str, amount: int, organization_id: str | None = None
+        self,
+        user_id: str,
+        amount: int,
+        organization_id: str | None = None,
+        idempotency_key: str | None = None,
     ):
         """
         Top up the credits for the user.
@@ -275,6 +280,8 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+            idempotency_key (str | None): Identifies the request. A top-up
+                already credited under this key returns without charging again.
         """
         pass
 
@@ -900,10 +907,14 @@ class UserCredit(UserCreditBase):
         user_id: str,
         amount: int,
         organization_id: str | None = None,
+        idempotency_key: str | None = None,
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
     ):
         await self._top_up_credits(
-            user_id=user_id, amount=amount, top_up_type=top_up_type
+            user_id=user_id,
+            amount=amount,
+            top_up_type=top_up_type,
+            idempotency_key=idempotency_key,
         )
 
     async def grant_credits(
@@ -1276,9 +1287,20 @@ class UserCredit(UserCreditBase):
         ceiling_balance: int | None = None,
         top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
         metadata: dict | None = None,
+        idempotency_key: str | None = None,
     ):
+        # A request that already paid returns as it did then. Callers that can
+        # send the same request twice serialize on it first (the auto top-up
+        # save holds a per-user lock), so a duplicate sees the credited row.
+        if idempotency_key is not None and await _top_up_credited_for_request(
+            user_id, idempotency_key
+        ):
+            return
+
         # init metadata, without sharing it with the world
         metadata = metadata or {}
+        if idempotency_key is not None:
+            metadata["idempotency_key"] = idempotency_key
         if not metadata.get("reason"):
             match top_up_type:
                 case TopUpType.MANUAL:
@@ -1371,10 +1393,24 @@ class UserCredit(UserCreditBase):
                             "enabled": True,
                             "allow_redirects": "never",
                         },
+                        # A retry of a request whose call timed out after
+                        # Stripe charged gets that charge back, not a new one.
+                        **_stripe_idempotency(
+                            user_id, idempotency_key, amount, payment_method.id
+                        ),
                     )
                     if payment_intent.status == "succeeded":
                         successful_transaction = SafeJson(
-                            {"payment_intent": payment_intent}
+                            {
+                                "payment_intent": payment_intent,
+                                # Activation replaces the row's key and
+                                # metadata, so the request's key goes here.
+                                **(
+                                    {"idempotency_key": idempotency_key}
+                                    if idempotency_key is not None
+                                    else {}
+                                ),
+                            }
                         )
                         new_transaction_key = payment_intent.id
                         charged = payment_intent
@@ -1701,6 +1737,39 @@ def _top_up_credits_for_cents(top_up: CreditTransaction, cents: int) -> int:
     if not charged or charged == top_up.amount:
         return cents
     return -(-top_up.amount * cents // charged)
+
+
+async def _top_up_credited_for_request(user_id: str, idempotency_key: str) -> bool:
+    """Whether a top-up for this request was already credited. An inactive one
+    (declined, or still unconfirmed) doesn't count, so the request can retry."""
+    rows = await query_raw_with_schema(
+        """
+        SELECT 1 FROM {schema_prefix}"CreditTransaction"
+        WHERE "userId" = $1
+          AND "type" = 'TOP_UP'
+          AND "isActive" = true
+          AND "metadata"->>'idempotency_key' = $2
+        LIMIT 1
+        """,
+        user_id,
+        idempotency_key,
+    )
+    return bool(rows)
+
+
+def _stripe_idempotency(
+    user_id: str, idempotency_key: str | None, amount: int, payment_method_id: str
+) -> stripe.RequestOptions:
+    """Stripe's own idempotency key for one card's charge of this request.
+    The amount and card are part of it: Stripe refuses a key reused with
+    different parameters, and each card is a separate attempt. Hashed to a
+    fixed length, since Stripe caps keys at 255 characters."""
+    if idempotency_key is None:
+        return {}
+    identity = dumps([user_id, idempotency_key, amount, payment_method_id])
+    return {
+        "idempotency_key": f"top-up-{hashlib.sha256(identity.encode()).hexdigest()}"
+    }
 
 
 def _auto_top_up_key(user_id: str, metadata: UsageTransactionMetadata) -> str:

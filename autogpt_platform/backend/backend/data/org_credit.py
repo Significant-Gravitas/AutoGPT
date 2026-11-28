@@ -433,6 +433,7 @@ class OrgCreditModel(UserCreditBase):
         user_id: str,
         amount: int,
         organization_id: str | None = None,
+        idempotency_key: str | None = None,
         **kwargs,
     ):
         # Org-level billing has no payment path yet. Until top_up_intent and
