@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import Optional, cast
@@ -1093,7 +1094,7 @@ async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
     mock_get_event_bus.return_value = mock_event_bus
 
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
     mock_get_child_executions.return_value = []  # No children
 
@@ -1164,7 +1165,7 @@ async def test_stop_graph_execution_with_database_manager_when_prisma_disconnect
     mock_get_event_bus.return_value = mock_event_bus
 
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
     mock_get_child_executions.return_value = []  # No children
 
@@ -1250,14 +1251,14 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
     mock_event_bus.publish = mocker.AsyncMock()
     mock_get_event_bus.return_value = mock_event_bus
 
-    # Mock _get_child_executions to return the child
+    # Mock the child lookup to return the child
     mock_get_child_executions = mocker.patch(
-        "backend.executor.utils._get_child_executions"
+        "backend.executor.utils._get_unfinished_child_execution_ids"
     )
 
     def get_children_side_effect(parent_id):
         if parent_id == parent_exec_id:
-            return [mock_child_exec]
+            return [child_exec_id]
         return []
 
     mock_get_child_executions.side_effect = get_children_side_effect
@@ -1277,6 +1278,177 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify both parent and child status updates
     assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+@pytest.fixture
+def child_stops(mocker: MockerFixture):
+    """A parent run with 12 unfinished children (no grandchildren), whose
+    cancels are recorded with how many are in flight at once."""
+    from backend.executor import utils
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    children = [f"child-{n}" for n in range(3 * utils.CHILD_STOP_CONCURRENCY)]
+    mocker.patch(
+        "backend.executor.utils._get_unfinished_child_execution_ids",
+        side_effect=lambda parent_id: children if parent_id == "parent" else [],
+    )
+    state = {"in_flight": 0, "most": 0, "cancelled": [], "failing": None}
+
+    async def publish_message(*, message: str, **_: object) -> None:
+        run_id = utils.CancelExecutionEvent.model_validate_json(message).graph_exec_id
+        state["in_flight"] += 1
+        state["most"] = max(state["most"], state["in_flight"])
+        await asyncio.sleep(0)
+        state["in_flight"] -= 1
+        if run_id == state["failing"]:
+            raise RuntimeError("queue unavailable")
+        state["cancelled"].append(run_id)
+
+    queue = mocker.AsyncMock()
+    queue.publish_message.side_effect = publish_message
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+    state["children"] = children
+    return state
+
+
+@pytest.mark.asyncio
+async def test_a_runs_children_are_stopped_a_few_at_a_time(child_stops):
+    from backend.executor.utils import CHILD_STOP_CONCURRENCY, stop_graph_execution
+
+    await stop_graph_execution(user_id="u", graph_exec_id="parent", wait_timeout=0)
+
+    assert sorted(child_stops["cancelled"]) == sorted(
+        child_stops["children"] + ["parent"]
+    )
+    assert child_stops["most"] == CHILD_STOP_CONCURRENCY
+
+
+@pytest.mark.asyncio
+async def test_a_child_that_fails_to_stop_does_not_stop_the_parents_cancel(
+    child_stops,
+):
+    from backend.executor.utils import stop_graph_execution
+
+    child_stops["failing"] = child_stops["children"][0]
+
+    await stop_graph_execution(user_id="u", graph_exec_id="parent", wait_timeout=0)
+
+    assert "parent" in child_stops["cancelled"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wait_timeout,child_wait", [(15.0, 1.0), (0, 0)])
+async def test_a_child_stop_waits_at_most_briefly(
+    mocker: MockerFixture, child_stops, wait_timeout: float, child_wait: float
+):
+    from backend.data.execution import ExecutionStatus
+    from backend.executor import utils
+
+    stop = utils.stop_graph_execution
+    child_waits: dict[str, float] = {}
+
+    async def record_child(*, graph_exec_id: str, wait_timeout: float, **_) -> None:
+        child_waits[graph_exec_id] = wait_timeout
+
+    mocker.patch.object(utils, "stop_graph_execution", side_effect=record_child)
+    mocker.patch.object(
+        utils.execution_db,
+        "get_graph_execution_meta",
+        new=mocker.AsyncMock(
+            return_value=mocker.MagicMock(status=ExecutionStatus.TERMINATED)
+        ),
+    )
+    bus = mocker.patch("backend.executor.utils.get_async_execution_event_bus")
+    bus.return_value.publish = mocker.AsyncMock()
+
+    await stop(user_id="u", graph_exec_id="parent", wait_timeout=wait_timeout)
+
+    assert child_waits == {child: child_wait for child in child_stops["children"]}
+
+
+@pytest.mark.asyncio
+async def test_a_queued_child_stopped_by_its_parent_is_cancelled_again_once_written(
+    mocker: MockerFixture,
+):
+    """A child the cascade stops gets the same stop as a run stopped directly:
+    written TERMINATED, then cancelled again, before the parent's cancel."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor import utils
+
+    statuses = {"parent": ExecutionStatus.TERMINATED, "child": ExecutionStatus.QUEUED}
+    events: list[tuple[str, str]] = []
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
+    mocker.patch(
+        "backend.executor.utils._get_unfinished_child_execution_ids",
+        side_effect=lambda parent_id: ["child"] if parent_id == "parent" else [],
+    )
+
+    async def publish_message(*, message: str, **_: object) -> None:
+        run_id = utils.CancelExecutionEvent.model_validate_json(message).graph_exec_id
+        events.append(("cancel", run_id))
+
+    queue = mocker.AsyncMock()
+    queue.publish_message.side_effect = publish_message
+    mocker.patch("backend.executor.utils.get_async_execution_queue", return_value=queue)
+
+    def read(*, execution_id: str, user_id: str) -> GraphExecutionMeta:
+        run = mocker.MagicMock(spec=GraphExecutionMeta)
+        run.id = execution_id
+        run.status = statuses[execution_id]
+        return run
+
+    def write(*, graph_exec_id: str, status: ExecutionStatus) -> None:
+        statuses[graph_exec_id] = status
+        events.append((status.value, graph_exec_id))
+
+    execution_db = mocker.patch("backend.executor.utils.execution_db")
+    execution_db.get_graph_execution_meta = mocker.AsyncMock(side_effect=read)
+    execution_db.update_graph_execution_stats = mocker.AsyncMock(side_effect=write)
+    bus = mocker.patch("backend.executor.utils.get_async_execution_event_bus")
+    bus.return_value.publish = mocker.AsyncMock()
+
+    await utils.stop_graph_execution(user_id="u", graph_exec_id="parent")
+
+    assert events == [
+        ("cancel", "child"),
+        ("TERMINATED", "child"),
+        ("cancel", "child"),
+        ("cancel", "parent"),
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prisma_connected", [True, False])
+async def test_the_child_lookup_goes_through_the_database_manager_without_prisma(
+    mocker: MockerFixture, prisma_connected: bool
+):
+    from backend.data.db_manager import DatabaseManagerAsyncClient
+    from backend.executor import utils
+
+    mocker.patch("backend.executor.utils.prisma").is_connected.return_value = (
+        prisma_connected
+    )
+    client = mocker.MagicMock(spec_set=DatabaseManagerAsyncClient)
+    mocker.patch.object(
+        client,
+        "get_unfinished_child_graph_execution_ids",
+        new=mocker.AsyncMock(return_value=["via-database-manager"]),
+    )
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=client,
+    )
+    mocker.patch.object(
+        utils.execution_db,
+        "get_unfinished_child_graph_execution_ids",
+        new=mocker.AsyncMock(return_value=["via-prisma"]),
+    )
+
+    child_ids = await utils._get_unfinished_child_execution_ids("parent")
+
+    assert child_ids == (
+        ["via-prisma"] if prisma_connected else ["via-database-manager"]
+    )
 
 
 # ---------------------------------------------------------------------------
