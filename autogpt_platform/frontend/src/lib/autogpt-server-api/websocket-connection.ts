@@ -39,6 +39,10 @@ const SIGN_IN_TIMEOUT_MS = 30_000;
 // opening a shard's event stream for one can take it up to 15 s (OPEN_TIMEOUT_S
 // in backend/data/sharded_pubsub.py); each answer to a subscribe restarts this.
 const RESUBSCRIBED_TIMEOUT_MS = 30_000;
+// A view that keeps subscribing while an ordering ping is out would hold
+// the reconnect notice back round after round, so after this many rounds
+// the notice goes out anyway, with the subscriptions still unconfirmed.
+const MAX_RESUBSCRIBE_ROUNDS = 3;
 // After a mass disconnect (a deploy) every tab reconnects in the same retry
 // window, so each waits a random part of this before its views refetch.
 const RECONNECT_REFETCH_SPREAD_MS = 2000;
@@ -68,6 +72,7 @@ export class BackendWebSocket {
   // What makes the views re-read at the next caught-up pong.
   private rereadAfterReconnect = false;
   private rereadAfterRetries = false;
+  private resubscribeRounds = 0;
   private watchingPage = false;
   private retries = new SubscribeRetries((request) =>
     this.resubscribe(request),
@@ -90,8 +95,12 @@ export class BackendWebSocket {
   send(message: string): boolean {
     if (!this.socket || !this.connected) return false;
     this.socket.send(message);
-    // The pong to an ordering ping already sent can't vouch for this.
-    if (this.pongsUntilResubscribed > 0) this.sentDuringResubscribeCheck = true;
+    // The pong to an ordering ping already sent can't vouch for this, but
+    // only a subscribe needs the server to have handled it before the views
+    // refetch: anything else a view sends while a ping is out doesn't.
+    if (this.pongsUntilResubscribed > 0 && isSubscribe(message)) {
+      this.sentDuringResubscribeCheck = true;
+    }
     return true;
   }
 
@@ -226,31 +235,49 @@ export class BackendWebSocket {
       --this.pongsUntilResubscribed === 0
     ) {
       if (this.sentDuringResubscribeCheck) {
-        // A view subscribed after the ping: ask again, so no view re-reads
-        // before the server has handled its subscription.
-        this.checkResubscribed(socket, generation);
-        return;
+        if (this.resubscribeRounds < MAX_RESUBSCRIBE_ROUNDS) {
+          // A view subscribed after the ping: ask again, so no view re-reads
+          // before the server has handled its subscription.
+          this.checkResubscribed(socket, generation);
+          return;
+        }
+        // The rounds are capped: the notice goes out anyway, with the
+        // subscriptions still unconfirmed, rather than holding it back
+        // while a view keeps subscribing.
       }
-      this.caughtUp();
+      if (this.caughtUp() && this.retries.awaitingConfirmation) {
+        // A subscribe retry sent after the answered ping is still
+        // unconfirmed: the notice above went out before the server handled
+        // it, so ask again — the pong to this ping vouches for it, and the
+        // views re-read once it lands. The notice stays bounded to three
+        // rounds; this check runs after it, not instead of it.
+        this.rereadAfterRetries = true;
+        this.checkResubscribed(socket, generation);
+      }
     }
   }
 
   // The server has handled everything sent before the last ping. After a
   // reconnect the views re-read at once: the subscriptions that went through
   // are live. A subscribe still being retried makes them re-read once more
-  // when it settles, so the last read follows it.
-  private caughtUp() {
+  // when it settles, so the last read follows it. True when the views were
+  // told to re-read.
+  private caughtUp(): boolean {
     this.retries.settle();
     const retrying = this.retries.waiting;
     if (this.rereadAfterReconnect) {
       // A reconnect only counts as healthy once it has caught up.
       this.startHealthyTimer();
     } else if (!this.rereadAfterRetries || retrying) {
-      return;
+      return false;
     }
     this.rereadAfterReconnect = false;
     this.rereadAfterRetries = retrying;
+    // A notice ends this round of ordering checks: the next one, if any,
+    // gets its own three rounds.
+    this.resubscribeRounds = 0;
     this.handlers.onReconnect();
+    return true;
   }
 
   // A pong follows backend authentication; transport open alone does not.
@@ -281,6 +308,10 @@ export class BackendWebSocket {
   private checkResubscribed(socket: WebSocket, generation: number) {
     if (!this.current(socket, generation) || !this.connected) return;
     this.sentDuringResubscribeCheck = false;
+    this.resubscribeRounds += 1;
+    // The pong to this ping vouches for the retries already sent, and for
+    // nothing sent after it.
+    this.retries.markPingCovered();
     this.ping(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
     this.pongsUntilResubscribed = this.pongsOwed;
   }
@@ -379,6 +410,7 @@ export class BackendWebSocket {
     this.pongsOwed = 0;
     this.pongsUntilResubscribed = 0;
     this.sentDuringResubscribeCheck = false;
+    this.resubscribeRounds = 0;
   }
 
   private watchPage() {
@@ -420,6 +452,24 @@ function hasDisconnectIntent(): boolean {
   if (!environment.isClientSide()) return false;
   try {
     return hasWebSocketDisconnectIntent();
+  } catch {
+    return false;
+  }
+}
+
+// A subscribe, the only send the ordering check counts: the server must
+// have handled it before the views refetch. Anything else a view sends
+// while a ping is out doesn't restart the check.
+function isSubscribe(message: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(message);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "method" in parsed &&
+      typeof parsed.method === "string" &&
+      parsed.method.startsWith("subscribe_")
+    );
   } catch {
     return false;
   }

@@ -318,6 +318,128 @@ describe("WebSocket recovery and logout", () => {
     expect(reconnected).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies anyway once the ordering-ping rounds are capped, even when a view keeps subscribing", async () => {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(0);
+    // A view subscribes after each ping, so each pong starts another round —
+    // until the cap, when the notice goes out anyway instead of a fourth ping.
+    for (let round = 0; round < 3; round++) {
+      void api.subscribeToGraphExecutions(`graph-${round}` as GraphID);
+      second.pong();
+      // The first two pongs restart the rounds; the third notifies.
+      if (round < 2) expect(reconnected).not.toHaveBeenCalled();
+    }
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    expect(
+      second.send.mock.calls.map(([data]) => JSON.parse(data).method),
+    ).toEqual([
+      "authenticate",
+      "heartbeat",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+    ]);
+  });
+
+  // A subscribe retry sent after the answered ordering ping is not covered
+  // by it: it stays pending, with its attempt count, until a later ping
+  // vouches for it — and the views re-read once it does.
+  async function driveToCappedNoticeWithLateRetry() {
+    const reconnected = vi.fn();
+    api.onWebSocketReconnect(reconnected);
+    api.onWebSocketConnect(
+      () => void api.subscribeToGraphExecutions("graph-1" as GraphID),
+    );
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.pong();
+    first.serverClose(1011);
+    await vi.advanceTimersByTimeAsync(500);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    await vi.advanceTimersByTimeAsync(0);
+    // The server refuses the graph-1 subscribe: it will be sent again.
+    const refuseGraph1 = () =>
+      second.receive({
+        method: "error",
+        success: false,
+        error: "Redis did not confirm the subscription in time",
+        retryable: true,
+        request: {
+          method: "subscribe_graph_executions",
+          data: { graph_id: "graph-1" },
+        },
+      });
+    refuseGraph1();
+    // A view subscribes after each ordering ping, so each pong starts
+    // another round — until the cap, when the notice goes out anyway.
+    for (const graph of ["graph-2", "graph-3"]) {
+      void api.subscribeToGraphExecutions(graph as GraphID);
+      second.pong();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    // The retry goes out after the third ordering ping.
+    await vi.advanceTimersByTimeAsync(500);
+    second.pong();
+    return { second, reconnected, refuseGraph1 };
+  }
+
+  it("re-checks after the capped notice when a retry went out after the answered ping", async () => {
+    const { second, reconnected } = await driveToCappedNoticeWithLateRetry();
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    // The notice went out, but the retry is still unconfirmed, so a
+    // follow-up ordering ping is out too — the pong to it vouches for it.
+    expect(
+      second.send.mock.calls.map(([data]) => JSON.parse(data).method),
+    ).toEqual([
+      "authenticate",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+      "subscribe_graph_executions",
+      "heartbeat",
+    ]);
+    second.pong();
+    expect(reconnected).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the retry's attempt count when it survives the capped notice", async () => {
+    const { second, refuseGraph1 } = await driveToCappedNoticeWithLateRetry();
+    const subscribes = () =>
+      second.send.mock.calls.filter(
+        ([data]) => JSON.parse(data).method === "subscribe_graph_executions",
+      ).length;
+    // graph-1, graph-2, graph-3, and the graph-1 retry.
+    expect(subscribes()).toBe(4);
+    // The server refuses the retry again: it goes out on the second
+    // backoff step (1 s), not the first (500 ms), because its attempt
+    // count survived the capped notice.
+    refuseGraph1();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(subscribes()).toBe(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(subscribes()).toBe(5);
+  });
+
   it("keeps waiting while the server is still answering the resubscriptions", async () => {
     void api.connectWebSocket();
     const first = await socketAt();

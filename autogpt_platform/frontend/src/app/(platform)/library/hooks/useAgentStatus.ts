@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { listAllExecutionsQueryFn } from "@/components/layout/Navbar/components/AgentActivityDropdown/useLiveUpdateLog";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -101,7 +102,7 @@ export function useAgentStatusMap(
   agents: LibraryAgent[],
 ): Map<string, AgentStatusInfo> {
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: okData, queryFn: listAllExecutionsQueryFn },
   });
 
   return useMemo(() => {
@@ -148,7 +149,7 @@ export function getAgentStatus(
 
 export function useFleetSummary(agents: LibraryAgent[]): FleetSummary {
   const { data: executions } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: okData, queryFn: listAllExecutionsQueryFn },
   });
 
   return useMemo(() => {

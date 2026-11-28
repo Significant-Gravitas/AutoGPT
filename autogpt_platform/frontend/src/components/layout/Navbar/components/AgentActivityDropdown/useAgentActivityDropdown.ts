@@ -2,6 +2,7 @@ import {
   getGetV1ListAllExecutionsQueryKey,
   useGetV1ListAllExecutions,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 
 import { okData } from "@/app/api/helpers";
 import {
@@ -24,7 +25,7 @@ import {
   relabelNotifications,
   removeExecutionFromAllCategories,
 } from "./helpers";
-import { useLiveUpdateLog } from "./useLiveUpdateLog";
+import { listAllExecutionsQueryFn, useLiveUpdateLog } from "./useLiveUpdateLog";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -47,7 +48,11 @@ export function useAgentActivityDropdown() {
   } = useGetV1ListAllExecutions({
     // The list mounts with the account menu, and a copy cached before the
     // menu opened can miss every run since.
-    query: { select: okData, refetchOnMount: "always" },
+    query: {
+      select: okData,
+      refetchOnMount: "always",
+      queryFn: listAllExecutionsQueryFn,
+    },
   });
 
   // Get all graph IDs from agentInfoMap
@@ -88,35 +93,44 @@ export function useAgentActivityDropdown() {
       executions,
       listHasEveryRun(executions),
     );
-    setNotifications((shown) =>
-      newer.reduce(
-        (state, execution) =>
-          handleExecutionUpdate(state, execution, agentInfoMap),
-        keepActiveRunsTheListOmits(shown, fromList, executions),
-      ),
+    // The runs to read come from the state this rebuild produces, not the
+    // rendered one: a live update between the two could make the check read
+    // a run that just ended, or skip one. The updater form keeps the
+    // setState out of the effect body (see react-hooks/set-state-in-effect);
+    // it returns the same state the check reads below.
+    const rebuilt = newer.reduce(
+      (state, execution) =>
+        handleExecutionUpdate(state, execution, agentInfoMap),
+      keepActiveRunsTheListOmits(notifications, fromList, executions),
     );
+    setNotifications(() => rebuilt);
     processedListRef.current = dataUpdatedAt;
-    if (!listAfterReconnectRef.current) return;
-    listAfterReconnectRef.current = false;
-    void omittedRuns.check({
-      runs: activeRunsTheListOmits(notifications, executions),
+    const leftOut = activeRunsTheListOmits(rebuilt, executions);
+    const readArgs = {
       log: liveUpdates,
-      onRead: (run) =>
+      onRead: (run: GraphExecutionMeta) =>
         setNotifications((state) =>
           handleExecutionUpdate(state, run, agentInfoMap),
         ),
-      onGone: (runID) =>
+      onGone: (runID: string) =>
         setNotifications((state) =>
           calculateTotalCount(removeExecutionFromAllCategories(state, runID)),
         ),
-    });
+    };
+    if (listAfterReconnectRef.current) {
+      listAfterReconnectRef.current = false;
+      void omittedRuns.check({ runs: leftOut, ...readArgs });
+      return;
+    }
+    // Later list refreshes carry the runs the reconnect check never got to
+    // (past the first ten) and retry reads that failed, for those runs only.
+    void omittedRuns.followUp({ runs: leftOut, ...readArgs });
   }, [
     executions,
     executionsSuccess,
     dataUpdatedAt,
     agentInfoMap,
     liveUpdates,
-    notifications,
     omittedRuns,
   ]);
 

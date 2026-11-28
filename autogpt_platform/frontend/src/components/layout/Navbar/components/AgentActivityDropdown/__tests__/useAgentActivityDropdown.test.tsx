@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
+  getGetV1GetExecutionDetailsMockHandler,
+  getGetV1GetExecutionDetailsResponseMock,
   getGetV1ListAllExecutionsMockHandler,
   getGetV1ListAllExecutionsResponseMock,
 } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
@@ -12,15 +14,23 @@ import { getGetV2ListLibraryAgentsResponseMock } from "@/app/api/__generated__/e
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { server } from "@/mocks/mock-server";
+import {
+  resetSharedLiveUpdateLog,
+  useLiveUpdateLog,
+} from "../useLiveUpdateLog";
 import { useAgentActivityDropdown } from "../useAgentActivityDropdown";
 
 const executionHandlers = new Set<(execution: GraphExecution) => void>();
+const reconnectHandlers = new Set<() => void>();
 
 vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: () => ({
     onWebSocketConnect: () => () => {},
     onWebSocketDisconnect: () => () => {},
-    onWebSocketReconnect: () => () => {},
+    onWebSocketReconnect: (handler: () => void) => {
+      reconnectHandlers.add(handler);
+      return () => reconnectHandlers.delete(handler);
+    },
     onWebSocketMessage: (
       _method: string,
       handler: (execution: GraphExecution) => void,
@@ -37,6 +47,8 @@ let releaseHeldPage: (() => void) | undefined;
 
 beforeEach(() => {
   executionHandlers.clear();
+  reconnectHandlers.clear();
+  resetSharedLiveUpdateLog();
 });
 
 // Settle the held page even when a test fails before releasing it.
@@ -170,5 +182,129 @@ describe("useAgentActivityDropdown", () => {
     );
     expect(result.current.activeExecutions).toHaveLength(1);
     expect(result.current.recentCompletions[0]?.id).toBe("run-1");
+  });
+
+  test("a read answered after a complete list dropped its run does not bring the run back", async () => {
+    const releasePage2 = serveLibrary();
+    const run1 = runningExecution("run-1", "g-120");
+    let listCalls = 0;
+    server.use(
+      getGetV1ListAllExecutionsMockHandler(() => {
+        listCalls += 1;
+        if (listCalls === 1) return [run1];
+        if (listCalls === 2) {
+          // Capped at the newest 250: run-1 is left out, not gone.
+          return Array.from({ length: 250 }, (_, i) => ({
+            ...runningExecution(`other-${i}`, `g-${i}`),
+          }));
+        }
+        return [];
+      }),
+    );
+    let releaseDetails!: () => void;
+    const detailsHeld = new Promise<void>((resolve) => {
+      releaseDetails = resolve;
+    });
+    // The detail request itself: resolves once the held response is
+    // produced, so awaiting it waits for MSW and response parsing rather
+    // than for a timer.
+    let detailRequest: Promise<unknown> | undefined;
+    let detailReads = 0;
+    server.use(
+      getGetV1GetExecutionDetailsMockHandler(async () => {
+        detailReads += 1;
+        const request = (async () => {
+          if (detailReads === 1) await detailsHeld;
+          return {
+            ...getGetV1GetExecutionDetailsResponseMock(),
+            ...run1,
+            inputs: {},
+            outputs: {},
+            node_executions: [],
+          };
+        })();
+        if (detailReads === 1) detailRequest = request;
+        return request;
+      }),
+    );
+    // The shared log the hook reads through: finishRead runs once the held
+    // read's answer is in, right before the hook's detail callback, so
+    // waiting for it proves the answer was consumed rather than still in
+    // flight when the final assertions run.
+    const { result: logResult } = renderHook(() => useLiveUpdateLog(), {
+      wrapper: makeWrapper(),
+    });
+    const finishRead = vi.spyOn(logResult.current, "finishRead");
+
+    const { result } = renderHook(() => useAgentActivityDropdown(), {
+      wrapper: makeWrapper(),
+    });
+    try {
+      await waitFor(() =>
+        expect(result.current.activeExecutions).toHaveLength(1),
+      );
+      releasePage2();
+
+      // First reconnect: the capped list leaves run-1 out, so the check reads
+      // it by ID — and the read is held open.
+      act(() => {
+        reconnectHandlers.forEach((handler) => handler());
+      });
+      await waitFor(() => expect(detailReads).toBe(1));
+      await waitFor(() =>
+        expect(result.current.activeExecutions.map((run) => run.id)).toContain(
+          "run-1",
+        ),
+      );
+
+      // Second reconnect: a list of fewer than 250 runs drops run-1, because
+      // a short list covers every run.
+      act(() => {
+        reconnectHandlers.forEach((handler) => handler());
+      });
+      await waitFor(() =>
+        expect(result.current.activeExecutions).toHaveLength(0),
+      );
+
+      // Now the held read answers, still showing run-1 going. The complete
+      // list already settled it, so the run stays gone.
+      act(() => releaseDetails());
+      await act(async () => {
+        await detailRequest;
+      });
+      await waitFor(() =>
+        expect(finishRead).toHaveBeenCalledWith(
+          "run-1",
+          expect.anything(),
+          expect.anything(),
+          false,
+        ),
+      );
+      expect(result.current.activeExecutions).toHaveLength(0);
+      expect(
+        result.current.activeExecutions.map((run) => run.id),
+      ).not.toContain("run-1");
+    } finally {
+      // Release unconditionally: the detail request can reach the
+      // handler after the detailReads wait times out, leaving
+      // detailReads at zero while the handler is still parked on
+      // detailsHeld. Resolving an already-resolved promise is a no-op,
+      // so releasing twice is safe; the waits below stay conditional
+      // on a request having been observed.
+      act(() => releaseDetails());
+      if (detailReads > 0) {
+        const request = detailRequest;
+        if (request) await request;
+        await waitFor(() =>
+          expect(finishRead).toHaveBeenCalledWith(
+            "run-1",
+            expect.anything(),
+            expect.anything(),
+            false,
+          ),
+        ).catch(() => {});
+      }
+      finishRead.mockRestore();
+    }
   });
 });
