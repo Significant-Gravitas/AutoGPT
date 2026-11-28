@@ -1,0 +1,72 @@
+name: AutoGPT Platform - Back-merge master into dev
+
+# Every push to master that dev lacks is merged into dev at once: a clean merge
+# is pushed straight to dev, a conflicting one becomes a draft PR for a human.
+# The logic and its tests are in .github/workflows/scripts/backmerge.sh.
+#
+# Runs as a GitHub App because GITHUB_TOKEN cannot be put on a ruleset's bypass
+# list, and dev's rulesets (dev-2: linear history, merge queue, status checks;
+# dev-3: pull request) refuse a merge commit pushed by anyone not on it. The
+# admin setup is in the "Check the App is configured" step below.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print what would happen; push nothing and open no PR
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  backmerge:
+    # Only master's copy may run with the App's bypass: a dispatch from another
+    # branch would run that branch's script with it. The job writes only to dev
+    # and backmerge/*, never to master, so its own pushes cannot re-trigger it.
+    if: github.repository == 'Significant-Gravitas/AutoGPT' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # On the job, not the workflow: a run this job skips must not take the
+    # group. Each run merges master's tip, so a replaced pending run loses nothing.
+    concurrency:
+      group: backmerge-master-into-dev
+      cancel-in-progress: false
+    steps:
+      - name: Check the App is configured
+        if: ${{ !inputs.dry_run }}
+        env:
+          APP_ID: ${{ vars.BACKMERGE_APP_ID }}
+          HAS_KEY: ${{ secrets.BACKMERGE_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -z "$APP_ID" ] || [ "$HAS_KEY" != true ]; then
+            echo "::error title=Back-merge App not configured::Set the repository variable BACKMERGE_APP_ID and the secret BACKMERGE_APP_PRIVATE_KEY for a GitHub App installed on this repository with Contents and Pull requests read and write, and add that App to the bypass list (Always allow) of the dev-2 and dev-3 rulesets."
+            exit 1
+          fi
+
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        if: ${{ !inputs.dry_run }}
+        id: app-token
+        with:
+          app-id: ${{ vars.BACKMERGE_APP_ID }}
+          private-key: ${{ secrets.BACKMERGE_APP_PRIVATE_KEY }}
+          permission-contents: write # push the merge to dev, push backmerge/*
+          permission-pull-requests: write # open the conflict PR, label and comment on it
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the merge base and the release tags
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - name: Merge master into dev
+        run: .github/workflows/scripts/backmerge.sh
+        env:
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          GIT_AUTHOR_NAME: ${{ steps.app-token.outputs.app-slug }}[bot]
+          GIT_AUTHOR_EMAIL: ${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: ${{ steps.app-token.outputs.app-slug }}[bot]
+          GIT_COMMITTER_EMAIL: ${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com
