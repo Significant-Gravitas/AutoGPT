@@ -69,7 +69,7 @@ export function EditSkillForm({
             ) : null}
             <pre
               data-slot="edit-skill-form-conflict-diff"
-              className="my-3 overflow-x-auto rounded-lg bg-action-hover p-3 text-caption text-action-foreground"
+              className="my-3 overflow-x-auto rounded-lg bg-surface-inverse-hover p-3 text-caption text-foreground-inverse"
             >
               {lineDiff(currentVersion.body ?? "", draft.body) ||
                 "Your procedure matches the current version."}
@@ -89,7 +89,7 @@ export function EditSkillForm({
       <Input
         id="skill-edit-description"
         label="Description"
-        labelVariant="small-medium"
+        labelVariant="small"
         value={draft.description}
         maxLength={1024}
         required
@@ -99,7 +99,7 @@ export function EditSkillForm({
       <Input
         id="skill-edit-body"
         label="Procedure (Markdown)"
-        labelVariant="small-medium"
+        labelVariant="small"
         type="textarea"
         rows={12}
         value={draft.body}

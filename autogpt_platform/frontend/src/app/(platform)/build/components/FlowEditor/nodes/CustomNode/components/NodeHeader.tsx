@@ -80,7 +80,8 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                   <TooltipTrigger asChild>
                     <div>
                       <Text
-                        variant="large-semibold"
+                        variant="large"
+                        weight="semibold"
                         className="line-clamp-1 hover:cursor-text"
                       >
                         {displayTitle}
@@ -96,7 +97,12 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Text variant="small-medium" tone="muted" className="shrink-0">
+            <Text
+              variant="small"
+              weight="medium"
+              tone="muted"
+              className="shrink-0"
+            >
               #{nodeId.split("-")[0]}
             </Text>
             <NodeContextMenu

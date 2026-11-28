@@ -22,18 +22,22 @@ export function WorkGroup({ group, timezone }: Props) {
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
-      <Text variant="body-medium-tight" tone="primary" className="truncate">
+      <Text
+        variant="body"
+        weight="medium"
+        leading="5"
+        tone="primary"
+        className="truncate"
+      >
         {actor.name}
       </Text>
       <span
-        className={cn(
-          "shrink-0 rounded-full border px-1.5",
-          // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
-          chip.className,
-        )}
+        className={cn("shrink-0 rounded-pill border px-1.5", chip.className)}
       >
         <Text
-          variant="small-medium-tight"
+          variant="small"
+          weight="medium"
+          leading="4"
           as="span"
           tone="inherit"
           transform="capitalize"

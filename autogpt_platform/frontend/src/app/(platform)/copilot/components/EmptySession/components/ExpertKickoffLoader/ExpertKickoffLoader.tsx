@@ -14,12 +14,12 @@ export function ExpertKickoffLoader({ expertName }: Props) {
     >
       <OrbitLoader size={32} />
       <div>
-        <Text variant="large-medium-tight" tone="primary">
+        <Text variant="large" weight="medium" leading="6" tone="primary">
           {expertName
             ? `Opening ${expertName}'s workspace`
             : "Opening workspace"}
         </Text>
-        <Text variant="body-tight" tone="muted" className="mt-1">
+        <Text variant="body" leading="5" tone="muted" className="mt-1">
           Your expert is getting ready to start.
         </Text>
       </div>

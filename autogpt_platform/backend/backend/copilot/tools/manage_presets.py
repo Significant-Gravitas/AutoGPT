@@ -20,7 +20,6 @@ from backend.api.features.library.model import (
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import library_db, triggers_db
 from backend.util.exceptions import (
-    InvalidInputError,
     MissingConfigError,
     NotFoundError,
     WebhookRegistrationError,
@@ -414,7 +413,9 @@ class UpdatePresetTool(BaseTool):
                 inputs=merged_inputs,
                 credentials=credentials,
                 name=kwargs.get("name"),
-                description=kwargs.get("description"),
+                # Models often fill optional fields with "", so an empty
+                # description here means "not given", never "clear it".
+                description=kwargs.get("description") or None,
                 is_active=kwargs.get("is_active"),
             )
         except NotFoundError:
@@ -423,7 +424,7 @@ class UpdatePresetTool(BaseTool):
                 error="preset_not_found",
                 session_id=session_id,
             )
-        except (InvalidInputError, MissingConfigError, WebhookRegistrationError) as e:
+        except (MissingConfigError, ValueError, WebhookRegistrationError) as e:
             return ErrorResponse(
                 message=str(e),
                 error="preset_update_failed",

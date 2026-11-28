@@ -58,11 +58,7 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "voice_relay/serve.py production_deps": _VOICE_INTERVIEW_BOUNDS,
 }
 
-_RAW_TURN_PUBLISHES = {
-    "blocks/autopilot.py _enqueue_for_recovery": (
-        "re-publishes a turn whose slot was taken when it was first dispatched"
-    ),
-}
+_RAW_TURN_PUBLISHES: dict[str, str] = {}
 
 _CHAT_CONFIG_KEY = re.compile(r"(?:_chat_config|chat_config|chat_cfg)\.api_key")
 # A google-genai client built on the platform's Gemini key.

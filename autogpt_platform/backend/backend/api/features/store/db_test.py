@@ -24,6 +24,7 @@ from . import exceptions as store_exceptions
 from . import submission_review_state
 from .model import MyAgentsSortBy, ProfileUpdateRequest, SubmissionStats
 from .submission_deletion_test_helpers import mock_submission_deletion
+from .submission_description import VersionHistoryRow
 
 
 @pytest.fixture(autouse=True)
@@ -406,14 +407,20 @@ def _patch_submission(
         "query_raw_with_schema",
         AsyncMock(return_value=[existing_listing] if existing_listing else []),
     )
-    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.find_first = AsyncMock(
-        return_value=(
-            max(existing_listing.Versions or [], key=lambda v: v.version, default=None)
-            if existing_listing
-            else None
-        )
+    versions = (existing_listing.Versions or []) if existing_listing else []
+    mock_history = mocker.patch.object(VersionHistoryRow, "prisma")
+    mock_history.return_value.find_many = AsyncMock(
+        return_value=[
+            VersionHistoryRow(
+                id=v.id,
+                version=v.version,
+                description=v.description,
+                submissionStatus=v.submissionStatus,
+            )
+            for v in sorted(versions, key=lambda v: v.version, reverse=True)
+        ]
     )
+    mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
     mock_slv.return_value.create = AsyncMock(return_value=mock_version)
     mock_slv.return_value.update_many = AsyncMock()
     return mock_agent_graph.return_value, mock_slv.return_value
@@ -1462,7 +1469,34 @@ async def test_edit_store_submission_blocks_cross_org(mocker):
             sub_heading="Find test agents fast",
             organization_id="org-A",
         )
-    mock_client.update.assert_not_called()
+    mock_client.update_many.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_edit_store_submission_refuses_one_reviewed_since_its_check(mocker):
+    """The write requires PENDING itself, so a verdict that lands after the
+    status read stands."""
+    from backend.api.features.store import exceptions as store_exceptions
+
+    mock_client = AsyncMock()
+    mock_client.find_first.return_value = _submission_version(owning_org_id=None)
+    mock_client.update_many.return_value = 0
+    mocker.patch.object(
+        prisma.models.StoreListingVersion, "prisma", return_value=mock_client
+    )
+
+    with pytest.raises(store_exceptions.InvalidOperationError):
+        await db.edit_store_submission(
+            user_id="user-1",
+            store_listing_version_id="slv-1",
+            name="New Name",
+            sub_heading="Find test agents fast",
+        )
+    where = mock_client.update_many.call_args.kwargs["where"]
+    assert where == {
+        "id": "slv-1",
+        "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+    }
 
 
 def _patch_submission_stats(mocker):

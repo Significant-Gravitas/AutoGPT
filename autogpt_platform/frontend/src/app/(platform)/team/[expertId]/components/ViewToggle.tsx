@@ -23,6 +23,7 @@ export function ViewToggle<T extends string>({
           type="button"
           variant="toggle"
           size="icon-xs"
+          shape="sharp"
           className="size-7"
           leadingIcon={option.icon}
           aria-label={option.label}

@@ -47,7 +47,7 @@ async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
         include=_WORKFLOW_INCLUDE,  # type: ignore[arg-type]
     )
     if row is None:
-        raise ExpertNotFoundError(f"Expert #{expert_id} not found")
+        raise ExpertNotFoundError(expert_id)
     return row
 
 

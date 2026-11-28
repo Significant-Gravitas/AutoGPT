@@ -22,6 +22,7 @@ from backend.blocks.apollo.models import (
     SearchPeopleRequest,
     SenorityLevels,
 )
+from backend.data.block import BlockInput
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
@@ -185,6 +186,12 @@ class SearchPeopleBlock(Block):
                 merged_data[key] = enriched_value
 
         return Contact(**merged_data)
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return NodeExecutionStats(
+            provider_cost=float(input_data.get("max_results") or 0),
+            provider_cost_type="items",
+        )
 
     async def run(
         self,

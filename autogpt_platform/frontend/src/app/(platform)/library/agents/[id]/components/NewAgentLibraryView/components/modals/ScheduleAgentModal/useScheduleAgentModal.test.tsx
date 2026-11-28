@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { validateSchedule } from "./components/ModalScheduleSection/helpers";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -41,6 +42,26 @@ afterEach(() => {
 });
 
 describe("useScheduleAgentModal", () => {
+  test.each([
+    ["196-character", "w".repeat(196), `Run ${"w".repeat(196)}`],
+    ["197-character", "w".repeat(197), `Run ${"w".repeat(195)}…`],
+    ["500-character", "w".repeat(500), `Run ${"w".repeat(195)}…`],
+    ["196-emoji", "😀".repeat(196), `Run ${"😀".repeat(196)}`],
+  ])(
+    "a %s workflow name gets a default schedule name the form accepts",
+    (_, name, expected) => {
+      const { result } = renderHook(
+        () => useScheduleAgentModal({ ...agent, name }, {}, {}),
+        { wrapper },
+      );
+
+      expect(result.current.scheduleName).toBe(expected);
+      expect(
+        validateSchedule({ scheduleName: result.current.scheduleName }),
+      ).toEqual({});
+    },
+  );
+
   test("create schedule invalidates ALL schedule queries on success so unified page + briefing pill refresh", async () => {
     server.use(getPostV1CreateExecutionScheduleMockHandler());
     const invalidateSpy = vi.spyOn(

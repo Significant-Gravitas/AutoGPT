@@ -14,7 +14,14 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Collection, Literal, Optional, Self, TypeAlias
 
-from pydantic import BaseModel, Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 import backend.blocks._base as block_types
 from backend.data.credential_scope import scope_error
@@ -22,10 +29,10 @@ from backend.data.model import CredentialsMetaInput
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
     MAX_DESCRIPTION_LENGTH,
+    MAX_GRAPH_NAME_LENGTH,
     MAX_ID_LENGTH,
     MAX_INSTRUCTIONS_LENGTH,
     MAX_LIST_ENTRIES,
-    MAX_LONG_NAME_LENGTH,
     MAX_NAME_LENGTH,
     MAX_SECRET_LENGTH,
     MAX_SUMMARY_LENGTH,
@@ -151,7 +158,7 @@ class GraphNode(BaseModel):
 class GraphCreateRequest(BaseModel):
     """Graph model for creating or updating an agent graph."""
 
-    name: str = Field(max_length=MAX_LONG_NAME_LENGTH, description="Graph name")
+    name: str = Field(max_length=MAX_GRAPH_NAME_LENGTH, description="Graph name")
     description: str = Field(
         default="", max_length=MAX_INSTRUCTIONS_LENGTH, description="Graph description"
     )
@@ -1352,6 +1359,13 @@ class APIKeyCredentialCreateRequest(_CredentialCreateBase):
 
     type: Literal["api_key"]
     api_key: str = Field(max_length=MAX_SECRET_LENGTH)
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "When the API key expires, as an ISO 8601 timestamp with a time zone. "
+            "Must be in the future."
+        ),
+    )
 
 
 class UserPasswordCredentialCreateRequest(_CredentialCreateBase):

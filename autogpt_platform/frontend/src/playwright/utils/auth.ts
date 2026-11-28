@@ -6,6 +6,7 @@ import {
   SEEDED_TEST_ACCOUNTS,
   getAuthStatePath,
 } from "../credentials/accounts";
+import { markChangelogSeen } from "./changelog";
 import { getBrowser } from "./get-browser";
 import { dismissTabIntrosViaAPI, skipOnboardingIfPresent } from "./onboarding";
 
@@ -55,6 +56,7 @@ async function authStateHasLiveSession(
       baseURL,
       storageState: getAuthStatePath(accountKey),
     });
+    await markChangelogSeen(context);
     const page = await context.newPage();
 
     try {
@@ -153,6 +155,7 @@ async function attemptCreateAuthState(
   try {
     const { email, password } = SEEDED_TEST_ACCOUNTS[accountKey];
     const context = await browser.newContext({ baseURL });
+    await markChangelogSeen(context);
     const page = await context.newPage();
     const loginPage = new LoginPage(page);
 

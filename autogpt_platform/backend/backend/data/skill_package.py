@@ -15,8 +15,10 @@ sides changed: an update never removes something the user wrote.
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from difflib import SequenceMatcher
+from itertools import accumulate
 
 from pydantic import BaseModel, ConfigDict
 
@@ -24,9 +26,12 @@ SKILL_MD = "SKILL.md"
 
 _NEWLINE = "\n"
 # Above this many lines on any side the line alignment is not worth its CPU
-# (quadratic at worst, and it runs where every chat session on the process
-# waits): the file counts as a conflict and the user's copy stays as it is.
+# (it runs where every chat session on the process waits): the file counts as
+# a conflict and the user's copy stays as it is.
 MAX_MERGE_LINES = 5_000
+# What one merge's alignments may spend, about a second of CPU; a file that
+# needs more counts as a conflict too.
+MAX_MERGE_COMPARISONS = 10_000_000
 
 
 def file_sha256(content: bytes) -> str:
@@ -80,7 +85,20 @@ class MergedText(BaseModel):
     conflicted: bool
 
 
-def merge_text(base: str, ours: str, theirs: str) -> MergedText:
+class MergeBudget(BaseModel):
+    """Comparisons the line alignments of one merge may still spend. Every
+    file of a copy's update shares one, so its cost does not grow with them."""
+
+    comparisons: int = MAX_MERGE_COMPARISONS
+
+
+class _OverBudget(Exception):
+    pass
+
+
+def merge_text(
+    base: str, ours: str, theirs: str, budget: MergeBudget | None = None
+) -> MergedText:
     """Three-way merge of *ours* (the user's copy) and *theirs* (the update)
     against their common *base*, line by line.
 
@@ -105,9 +123,15 @@ def merge_text(base: str, ours: str, theirs: str) -> MergedText:
     their_lines = theirs.split(_NEWLINE)
     if max(len(base_lines), len(our_lines), len(their_lines)) > MAX_MERGE_LINES:
         return MergedText(text=ours, conflicted=True)
+    try:
+        chunks = _diff3_chunks(
+            base_lines, our_lines, their_lines, budget or MergeBudget()
+        )
+    except _OverBudget:
+        return MergedText(text=ours, conflicted=True)
     out: list[str] = []
     conflicted = False
-    for chunk in _diff3_chunks(base_lines, our_lines, their_lines):
+    for chunk in chunks:
         if chunk.stable:
             out.extend(chunk.ours)
             continue
@@ -130,7 +154,9 @@ class _Chunk(BaseModel):
     theirs: list[str]
 
 
-def _diff3_chunks(base: list[str], ours: list[str], theirs: list[str]) -> list[_Chunk]:
+def _diff3_chunks(
+    base: list[str], ours: list[str], theirs: list[str], budget: MergeBudget
+) -> list[_Chunk]:
     """Split the three sequences into alternating stable and unstable chunks.
 
     A base line is *stable* when it survives unchanged into both sides and its
@@ -138,8 +164,8 @@ def _diff3_chunks(base: list[str], ours: list[str], theirs: list[str]) -> list[_
     Everything between two stable runs is one unstable chunk holding each
     side's lines for that gap, which is what the merge policy decides on.
     """
-    ours_at = _match_index(base, ours)
-    theirs_at = _match_index(base, theirs)
+    ours_at = _match_index(base, ours, budget)
+    theirs_at = _match_index(base, theirs, budget)
     chunks: list[_Chunk] = []
     b = o = t = 0
     i = 0
@@ -176,13 +202,58 @@ def _diff3_chunks(base: list[str], ours: list[str], theirs: list[str]) -> list[_
     return chunks
 
 
-def _match_index(base: list[str], other: list[str]) -> list[int]:
-    """For each base line, its matched index in *other*, or -1."""
-    matched = [-1] * len(base)
+def _match_index(base: list[str], other: list[str], budget: MergeBudget) -> list[int]:
+    """For each base line, its matched index in *other*, or -1.
+
+    ``get_matching_blocks()`` one search at a time, each paid for before it
+    runs: a search walks every copy in *other* of each base line in its range.
+    """
     matcher = SequenceMatcher(None, base, other, autojunk=False)
-    for block in matcher.get_matching_blocks():
-        for k in range(block.size):
-            matched[block.a + k] = block.b + k
+    copies = Counter(other)
+    cost_before = list(accumulate((1 + copies[line] for line in base), initial=0))
+    try:
+        whole = (0, len(base), 0, len(other))
+        return _search(matcher, cost_before, [-1] * len(base), whole, budget)
+    except _OverBudget:
+        pass
+    # Only for a file too repetitive to align whole: matching the shared ends
+    # first can pair a repeated line with the wrong copy and conflict needlessly.
+    matched = [-1] * len(base)
+    limit = min(len(base), len(other))
+    head = 0
+    while head < limit and base[head] == other[head]:
+        matched[head] = head
+        head += 1
+    tail = 0
+    while tail < limit - head and base[-1 - tail] == other[-1 - tail]:
+        tail += 1
+        matched[-tail] = len(other) - tail
+    middle = (head, len(base) - tail, head, len(other) - tail)
+    return _search(matcher, cost_before, matched, middle, budget)
+
+
+def _search(
+    matcher: SequenceMatcher[str],
+    cost_before: list[int],
+    matched: list[int],
+    span: tuple[int, int, int, int],
+    budget: MergeBudget,
+) -> list[int]:
+    """Fill *matched* for base[alo:ahi] against other[blo:bhi], given as *span*."""
+    ranges = [span]
+    while ranges:
+        alo, ahi, blo, bhi = ranges.pop()
+        cost = cost_before[ahi] - cost_before[alo]
+        if cost > budget.comparisons:
+            raise _OverBudget
+        budget.comparisons -= cost
+        a, b, size = matcher.find_longest_match(alo, ahi, blo, bhi)
+        for k in range(size):
+            matched[a + k] = b + k
+        if size and alo < a and blo < b:
+            ranges.append((alo, a, blo, b))
+        if size and a + size < ahi and b + size < bhi:
+            ranges.append((a + size, ahi, b + size, bhi))
     return matched
 
 
@@ -196,7 +267,12 @@ class MergedPackage(BaseModel):
         return bool(self.conflicts)
 
 
-def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPackage:
+def merge_packages(
+    base: Package,
+    ours: Package,
+    theirs: Package,
+    budget: MergeBudget | None = None,
+) -> MergedPackage:
     """Merge an update (*theirs*) into the user's copy (*ours*) file by file,
     using the version they were installed from (*base*) to tell an edit from
     an unchanged file.
@@ -209,6 +285,7 @@ def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPacka
     the user deleted stays deleted. The executable bit merges the same way.
     """
     merged = MergedPackage()
+    budget = budget or MergeBudget()
     for path in sorted(set(base) | set(ours) | set(theirs)):
         b, o, t = base.get(path), ours.get(path), theirs.get(path)
         if o == t:
@@ -223,7 +300,9 @@ def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPacka
             elif t is None:
                 merged.files[path] = o
             else:
-                merged.files[path] = _merge_file(path, None, o, t, merged.conflicts)
+                merged.files[path] = _merge_file(
+                    path, None, o, t, merged.conflicts, budget
+                )
             continue
         if o == b:
             # Untouched by the user: take the update, deletion included.
@@ -245,7 +324,7 @@ def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPacka
             merged.conflicts.append(path)
             merged.files[path] = o
             continue
-        merged.files[path] = _merge_file(path, b, o, t, merged.conflicts)
+        merged.files[path] = _merge_file(path, b, o, t, merged.conflicts, budget)
     return merged
 
 
@@ -255,6 +334,7 @@ def _merge_file(
     ours: PackageFile,
     theirs: PackageFile,
     conflicts: list[str],
+    budget: MergeBudget,
 ) -> PackageFile:
     executable = _merge_flag(
         base.executable if base is not None else None,
@@ -272,7 +352,7 @@ def _merge_file(
         # Added on both sides with different content: nothing to merge against.
         conflicts.append(path)
         return PackageFile(content=ours.content, executable=executable)
-    result = merge_text(base_text, our_text, their_text)
+    result = merge_text(base_text, our_text, their_text, budget)
     if result.conflicted:
         conflicts.append(path)
     return PackageFile(content=result.text.encode("utf-8"), executable=executable)

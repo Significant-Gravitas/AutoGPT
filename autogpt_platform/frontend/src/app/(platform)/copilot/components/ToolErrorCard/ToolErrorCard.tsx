@@ -34,7 +34,7 @@ export function ToolErrorCard({
           className="mt-0.5 shrink-0"
         />
         <div className="flex-1 space-y-2">
-          <Text variant="body-medium" tone="error-strong">
+          <Text variant="body" weight="medium" tone="error-strong">
             {message || fallbackMessage}
           </Text>
           {(error || details) && (

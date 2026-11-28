@@ -278,6 +278,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "is paywalled and the billing pages offer plans. Off for self-hosted "
         "installs; the hosted platform sets it.",
     )
+    mobile_min_app_version: str = Field(
+        default="",
+        description="Oldest mobile app version (MAJOR.MINOR.PATCH) still allowed "
+        "in; an older app asks to be updated. Empty means no minimum.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -463,6 +468,32 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum orphaned auth identities healed per sweep.",
+    )
+
+    # Daily report of API activity by accounts without an active plan
+    no_plan_activity_report_enabled: bool = Field(
+        default=True,
+        description=(
+            "Count each account's authenticated API requests per day, and post a "
+            "daily system alert listing what accounts without an active plan did. "
+            "Needs ENABLE_PLATFORM_PAYMENT: with payment off it does nothing."
+        ),
+    )
+    no_plan_activity_min_requests: int = Field(
+        default=500,
+        ge=1,
+        description=(
+            "Requests in one UTC day, internal and external API together, at "
+            "which an account without an active plan is reported."
+        ),
+    )
+    no_plan_activity_min_accounts_per_ip: int = Field(
+        default=3,
+        ge=2,
+        description=(
+            "Accounts without an active plan that signed up or signed in from one "
+            "IP address in one UTC day at which they are reported as a group."
+        ),
     )
 
     # Execution Accuracy Monitoring
@@ -683,6 +714,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "the API can't read them.",
     )
 
+    # Documented in docs/platform/deployment-environment-variables.md: update it
+    # with any change here.
+    server_keep_alive_timeout_seconds: int = Field(
+        # A proxy that sends a request on a connection just as the server closes
+        # it gets no answer, so the proxy has to be the one that closes an idle
+        # connection. Google's load balancer keeps one open for 600 s and asks
+        # backends for 620 s, or it answers 502
+        # (backend_connection_closed_before_data_sent_to_client):
+        # https://docs.cloud.google.com/load-balancing/docs/https/troubleshooting-ext-https-lbs
+        default=620,
+        ge=1,
+        description="How long the API and WebSocket servers keep an idle "
+        "connection open: longer than any proxy in front of them does.",
+    )
+
     notification_service_port: int = Field(
         default=8007,
         description="The port for notification service daemon to run on",
@@ -716,6 +762,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Must be set so the application knows where it's hosted at. "
         "This is necessary to make sure webhooks find their way.",
+    )
+
+    claude_code_key_in_sandbox: bool = Field(
+        default=False,
+        description="Give the Claude Code block's E2B sandbox the user's Anthropic "
+        "key instead of sending its model calls through this server's relay. Use it "
+        "only when E2B's cloud cannot reach this server at platform_base_url.",
     )
 
     # Documented in docs/platform/client-ip.md: update it with any change here.
@@ -895,6 +948,27 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=200,
         ge=1,
         description="How many schedules one user may hold on the scheduler.",
+    )
+
+    max_schedule_payload_bytes: int = Field(
+        default=1024 * 1024,
+        ge=1024,
+        description="The most one schedule may store, its inputs or message "
+        "included, as compact JSON.",
+    )
+
+    max_schedule_payload_values: int = Field(
+        default=10_000,
+        ge=100,
+        description="The most JSON values (list items, object fields and plain "
+        "values) one schedule may store.",
+    )
+
+    max_schedule_storage_bytes: int = Field(
+        default=64 * 1024 * 1024,
+        ge=1024 * 1024,
+        description="The most one account's and its organization's schedules may "
+        "store together, measured as Python holds the data.",
     )
 
     schedule_read_timeout_seconds: float = Field(
@@ -1120,6 +1194,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="product-alerts",
         description="The Discord channel for product alerts (low balance, zero balance, etc.)",
     )
+    security_alert_discord_channel: str = Field(
+        default="",
+        description="The Discord channel for security alerts; empty sends them to "
+        "the platform channel",
+    )
 
     clamav_service_host: str = Field(
         default="localhost",
@@ -1216,6 +1295,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "value: long enough that a few weeks away never makes a relied-on "
             "memory look unused, to be tuned from the eval driver's "
             "demotion-damage data (0-3650 days)"
+        ),
+    )
+
+    stripe_api_base: str = Field(
+        default="",
+        description=(
+            "Where the Stripe SDK sends API requests, e.g. a fake Stripe in a "
+            "test stack. Blank keeps Stripe's own (https://api.stripe.com)."
         ),
     )
 

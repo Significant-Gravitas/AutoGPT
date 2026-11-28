@@ -45,14 +45,22 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
   return (
     <div className="mx-1 border-b border-border-strong">
       <Text
-        variant="small-medium-tight"
+        variant="small"
+        weight="medium"
+        leading="4"
         as="p"
         tone="accent"
         className="mx-0 mt-4"
       >
         Add credits to your balance
       </Text>
-      <Text variant="small-tight" as="p" tone="muted" className="mx-0 my-1">
+      <Text
+        variant="small"
+        leading="4"
+        as="p"
+        tone="muted"
+        className="mx-0 my-1"
+      >
         Choose a one-time top-up or set up automatic refills
       </Text>
       <TabsLine
@@ -67,7 +75,9 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
         <div className="mt-4 w-full rounded-lg px-5 outline outline-1 outline-offset-2 outline-border-base">
           <TabsLineContent value="top-up" className="flex flex-col">
             <Text
-              variant="body-medium-lh-snug"
+              variant="body"
+              weight="medium"
+              leading="snug"
               as="div"
               tone="primary"
               className="mt-2 justify-start"
@@ -75,7 +85,8 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
               One-time top-up
             </Text>
             <Text
-              variant="small-lh-tight"
+              variant="small"
+              leading="tight"
               as="div"
               tone="muted"
               className="mt-1 justify-start"
@@ -86,7 +97,9 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
           </TabsLineContent>
           <TabsLineContent value="auto-refill" className="flex flex-col">
             <Text
-              variant="body-medium-lh-snug"
+              variant="body"
+              weight="medium"
+              leading="snug"
               as="div"
               tone="primary"
               className="justify-start"
@@ -94,7 +107,8 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
               Auto-refill
             </Text>
             <Text
-              variant="small-lh-tight"
+              variant="small"
+              leading="tight"
               as="div"
               tone="muted"
               className="mt-1 justify-start"
@@ -104,7 +118,8 @@ function WalletRefillState({ autoTopUpConfig, updateAutoTopUpConfig }: Props) {
             <AutoRefillForm {...autoRefill} />
           </TabsLineContent>
           <Text
-            variant="small-lh-tight"
+            variant="small"
+            leading="tight"
             as="div"
             tone="inherit"
             className="mb-3 justify-start"

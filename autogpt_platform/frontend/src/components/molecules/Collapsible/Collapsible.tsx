@@ -10,7 +10,30 @@ export const CollapsibleRoot = CollapsiblePrimitive.Root;
 
 export const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger;
 
-export const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent;
+// `motion="height"` slides the panel open and shut (still under reduced
+// motion). Radix writes the height it animates to on this element, so the
+// animation can't live on a wrapper.
+export const CollapsibleContent = React.forwardRef<
+  React.ElementRef<typeof CollapsiblePrimitive.CollapsibleContent>,
+  React.ComponentPropsWithoutRef<
+    typeof CollapsiblePrimitive.CollapsibleContent
+  > & { motion?: "height" }
+>(function CollapsibleContent({ motion, className, ...props }, ref) {
+  return (
+    <CollapsiblePrimitive.CollapsibleContent
+      ref={ref}
+      className={
+        motion === "height"
+          ? cn(
+              "data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
+              className,
+            )
+          : className
+      }
+      {...props}
+    />
+  );
+});
 
 interface Props {
   trigger: React.ReactNode;

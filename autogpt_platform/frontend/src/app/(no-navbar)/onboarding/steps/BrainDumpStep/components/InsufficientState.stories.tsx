@@ -26,7 +26,7 @@ function NotEnoughScreen({ mode, heardText, replyKind }: Args) {
         <div className="flex min-h-screen w-full flex-col items-center">
           <ProgressBar currentStep={STEP} totalSteps={TOTAL_STEPS} />
           <div className="flex w-full min-w-0 flex-1 items-center justify-center pt-16 pb-8">
-            <div className="relative z-10 flex w-full max-w-2xl flex-col items-center gap-6 px-4">
+            <div className="relative z-raised flex w-full max-w-2xl flex-col items-center gap-6 px-4">
               <InsufficientState
                 mode={mode}
                 heardText={heardText}

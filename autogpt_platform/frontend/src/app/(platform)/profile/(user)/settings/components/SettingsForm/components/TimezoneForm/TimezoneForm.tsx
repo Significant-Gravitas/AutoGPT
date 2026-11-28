@@ -67,7 +67,9 @@ export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
                 <FormItem>
                   <FormLabel>
                     <Text
-                      variant="body-medium-lh-none"
+                      variant="body"
+                      weight="medium"
+                      leading="none"
                       as="span"
                       tone="inherit"
                     >

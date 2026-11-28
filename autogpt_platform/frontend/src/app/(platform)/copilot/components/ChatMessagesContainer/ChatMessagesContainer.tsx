@@ -30,6 +30,7 @@ import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
+  sourceMessageID,
   splitMessagesAtDrainHints,
   turnMessagesForRow,
 } from "./midTurnSplit";
@@ -253,7 +254,8 @@ export function LoadMoreSentinel({
       {isLoading ? (
         <LoadingSpinner
           data-testid="load-more-spinner"
-          className="h-5 w-5 text-foreground-subtle"
+          tone="subtle"
+          className="h-5 w-5"
         />
       ) : (
         hasMore && (
@@ -483,6 +485,10 @@ export function ChatMessagesContainer({
     const isLastRow = rowIndex === renderRows.length - 1;
     const isAssistant = message.role === "assistant";
     const isLastAssistant = isLastRow && isAssistant;
+    // A follow-up sent mid-turn splits the newest message into several rows,
+    // and every one of them is still the newest answer, not just the last.
+    const isLatestAnswer =
+      isAssistant && sourceMessageID(message) === lastMessage?.id;
     const isCurrentlyStreaming = isLastAssistant && isActivelyStreaming;
     const nextRow = renderRows[rowIndex + 1];
     // A segment that only runs up to a mid-turn drain is never the end
@@ -499,6 +505,7 @@ export function ChatMessagesContainer({
       <MessageRow
         message={message}
         isLastAssistant={isLastAssistant}
+        isLatestAnswer={isLatestAnswer}
         isCurrentlyStreaming={isCurrentlyStreaming}
         isLastInTurn={isLastInTurn}
         isLatestTurn={isLastRow}
@@ -580,7 +587,7 @@ export function ChatMessagesContainer({
             !isRestoringActiveSession &&
             !showPendingSend && (
               <div className="flex flex-1 items-center justify-center">
-                <LoadingSpinner className="text-foreground-secondary" />
+                <LoadingSpinner tone="secondary" />
               </div>
             )}
           {transcriptRows.length > 0 && (
@@ -599,18 +606,13 @@ export function ChatMessagesContainer({
             />
           )}
           {showIndicator && lastMessage?.role !== "assistant" && (
-            <Message
-              from="assistant"
-              className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-            >
-              <MessageContent className="text-body-lg leading-relaxed">
-                {indicator}
-              </MessageContent>
+            <Message from="assistant" entrance="rise">
+              <MessageContent size="large">{indicator}</MessageContent>
             </Message>
           )}
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
+              <MessageContent size="large" className="text-foreground-strong">
                 {showRestoreFallback ? (
                   <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
@@ -624,7 +626,7 @@ export function ChatMessagesContainer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-body text-foreground-tertiary">
-                    <LoadingSpinner className="h-4 w-4 text-foreground-tertiary" />
+                    <LoadingSpinner tone="muted" className="h-4 w-4" />
                     <span>Retrieving latest messages</span>
                   </div>
                 )}
@@ -647,18 +649,18 @@ export function ChatMessagesContainer({
             queuedMessages?.map((msg, idx) => (
               <Message key={idx} from="user">
                 <MessageContent
+                  size={isCompact ? "compact" : "large"}
                   className={cn(
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
-                    isCompact
-                      ? "rounded-xl text-body leading-6"
-                      : "rounded-3xl text-body-lg leading-relaxed",
+                    isCompact ? "rounded-xl" : "rounded-3xl",
                   )}
                 >
                   <span>
                     <CredentialMentionText text={msg} />
                   </span>
                   <Text
-                    variant="small-tight"
+                    variant="small"
+                    leading="4"
                     as="span"
                     tone="muted"
                     className="flex items-center gap-1"

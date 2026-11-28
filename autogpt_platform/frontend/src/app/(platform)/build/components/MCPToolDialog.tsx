@@ -435,7 +435,9 @@ export function MCPToolDialog({
                 className="text-foreground-tertiary hover:text-foreground-body"
               >
                 <Text
-                  variant="small-tight-underline"
+                  variant="small"
+                  leading="4"
+                  decoration="underline"
                   as="span"
                   tone="inherit"
                   className="block"
@@ -453,12 +455,20 @@ export function MCPToolDialog({
                   onChange={selectScheme}
                   disabled={loading || oauthLoading}
                   className="flex flex-col gap-2"
-                  labelVariant="body-medium-tight"
+                  labelVariant="body"
+                  labelWeight="medium"
+                  labelLeading="5"
                   selectClassName="h-10 rounded-md border border-border-strong bg-canvas px-3 text-body leading-5"
                 />
 
                 <Label htmlFor="mcp-auth-token">
-                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     {mcpAuthTokenLabel(manualAuthScheme)}
                   </Text>
                 </Label>
@@ -478,7 +488,8 @@ export function MCPToolDialog({
                   autoFocus
                 />
                 <Text
-                  variant="small-tight"
+                  variant="small"
+                  leading="4"
                   tone="muted"
                   id="mcp-auth-token-hint"
                 >
@@ -489,7 +500,8 @@ export function MCPToolDialog({
 
             {error && (
               <Text
-                variant="body-tight"
+                variant="body"
+                leading="5"
                 role="alert"
                 aria-live="polite"
                 tone="error-strong"
@@ -640,7 +652,9 @@ function MCPToolCard({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-1">
         <Text
-          variant="body-semibold-tight"
+          variant="body"
+          weight="semibold"
+          leading="5"
           tone="inherit"
           as="span"
           className="flex-1"
@@ -657,7 +671,7 @@ function MCPToolCard({
       {/* Description (collapsed: truncated) */}
       {cleanDescription && (
         <div className="px-3 pb-1">
-          <Text variant="small-relaxed" tone="muted">
+          <Text variant="small" leading="relaxed" tone="muted">
             {expanded
               ? cleanDescription
               : truncateDescription(cleanDescription)}
@@ -692,7 +706,9 @@ function MCPToolCard({
               <tr className="border-b border-separator">
                 <th className="px-2 py-1 text-left">
                   <Text
-                    variant="small-medium-tight"
+                    variant="small"
+                    weight="medium"
+                    leading="4"
                     tone="muted"
                     as="span"
                     className="block"
@@ -702,7 +718,9 @@ function MCPToolCard({
                 </th>
                 <th className="px-2 py-1 text-left">
                   <Text
-                    variant="small-medium-tight"
+                    variant="small"
+                    weight="medium"
+                    leading="4"
                     tone="muted"
                     as="span"
                     className="block"
@@ -712,7 +730,9 @@ function MCPToolCard({
                 </th>
                 <th className="px-2 py-1 text-left">
                   <Text
-                    variant="small-medium-tight"
+                    variant="small"
+                    weight="medium"
+                    leading="4"
                     tone="muted"
                     as="span"
                     className="block"
@@ -732,7 +752,8 @@ function MCPToolCard({
                   >
                     <td className="px-2 py-1">
                       <Text
-                        variant="caption-sm-mono"
+                        variant="caption-sm"
+                        mono
                         tone="body"
                         as="span"
                         className="block"
@@ -745,7 +766,8 @@ function MCPToolCard({
                     </td>
                     <td className="px-2 py-1">
                       <Text
-                        variant="small-tight"
+                        variant="small"
+                        leading="4"
                         tone="muted"
                         as="span"
                         className="block"
@@ -755,7 +777,8 @@ function MCPToolCard({
                     </td>
                     <td className="max-w-[200px] truncate px-2 py-1">
                       <Text
-                        variant="small-tight"
+                        variant="small"
+                        leading="4"
                         tone="muted"
                         as="span"
                         className="block truncate"
@@ -781,7 +804,7 @@ function MCPToolCard({
           }}
           className="flex w-full items-center justify-center gap-1 border-t border-separator py-1.5 text-foreground-subtle hover:text-foreground-secondary"
         >
-          <Text variant="tiny-inherit" as="span" tone="inherit">
+          <Text variant="tiny" leading="inherit" as="span" tone="inherit">
             {expanded ? "Hide details" : "Show details"}
           </Text>
           <Icon
