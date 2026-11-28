@@ -167,6 +167,22 @@ def test_the_walk_checks_the_values_where_their_containers_end(
         pytest.param({}, [], id="empty"),
         pytest.param(True, [], id="true"),
         pytest.param({"description": "x"}, [], id="annotation-only"),
+        pytest.param({"oneOf": [{}]}, [], id="single-one-of-branch"),
+        pytest.param(
+            {"oneOf": [{}, {"type": "string"}]},
+            ["value is restricted by ['oneOf']"],
+            id="overlapping-one-of-branches",
+        ),
+        pytest.param(
+            {"anyOf": [{"type": "null"}]},
+            ["value is restricted by ['anyOf']"],
+            id="null-only-any-of",
+        ),
+        pytest.param(
+            {"anyOf": [{}, {"type": "null"}]},
+            [],
+            id="unrestricted-any-of-with-null",
+        ),
         *(
             pytest.param(
                 {keyword: value}, [f"value is restricted by ['{keyword}']"], id=keyword
@@ -202,12 +218,22 @@ def _narrowed(
         return []
     if keywords == {"$ref"}:
         return _narrowed(spec, _resolve(spec, schema["$ref"]), envelope, at)
-    if keywords in ({"anyOf"}, {"oneOf"}):
-        branches = schema.get("anyOf") or schema.get("oneOf")
+    if keywords == {"oneOf"}:
+        branches = schema["oneOf"]
+        if len(branches) == 1:
+            return _narrowed(spec, branches[0], envelope, at)
+        # Exactly one branch must match. An unrestricted branch alone does
+        # not prove that the other branches never match the same values.
+        return [f"{at} is {_kind(schema, keywords)}"]
+    if keywords == {"anyOf"}:
         # Optional[...] adds a null branch, which narrows nothing a value holds.
         found = [
-            _narrowed(spec, b, envelope, at) for b in branches if b != {"type": "null"}
+            _narrowed(spec, branch, envelope, at)
+            for branch in schema["anyOf"]
+            if branch != {"type": "null"}
         ]
+        if not found:
+            return [f"{at} is {_kind(schema, keywords)}"]
         return [] if [] in found else [where for f in found for where in f]
     if keywords == {"allOf"}:
         parts = schema["allOf"]
