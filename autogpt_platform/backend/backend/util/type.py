@@ -124,7 +124,16 @@ def __convert_num(value: Any, num_type: Type[NUM]) -> NUM:
                 pass
         try:
             return num_type(float(value))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError) as e:
+            if isinstance(value, str):
+                raise ConversionError(
+                    f"Cannot convert {value!r} to {num_type.__name__}"
+                ) from e
+            if isinstance(e, OverflowError):
+                # A non-string value that overflows the target type (e.g. a
+                # huge int converted to float) must not silently become 0;
+                # let it propagate, as it did before strings were handled.
+                raise
             return num_type(0)  # Fallback conversion
 
 
