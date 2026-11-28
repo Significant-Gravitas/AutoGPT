@@ -310,8 +310,8 @@ async def test_remove_label_refuses_a_label_only_gmail_can_remove(
         message_id="m1",
         label_name=label,
     )
-    # A ValueError reaches the user as a block execution error with this
-    # message, where Gmail's 400 became an unknown error.
+    # The block runner reports a ValueError to the user as a block execution
+    # error with this message.
     with pytest.raises(ValueError, match=f'remove the "{label}" label. .*{reason}'):
         async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
             pass
@@ -338,3 +338,23 @@ async def test_user_labels_still_change_beside_labels_only_gmail_can_change():
     fake = _FakeGmail({"labels.list": _WITH_FIXED_LABELS, "messages.modify": _MODIFIED})
     result = await GmailAddLabelBlock()._add_label(fake, "m1", "Todo")
     assert result == {"status": "Label added successfully", "label_id": "Label_7"}
+    assert fake.called("labels.create") == []
+    assert fake.called("messages.modify") == [
+        {"userId": "me", "id": "m1", "body": {"addLabelIds": ["Label_7"]}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remove_label_still_reports_a_gmail_managed_label_that_is_not_there():
+    fake = _FakeGmail(
+        {
+            "labels.list": _WITH_FIXED_LABELS,
+            "messages.get": {"id": "m1", "threadId": "t1", "labelIds": ["INBOX"]},
+        }
+    )
+    result = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "DRAFT")
+    assert result == {
+        "status": "Label already removed or not applied",
+        "label_id": "DRAFT",
+    }
+    assert fake.called("messages.modify") == []

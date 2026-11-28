@@ -1042,7 +1042,6 @@ class GmailRemoveLabelBlock(GmailBase):
         label_id = await self._get_label_id(service, label_name)
         if not label_id:
             return {"status": "Label not found", "label_id": ""}
-        _ensure_label_can_change(label_id)
         # The modify response can't say whether the label was there before
         # (Gmail omits labelIds once none are left), so check first.
         message = await asyncio.to_thread(
@@ -1056,6 +1055,7 @@ class GmailRemoveLabelBlock(GmailBase):
                 "status": "Label already removed or not applied",
                 "label_id": label_id,
             }
+        _ensure_label_can_change(label_id)
         await asyncio.to_thread(
             lambda: service.users()
             .messages()
