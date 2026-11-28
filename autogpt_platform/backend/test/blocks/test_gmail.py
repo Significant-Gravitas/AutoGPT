@@ -1,4 +1,5 @@
 import base64
+from email import message_from_bytes
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -199,6 +200,190 @@ class TestGmailReadBlock:
 
         result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "Body content from attachment."
+
+    def _part(self, mime_type: str, raw: bytes, content_type: str) -> dict:
+        """A part as Gmail returns it: its headers, and its bytes as they were sent."""
+        return {
+            "mimeType": mime_type,
+            "headers": [{"name": "Content-Type", "value": content_type}],
+            "body": {"data": base64.urlsafe_b64encode(raw).decode("ascii")},
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "text, content_type",
+        [
+            # Outlook's default for Western text: a curly apostrophe and a euro sign
+            ("It’s €1.250 – due Friday.", "text/plain; charset=windows-1252"),
+            ("La réunion est déplacée à jeudi.", 'text/plain; charset="ISO-8859-1"'),
+            ("明日の会議は10時からです。", "text/plain; charset=ISO-2022-JP"),
+            ("Привет, встреча завтра.", "text/plain; charset=koi8-r"),
+            ("Grüße aus Köln.", "text/plain; charset=UTF-8"),
+        ],
+    )
+    async def test_plain_body_is_decoded_with_its_charset(self, text, content_type):
+        charset = content_type.split("charset=")[1].strip('"')
+        msg = {
+            "id": "test_msg_charset",
+            "payload": self._part("text/plain", text.encode(charset), content_type),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == text
+
+    @pytest.mark.asyncio
+    async def test_multipart_alternative_in_a_legacy_charset(self):
+        text = "It’s attached, Anna."
+        msg = {
+            "id": "test_msg_cp1252",
+            "payload": {
+                "mimeType": "multipart/alternative",
+                "headers": [{"name": "Content-Type", "value": "multipart/alternative"}],
+                "parts": [
+                    self._part(
+                        "text/plain",
+                        text.encode("cp1252"),
+                        "text/plain; charset=windows-1252",
+                    ),
+                    self._part(
+                        "text/html",
+                        f"<p>{text}</p>".encode("cp1252"),
+                        "text/html; charset=windows-1252",
+                    ),
+                ],
+            },
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == text
+
+    @pytest.mark.asyncio
+    async def test_html_body_is_decoded_with_its_charset(self):
+        msg = {
+            "id": "test_msg_html_latin1",
+            "payload": self._part(
+                "text/html",
+                "<p>Café crème à 3€</p>".encode("iso-8859-15"),
+                "text/html; charset=iso-8859-15",
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert "Café crème à 3€" in result
+
+    @pytest.mark.asyncio
+    async def test_body_stored_as_attachment_is_decoded_with_its_charset(self):
+        text = "Größe: groß"
+        msg = {
+            "id": "test_msg_attachment_latin1",
+            "payload": {
+                "mimeType": "text/plain",
+                "headers": [
+                    {"name": "Content-Type", "value": "text/plain; charset=latin-1"}
+                ],
+                "body": {"attachmentId": "attachment_latin1"},
+            },
+        }
+        self.mock_service.users().messages().attachments().get().execute.return_value = {
+            "data": base64.urlsafe_b64encode(text.encode("latin-1")).decode("ascii")
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content_type",
+        ["text/plain; charset=UTF-8", "text/plain; charset=x-unknown", "text/plain"],
+    )
+    async def test_wrong_or_missing_charset_keeps_the_body(self, content_type):
+        # windows-1252 bytes under a wrong, unknown or missing label
+        msg = {
+            "id": "test_msg_wrong_charset",
+            "payload": self._part(
+                "text/plain", "It’s due Friday.".encode("cp1252"), content_type
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "It\ufffds due Friday."
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("charset", ["undefined", "idna", "bad\x00name"])
+    async def test_unusable_charset_label_falls_back_to_utf8(self, charset):
+        msg = {
+            "id": "test_msg_unusable_charset",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                f'text/plain; charset="{charset}"',
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_unparseable_charset_parameter_falls_back_to_utf8(self):
+        msg = {
+            "id": "test_msg_rfc2231_charset",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                "text/plain; charset*=bad%00name''x",
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_mixed_rfc2231_charset_continuations_fall_back_to_utf8(self):
+        msg = {
+            "id": "test_msg_rfc2231_continuations",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                "text/plain; charset*=utf-8''utf-8; charset*0*=utf-8''utf-8",
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_overlong_content_type_is_not_parsed(self):
+        content_type = "text/plain; charset=windows-1252; " + "x=y; " * 400
+        msg = {
+            "id": "test_msg_long_header",
+            "payload": self._part("text/plain", "Grüße".encode("utf-8"), content_type),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
+    async def test_binary_attachment_is_not_read_as_the_body(self):
+        msg = {
+            "id": "test_msg_scan_to_email",
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "parts": [
+                    {"mimeType": "text/plain", "body": {"size": 0}},
+                    {
+                        "mimeType": "application/pdf",
+                        "filename": "scan.pdf",
+                        "body": {"attachmentId": "pdf_attachment"},
+                    },
+                ],
+            },
+        }
+        self.mock_service.users().messages().attachments().get().execute.return_value = {
+            "data": base64.urlsafe_b64encode(b"%PDF-1.4\n\xe2\xe3\xcf\xd3").decode()
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "This email does not contain a readable body."
 
     @pytest.mark.asyncio
     async def test_no_readable_body(self):
@@ -563,6 +748,27 @@ class TestForwardMessageValidation:
         svc = Mock()
         svc.users().messages().get().execute.return_value = parent_message
         return svc
+
+    @pytest.mark.asyncio
+    async def test_forward_carries_the_decoded_body(self):
+        text = "La réunion est déplacée à jeudi."
+        svc = self._mock_service()
+        payload = svc.users().messages().get().execute.return_value["payload"]
+        payload["headers"].append(
+            {"name": "Content-Type", "value": "text/plain; charset=ISO-8859-1"}
+        )
+        payload["body"]["data"] = base64.urlsafe_b64encode(
+            text.encode("iso-8859-1")
+        ).decode()
+
+        await GmailForwardBlock()._forward_message(
+            svc, self._make_input(to=["valid@example.com"]), self._exec_ctx()
+        )
+
+        raw = svc.users().messages().send.call_args.kwargs["body"]["raw"]
+        sent = message_from_bytes(base64.urlsafe_b64decode(raw))
+        body = next(p for p in sent.walk() if p.get_content_type() == "text/plain")
+        assert text in body.get_payload(decode=True).decode(body.get_content_charset())
 
     @pytest.mark.asyncio
     async def test_invalid_to_raises(self):

@@ -3,6 +3,7 @@ import base64
 import re
 from abc import ABC
 from email import encoders
+from email.message import Message
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -51,6 +52,8 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
 # An HTML body converts to at most this many times its own length of text.
 _MAX_BODY_EXPANSION = 10
+# A part's Content-Type header is short; skip charset parsing on anything longer
+_MAX_CONTENT_TYPE_LENGTH = 1000
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -302,14 +305,16 @@ class GmailBase(Block, ABC):
 
         mime_type = part.get("mimeType", "")
         body = part.get("body", {})
+        # Gmail serves a part's bytes in the charset it was sent in
+        charset = self._part_charset(part)
 
         # Handle text/plain content
         if mime_type == "text/plain" and body.get("data"):
-            return self._decode_base64(body["data"])
+            return self._decode_base64(body["data"], charset)
 
         # Handle text/html content (convert to plain text)
         if mime_type == "text/html" and body.get("data"):
-            html_content = self._decode_base64(body["data"])
+            html_content = self._decode_base64(body["data"], charset)
             if html_content:
                 try:
                     h = BoundedHTML2Text(_MAX_BODY_EXPANSION * len(html_content))
@@ -320,13 +325,13 @@ class GmailBase(Block, ABC):
                     # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
-        # Handle content stored as attachment
-        if body.get("attachmentId"):
+        # Handle a text body stored as attachment; other attachments are not the body
+        if mime_type.startswith("text/") and body.get("attachmentId"):
             attachment_data = await self._download_attachment_body(
                 body["attachmentId"], msg_id, service
             )
             if attachment_data:
-                return self._decode_base64(attachment_data)
+                return self._decode_base64(attachment_data, charset)
 
         # Recursively search in parts
         for sub_part in part.get("parts", []):
@@ -336,7 +341,24 @@ class GmailBase(Block, ABC):
 
         return None
 
-    def _decode_base64(self, data):
+    def _part_charset(self, part) -> str | None:
+        """The charset named in a part's Content-Type header, if any."""
+        for header in part.get("headers", []):
+            if header.get("name", "").lower() == "content-type":
+                value = header.get("value", "")
+                if len(value) > _MAX_CONTENT_TYPE_LENGTH:
+                    return None  # Too long to be real; the stdlib parser is slow on it
+                message = Message()
+                message["Content-Type"] = value
+                try:
+                    return message.get_content_charset()
+                except (TypeError, ValueError):
+                    # e.g. an RFC 2231 charset* holding a NUL, or one mixing
+                    # charset* and charset*0* (TypeError on Python 3.11)
+                    return None
+        return None
+
+    def _decode_base64(self, data, charset: str | None = None):
         """Safely decode base64 URL-safe data with proper padding."""
         if not data:
             return None
@@ -345,9 +367,17 @@ class GmailBase(Block, ABC):
             missing_padding = len(data) % 4
             if missing_padding:
                 data += "=" * (4 - missing_padding)
-            return base64.urlsafe_b64decode(data).decode("utf-8")
+            # validate=True, so malformed data is rejected instead of decoded to noise
+            raw = base64.b64decode(data, altchars=b"-_", validate=True)
         except Exception:
             return None
+        if charset:
+            try:
+                return raw.decode(charset)
+            except (LookupError, ValueError):
+                pass  # An unknown, unusable or wrong charset; try UTF-8
+        # Keep the body readable even when its charset label is missing or wrong
+        return raw.decode("utf-8", errors="replace")
 
     async def _download_attachment_body(self, attachment_id, msg_id, service):
         """Download attachment content when email body is stored as attachment."""
