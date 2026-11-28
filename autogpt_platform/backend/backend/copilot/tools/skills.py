@@ -82,6 +82,7 @@ from backend.data.skill_deletion import DeletedBehavior
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
+    MergeBudget,
     MergedPackage,
     PackageFile,
     merge_packages,
@@ -2350,9 +2351,13 @@ def _merge_copy(
 ) -> MergedPackage:
     """The siblings merge file by file; the SKILL.md merges frontmatter by
     field and body by line (:mod:`skill_merge`), so a frontmatter the runtime
-    re-rendered on an edit never masks a catalog change to a field."""
-    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs))
-    root = merge_skill_markdown(_root_text(base), _root_text(ours), _root_text(theirs))
+    re-rendered on an edit never masks a catalog change to a field. All of
+    them share one :class:`MergeBudget`."""
+    budget = MergeBudget()
+    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs), budget)
+    root = merge_skill_markdown(
+        _root_text(base), _root_text(ours), _root_text(theirs), budget
+    )
     merged.files[SKILL_MD] = PackageFile(content=root.text.encode("utf-8"))
     if root.conflicted:
         merged.conflicts = sorted([*merged.conflicts, SKILL_MD])

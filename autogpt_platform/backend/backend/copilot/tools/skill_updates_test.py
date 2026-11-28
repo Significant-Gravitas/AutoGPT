@@ -312,7 +312,7 @@ async def test_a_cold_turn_leaves_alone_a_copy_another_turn_is_merging():
             [second] = await list_user_skills(USER)
         finally:
             release.set()
-        [merged] = await first
+            [merged] = await first
 
     assert merge.call_count == 1
     assert second.update == UPDATE_AVAILABLE

@@ -86,8 +86,8 @@ class MergedText(BaseModel):
 
 
 class MergeBudget(BaseModel):
-    """Comparisons the line alignments of one merge may still spend. The
-    files of a package share one, so its cost does not grow with its files."""
+    """Comparisons the line alignments of one merge may still spend. Every
+    file of a copy's update shares one, so its cost does not grow with them."""
 
     comparisons: int = MAX_MERGE_COMPARISONS
 
@@ -208,9 +208,17 @@ def _match_index(base: list[str], other: list[str], budget: MergeBudget) -> list
     ``get_matching_blocks()`` one search at a time, each paid for before it
     runs: a search walks every copy in *other* of each base line in its range.
     """
+    matcher = SequenceMatcher(None, base, other, autojunk=False)
+    copies = Counter(other)
+    cost_before = list(accumulate((1 + copies[line] for line in base), initial=0))
+    try:
+        whole = (0, len(base), 0, len(other))
+        return _search(matcher, cost_before, [-1] * len(base), whole, budget)
+    except _OverBudget:
+        pass
+    # Only for a file too repetitive to align whole: matching the shared ends
+    # first can pair a repeated line with the wrong copy and conflict needlessly.
     matched = [-1] * len(base)
-    # The shared ends need no search, and after an ordinary edit they are most
-    # of the file.
     limit = min(len(base), len(other))
     head = 0
     while head < limit and base[head] == other[head]:
@@ -220,10 +228,19 @@ def _match_index(base: list[str], other: list[str], budget: MergeBudget) -> list
     while tail < limit - head and base[-1 - tail] == other[-1 - tail]:
         tail += 1
         matched[-tail] = len(other) - tail
-    matcher = SequenceMatcher(None, base, other, autojunk=False)
-    copies = Counter(other)
-    cost_before = list(accumulate((1 + copies[line] for line in base), initial=0))
-    ranges = [(head, len(base) - tail, head, len(other) - tail)]
+    middle = (head, len(base) - tail, head, len(other) - tail)
+    return _search(matcher, cost_before, matched, middle, budget)
+
+
+def _search(
+    matcher: SequenceMatcher[str],
+    cost_before: list[int],
+    matched: list[int],
+    span: tuple[int, int, int, int],
+    budget: MergeBudget,
+) -> list[int]:
+    """Fill *matched* for base[alo:ahi] against other[blo:bhi], given as *span*."""
+    ranges = [span]
     while ranges:
         alo, ahi, blo, bhi = ranges.pop()
         cost = cost_before[ahi] - cost_before[alo]
@@ -250,7 +267,12 @@ class MergedPackage(BaseModel):
         return bool(self.conflicts)
 
 
-def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPackage:
+def merge_packages(
+    base: Package,
+    ours: Package,
+    theirs: Package,
+    budget: MergeBudget | None = None,
+) -> MergedPackage:
     """Merge an update (*theirs*) into the user's copy (*ours*) file by file,
     using the version they were installed from (*base*) to tell an edit from
     an unchanged file.
@@ -263,7 +285,7 @@ def merge_packages(base: Package, ours: Package, theirs: Package) -> MergedPacka
     the user deleted stays deleted. The executable bit merges the same way.
     """
     merged = MergedPackage()
-    budget = MergeBudget()
+    budget = budget or MergeBudget()
     for path in sorted(set(base) | set(ours) | set(theirs)):
         b, o, t = base.get(path), ours.get(path), theirs.get(path)
         if o == t:

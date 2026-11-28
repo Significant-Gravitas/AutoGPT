@@ -43,7 +43,7 @@ from backend.util.json import SafeJson
 from . import skill_db
 from .skill_catalog_release import LoadedPackage, LoadedRelease
 from .skill_model import legacy_package_sha256
-from .skill_submission_db import snapshot_version_files
+from .skill_submission_db import lock_creator_submissions, snapshot_version_files
 
 logger = logging.getLogger(__name__)
 
@@ -224,9 +224,10 @@ async def _move_unapproved_listing(
     )
     if dry_run:
         return
-    await prisma.models.SkillListing.prisma(tx).update(
-        where={"id": listing.id}, data={"slug": slug}
-    )
+    if listing.owningUserId is not None:
+        await lock_creator_submissions(tx, listing.owningUserId)
+    # Versions before the listing, the order a verdict writes them, and the slug
+    # moves only while unapproved: an approval that commits first keeps it.
     await prisma.models.SkillListingVersion.prisma(tx).update_many(
         where={
             "skillListingId": listing.id,
@@ -241,6 +242,13 @@ async def _move_unapproved_listing(
             "reviewedAt": datetime.now(UTC),
         },
     )
+    moved = await prisma.models.SkillListing.prisma(tx).update_many(
+        where={"id": listing.id, "hasApprovedVersion": False}, data={"slug": slug}
+    )
+    if not moved:
+        raise CatalogConflictError(
+            f"catalog skill '{listing.slug}' collides with a listing a user owns"
+        )
 
 
 async def _version_for(

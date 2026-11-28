@@ -1,8 +1,11 @@
 import math
 
+import pytest
+
 from backend.data.skill_package import (
     MAX_MERGE_COMPARISONS,
     MAX_MERGE_LINES,
+    MergedText,
     PackageFile,
     merge_packages,
     merge_text,
@@ -182,6 +185,25 @@ def test_merge_text_of_a_repetitive_file_still_merges_an_ordinary_edit():
 
     assert merged.text == "north,1,2,3\n" + base + "total,,,\n"
     assert not merged.conflicted
+
+
+@pytest.mark.parametrize(
+    "base, ours, theirs, merged",
+    [
+        pytest.param("a\nb", "a\nB", "a\nc\na\nb", "a\nc\na\nB", id="prepended"),
+        pytest.param(
+            "a {\n  one();\n}\n\nb {\n  two();\n}\n",
+            "a {\n  one();\n}\n\nb {\n  TWO();\n}\n",
+            "a {\n  ONE();\n}\n\nb {\n  two();\n}\n\nc {\n  three();\n}\n",
+            "a {\n  ONE();\n}\n\nb {\n  TWO();\n}\n\nc {\n  three();\n}\n",
+            id="appended",
+        ),
+    ],
+)
+def test_merge_text_keeps_an_update_that_repeats_the_first_or_last_line(
+    base: str, ours: str, theirs: str, merged: str
+):
+    assert merge_text(base, ours, theirs) == MergedText(text=merged, conflicted=False)
 
 
 def test_merge_packages_files_share_one_budget():

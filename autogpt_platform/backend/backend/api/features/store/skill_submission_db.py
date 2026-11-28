@@ -75,7 +75,7 @@ async def _create_pending_version(
     files: list[SkillFile],
 ) -> skill_model.SkillSubmission:
     async with transaction() as tx:
-        await _lock_creator_submissions(tx, user_id)
+        await lock_creator_submissions(tx, user_id)
         listing = await prisma.models.SkillListing.prisma(tx).find_unique(
             where={"slug": slug}
         )
@@ -392,9 +392,10 @@ async def _ensure_pending_room(tx: prisma.Prisma, user_id: str) -> None:
         )
 
 
-async def _lock_creator_submissions(tx: prisma.Prisma, user_id: str) -> None:
+async def lock_creator_submissions(tx: prisma.Prisma, user_id: str) -> None:
     """Serialize one creator's publishes, so two at once cannot both find no
-    pending version, or both find room for one."""
+    pending version, or both find room for one. The catalog takes it too
+    before it moves one of the creator's listings."""
     # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
     await tx.execute_raw(
         "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
