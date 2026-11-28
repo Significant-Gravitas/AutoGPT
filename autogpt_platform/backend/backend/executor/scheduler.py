@@ -3183,7 +3183,14 @@ class Scheduler(AppService):
         """After start: until then get_job only sees pending jobs, not the
         jobstore, so the "leave an unchanged job alone" check can't work."""
         if job.keep_if_unchanged:
-            stored = self.scheduler.get_job(job.id, jobstore=job.jobstore.value)
+            try:
+                stored = self.scheduler.get_job(job.id, jobstore=job.jobstore.value)
+            except Exception as e:
+                # A row whose function has since moved can't be rebuilt: replace it.
+                logger.warning(
+                    f"Stored job {job.id} unreadable, scheduling it afresh: {e}"
+                )
+                stored = None
             if stored is not None and _same_trigger(stored, job.trigger):
                 return
         self.scheduler.add_job(job.func, **_add_job_options(job))

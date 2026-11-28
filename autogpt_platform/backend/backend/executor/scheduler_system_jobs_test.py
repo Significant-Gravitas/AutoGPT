@@ -5,6 +5,8 @@ function's import path, so a renamed id or a moved function is a change to
 stored rows, and shows here as one."""
 
 import json
+import pickle
+import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -70,6 +72,36 @@ def test_a_moved_job_body_runs_on_the_loop_the_scheduler_lends_it(
     with _started(tmp_path):
         assert run_on_scheduler_loop(running_thread(), timeout=5) == (
             "SchedulerEventLoop"
+        )
+
+
+# One kept interval job registered before start, one kept cron registered after.
+@pytest.mark.parametrize(
+    "job_id", ["dream_pass_reaper", "refresh_near_expiry_credentials"]
+)
+def test_a_start_replaces_a_stored_job_whose_function_has_moved(
+    monkeypatch, tmp_path, job_id
+):
+    _pin_settings_to_their_defaults(monkeypatch)
+    with _started(tmp_path) as service:
+        declared = service.scheduler.get_job(job_id).func_ref
+    _point_stored_job_at(tmp_path / "jobs.sqlite", job_id, "backend.executor:moved")
+
+    with _started(tmp_path) as service:
+        assert service.scheduler.get_job(job_id).func_ref == declared
+
+
+def _point_stored_job_at(database, job_id: str, func_ref: str) -> None:
+    """What a deploy that moved the job's function leaves in the jobstore."""
+    with sqlite3.connect(database) as db:
+        (state,) = db.execute(
+            "SELECT job_state FROM apscheduler_jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        job_state = pickle.loads(state)
+        job_state["func"] = func_ref
+        db.execute(
+            "UPDATE apscheduler_jobs SET job_state = ? WHERE id = ?",
+            (pickle.dumps(job_state), job_id),
         )
 
 
