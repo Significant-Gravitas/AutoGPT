@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Future
 from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta, timezone
@@ -169,7 +169,13 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
-from backend.util.system_jobs import Jobstores, SystemJob, every
+from backend.util.system_jobs import (
+    Jobstores,
+    SystemJob,
+    SystemJobSource,
+    every,
+    lend_event_loop,
+)
 
 if TYPE_CHECKING:
     from backend.copilot.dream.nightly_batch import NightlyBatchResult
@@ -2442,35 +2448,6 @@ def execution_accuracy_alerts():
     return report_execution_accuracy_alerts()
 
 
-# The dream modules import the batch executor, whose package imports this
-# module, so the dream jobs below import them where they run, as the other
-# dream job bodies in this module do.
-
-
-def execute_dream_pass_reaper() -> None:
-    """Close the dream passes of every user that outlived their lease
-    (``copilot/dream/reaper.py``). The run bounds itself, and that budget is
-    what stops it: ``run_async``'s timeout frees the job thread should the
-    event loop stall, but does not cancel the run."""
-    from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS, reap_expired_passes
-
-    run_async(reap_expired_passes(), timeout=REAPER_BUDGET_SECONDS + 30)
-
-
-def execute_dream_pass_retention() -> None:
-    """Delete the closed dream passes past their retention
-    (``copilot/dream/retention.py``), bounded the same way."""
-    from backend.copilot.dream.retention import (
-        RETENTION_BUDGET_SECONDS,
-        delete_expired_records,
-    )
-
-    run_async(
-        delete_expired_records(config.dream_pass_retention_days),
-        timeout=RETENTION_BUDGET_SECONDS + 60,
-    )
-
-
 class _KeptScheduleJobs:
     """``add_job`` for the system jobs every start re-adds. An interval job whose
     interval is unchanged keeps its stored next run: re-added afresh, the run
@@ -2984,9 +2961,18 @@ class Scheduler(AppService):
     _block_load_error: Exception | None = None
 
     def __init__(
-        self, register_system_tasks: bool = True, throwaway_jobstores: bool = False
+        self,
+        register_system_tasks: bool = True,
+        throwaway_jobstores: bool = False,
+        system_jobs: Sequence[SystemJobSource] | None = None,
     ):
+        if register_system_tasks and system_jobs is None:
+            raise TypeError(
+                "A scheduler that registers system jobs is given them: "
+                "backend.scheduler_service.SYSTEM_JOBS"
+            )
         self.register_system_tasks = register_system_tasks
+        self.system_jobs = system_jobs or ()
         # Test servers: jobs a real scheduler saved in the platform database
         # must not run in them, and their tests' schedules must not land there.
         self.throwaway_jobstores = throwaway_jobstores
@@ -3041,6 +3027,7 @@ class Scheduler(AppService):
             target=_event_loop.run_forever, daemon=True, name="SchedulerEventLoop"
         )
         _event_loop_thread.start()
+        lend_event_loop(run_async)
 
         db_schema, db_url = self._jobstore_database()
         # Configure executors to limit concurrency without skipping jobs
@@ -3113,7 +3100,12 @@ class Scheduler(AppService):
         )
 
         system_jobs = (
-            [job for job in scheduler_system_jobs(config) if job.enabled]
+            [
+                job
+                for source in self.system_jobs
+                for job in source(config)
+                if job.enabled
+            ]
             if self.register_system_tasks
             else []
         )
@@ -5069,11 +5061,8 @@ class Scheduler(AppService):
 
 
 def scheduler_system_jobs(config: Config) -> list[SystemJob]:
-    """The system jobs declared here, in the order a start registers them."""
-    # The dream modules import the batch executor, whose package imports this
-    # module, so the reaper's interval is read here, at registration.
-    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
-
+    """The scheduler's own system jobs, and those of features not yet moved
+    beside their code, in the order a start registers them."""
     return [
         # ALERTS — empty the ten-minute debounce window. Runs every minute so a
         # condition raised at :01 goes out at :11, not at the next quarter hour.
@@ -5203,20 +5192,6 @@ def scheduler_system_jobs(config: Config) -> list[SystemJob]:
             id="deliver_background_subtasks",
             func=deliver_background_subtasks,
             trigger=every(seconds=5),
-            max_instances=1,
-        ),
-        # The passes of every user that outlived their lease, closed.
-        SystemJob(
-            id="dream_pass_reaper",
-            func=execute_dream_pass_reaper,
-            trigger=every(minutes=REAPER_INTERVAL_MINUTES),
-            max_instances=1,
-        ),
-        # The closed passes past their retention, deleted, weekly.
-        SystemJob(
-            id="dream_pass_retention",
-            func=execute_dream_pass_retention,
-            trigger=CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
             max_instances=1,
         ),
         # Safety net for the best-effort index writes: re-adds rows a failed

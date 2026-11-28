@@ -21,11 +21,11 @@ from backend.executor.scheduler import (
     Scheduler,
     _build_trigger,
     _job_to_info,
-    config,
     execute_copilot_turn,
     execute_graph,
-    scheduler_system_jobs,
 )
+from backend.scheduler_service import SYSTEM_JOBS
+from backend.util.settings import Config
 from backend.util.system_jobs import SystemJob
 
 STORE = Jobstores.EXECUTION.value
@@ -118,5 +118,7 @@ def resume(
 
 def declared_system_job(job_id: str) -> SystemJob:
     """The system job a start registers under *job_id*."""
-    [job] = [job for job in scheduler_system_jobs(config) if job.id == job_id]
+    [job] = [
+        job for source in SYSTEM_JOBS for job in source(Config()) if job.id == job_id
+    ]
     return job
