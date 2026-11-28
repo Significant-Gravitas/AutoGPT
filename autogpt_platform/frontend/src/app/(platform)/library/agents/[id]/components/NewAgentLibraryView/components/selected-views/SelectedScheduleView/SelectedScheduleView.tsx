@@ -19,6 +19,7 @@ import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
 import { SelectedScheduleActions } from "./components/SelectedScheduleActions/SelectedScheduleActions";
+import { SkippedRunsNotice } from "./components/SkippedRunsNotice/SkippedRunsNotice";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
 interface Props {
@@ -112,6 +113,13 @@ export function SelectedScheduleView({
                 </div>
               ) : null}
             </div>
+
+            {schedule?.runs_skipped ? (
+              <SkippedRunsNotice
+                runsSkipped={schedule.runs_skipped}
+                timezone={viewerTimezone}
+              />
+            ) : null}
 
             {/* Schedule Section */}
             <div id="schedule" className="scroll-mt-4">
