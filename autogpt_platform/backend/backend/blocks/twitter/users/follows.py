@@ -77,17 +77,11 @@ class TwitterUnfollowUserBlock(Block):
 
     @staticmethod
     def unfollow_user(credentials: TwitterCredentials, target_user_id: str):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.unfollow_user(target_user_id=target_user_id, user_auth=False)
+        client.unfollow_user(target_user_id=target_user_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
@@ -147,17 +141,11 @@ class TwitterFollowUserBlock(Block):
 
     @staticmethod
     def follow_user(credentials: TwitterCredentials, target_user_id: str):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.follow_user(target_user_id=target_user_id, user_auth=False)
+        client.follow_user(target_user_id=target_user_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
@@ -260,59 +248,51 @@ class TwitterGetFollowersBlock(Block):
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
+
+        params = {
+            "id": target_user_id,
+            "max_results": max_results,
+            "pagination_token": (None if pagination_token == "" else pagination_token),
+            "user_auth": False,
+        }
+
+        params = (
+            UserExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_tweet_fields(tweet_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
+
+        response = cast(Response, client.get_users_followers(**params))
+
+        meta = {}
+        follower_ids = []
+        follower_usernames = []
+        next_token = None
+
+        if response.meta:
+            meta = response.meta
+            next_token = meta.get("next_token")
+
+        included = IncludesSerializer.serialize(response.includes)
+        data = ResponseDataSerializer.serialize_list(response.data)
+
+        if response.data:
+            follower_ids = [str(user.id) for user in response.data]
+            follower_usernames = [user.username for user in response.data]
+
+            return (
+                follower_ids,
+                follower_usernames,
+                data,
+                included,
+                meta,
+                next_token,
             )
 
-            params = {
-                "id": target_user_id,
-                "max_results": max_results,
-                "pagination_token": (
-                    None if pagination_token == "" else pagination_token
-                ),
-                "user_auth": False,
-            }
-
-            params = (
-                UserExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
-
-            response = cast(Response, client.get_users_followers(**params))
-
-            meta = {}
-            follower_ids = []
-            follower_usernames = []
-            next_token = None
-
-            if response.meta:
-                meta = response.meta
-                next_token = meta.get("next_token")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-
-            if response.data:
-                follower_ids = [str(user.id) for user in response.data]
-                follower_usernames = [user.username for user in response.data]
-
-                return (
-                    follower_ids,
-                    follower_usernames,
-                    data,
-                    included,
-                    meta,
-                    next_token,
-                )
-
-            raise Exception("Followers not found")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("Followers not found")
 
     async def run(
         self,
@@ -433,59 +413,51 @@ class TwitterGetFollowingBlock(Block):
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
+
+        params = {
+            "id": target_user_id,
+            "max_results": max_results,
+            "pagination_token": (None if pagination_token == "" else pagination_token),
+            "user_auth": False,
+        }
+
+        params = (
+            UserExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_tweet_fields(tweet_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
+
+        response = cast(Response, client.get_users_following(**params))
+
+        meta = {}
+        following_ids = []
+        following_usernames = []
+        next_token = None
+
+        if response.meta:
+            meta = response.meta
+            next_token = meta.get("next_token")
+
+        included = IncludesSerializer.serialize(response.includes)
+        data = ResponseDataSerializer.serialize_list(response.data)
+
+        if response.data:
+            following_ids = [str(user.id) for user in response.data]
+            following_usernames = [user.username for user in response.data]
+
+            return (
+                following_ids,
+                following_usernames,
+                data,
+                included,
+                meta,
+                next_token,
             )
 
-            params = {
-                "id": target_user_id,
-                "max_results": max_results,
-                "pagination_token": (
-                    None if pagination_token == "" else pagination_token
-                ),
-                "user_auth": False,
-            }
-
-            params = (
-                UserExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
-
-            response = cast(Response, client.get_users_following(**params))
-
-            meta = {}
-            following_ids = []
-            following_usernames = []
-            next_token = None
-
-            if response.meta:
-                meta = response.meta
-                next_token = meta.get("next_token")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-
-            if response.data:
-                following_ids = [str(user.id) for user in response.data]
-                following_usernames = [user.username for user in response.data]
-
-                return (
-                    following_ids,
-                    following_usernames,
-                    data,
-                    included,
-                    meta,
-                    next_token,
-                )
-
-            raise Exception("Following not found")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("Following not found")
 
     async def run(
         self,

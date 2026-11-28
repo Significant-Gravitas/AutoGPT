@@ -85,17 +85,11 @@ class TwitterLikeTweetBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.like(tweet_id=tweet_id, user_auth=False)
+        client.like(tweet_id=tweet_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
@@ -206,55 +200,47 @@ class TwitterGetLikingUsersBlock(Block):
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "id": tweet_id,
-                "max_results": max_results,
-                "pagination_token": (
-                    None if pagination_token == "" else pagination_token
-                ),
-                "user_auth": False,
-            }
+        params = {
+            "id": tweet_id,
+            "max_results": max_results,
+            "pagination_token": (None if pagination_token == "" else pagination_token),
+            "user_auth": False,
+        }
 
-            params = (
-                UserExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            UserExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_tweet_fields(tweet_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_liking_users(**params))
+        response = cast(Response, client.get_liking_users(**params))
 
-            if not response.data and not response.meta:
-                raise Exception("No liking users found")
-
-            meta = {}
-            user_ids = []
-            usernames = []
-            next_token = None
-
-            if response.meta:
-                meta = response.meta
-                next_token = meta.get("next_token")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-
-            if response.data:
-                user_ids = [str(user.id) for user in response.data]
-                usernames = [user.username for user in response.data]
-
-                return user_ids, usernames, data, included, meta, next_token
-
+        if not response.data and not response.meta:
             raise Exception("No liking users found")
 
-        except tweepy.TweepyException:
-            raise
+        meta = {}
+        user_ids = []
+        usernames = []
+        next_token = None
+
+        if response.meta:
+            meta = response.meta
+            next_token = meta.get("next_token")
+
+        included = IncludesSerializer.serialize(response.includes)
+        data = ResponseDataSerializer.serialize_list(response.data)
+
+        if response.data:
+            user_ids = [str(user.id) for user in response.data]
+            usernames = [user.username for user in response.data]
+
+            return user_ids, usernames, data, included, meta, next_token
+
+        raise Exception("No liking users found")
 
     async def run(
         self,
@@ -404,75 +390,65 @@ class TwitterGetLikedTweetsBlock(Block):
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {
-                "id": user_id,
-                "max_results": max_results,
-                "pagination_token": (
-                    None if pagination_token == "" else pagination_token
-                ),
-                "user_auth": False,
-            }
+        params = {
+            "id": user_id,
+            "max_results": max_results,
+            "pagination_token": (None if pagination_token == "" else pagination_token),
+            "user_auth": False,
+        }
 
-            params = (
-                TweetExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_media_fields(media_fields)
-                .add_place_fields(place_fields)
-                .add_poll_fields(poll_fields)
-                .add_tweet_fields(tweet_fields)
-                .add_user_fields(user_fields)
-                .build()
-            )
+        params = (
+            TweetExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_media_fields(media_fields)
+            .add_place_fields(place_fields)
+            .add_poll_fields(poll_fields)
+            .add_tweet_fields(tweet_fields)
+            .add_user_fields(user_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_liked_tweets(**params))
+        response = cast(Response, client.get_liked_tweets(**params))
 
-            if not response.data and not response.meta:
-                raise Exception("No liked tweets found")
-
-            meta = {}
-            tweet_ids = []
-            tweet_texts = []
-            user_ids = []
-            user_names = []
-            next_token = None
-
-            if response.meta:
-                meta = response.meta
-                next_token = meta.get("next_token")
-
-            included = IncludesSerializer.serialize(response.includes)
-            data = ResponseDataSerializer.serialize_list(response.data)
-
-            if response.data:
-                tweet_ids = [str(tweet.id) for tweet in response.data]
-                tweet_texts = [tweet.text for tweet in response.data]
-
-                if "users" in response.includes:
-                    user_ids = [str(user["id"]) for user in response.includes["users"]]
-                    user_names = [
-                        user["username"] for user in response.includes["users"]
-                    ]
-
-                return (
-                    tweet_ids,
-                    tweet_texts,
-                    user_ids,
-                    user_names,
-                    data,
-                    included,
-                    meta,
-                    next_token,
-                )
-
+        if not response.data and not response.meta:
             raise Exception("No liked tweets found")
 
-        except tweepy.TweepyException:
-            raise
+        meta = {}
+        tweet_ids = []
+        tweet_texts = []
+        user_ids = []
+        user_names = []
+        next_token = None
+
+        if response.meta:
+            meta = response.meta
+            next_token = meta.get("next_token")
+
+        included = IncludesSerializer.serialize(response.includes)
+        data = ResponseDataSerializer.serialize_list(response.data)
+
+        if response.data:
+            tweet_ids = [str(tweet.id) for tweet in response.data]
+            tweet_texts = [tweet.text for tweet in response.data]
+
+            if "users" in response.includes:
+                user_ids = [str(user["id"]) for user in response.includes["users"]]
+                user_names = [user["username"] for user in response.includes["users"]]
+
+            return (
+                tweet_ids,
+                tweet_texts,
+                user_ids,
+                user_names,
+                data,
+                included,
+                meta,
+                next_token,
+            )
+
+        raise Exception("No liked tweets found")
 
     async def run(
         self,
@@ -559,17 +535,11 @@ class TwitterUnlikeTweetBlock(Block):
         credentials: TwitterCredentials,
         tweet_id: str,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            client.unlike(tweet_id=tweet_id, user_auth=False)
+        client.unlike(tweet_id=tweet_id, user_auth=False)
 
-            return True
-
-        except tweepy.TweepyException:
-            raise
+        return True
 
     async def run(
         self,
