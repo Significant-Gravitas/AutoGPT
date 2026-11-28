@@ -1800,7 +1800,9 @@ class TestExpertTurnsCheckTheirExpert:
         billing_events: list[str] = []
         billed_turns: list[object] = []
         pause = TurnPause(reason="daily", started=False)
-        credit_turn = MagicMock(refusal=pause, cap_credits=5, budget=None)
+        credit_turn = MagicMock(
+            refusal=pause, cap_credits=5, budget=None, release=AsyncMock()
+        )
         allowance_check = AsyncMock(return_value=pause)
         credit_check = AsyncMock(return_value=credit_turn)
 
@@ -1896,6 +1898,7 @@ class TestExpertTurnsCheckTheirExpert:
         assert outputs == ["hi"]
         assert billing_events == ["opened", "charged"]
         assert billed_turns == [credit_turn]
+        credit_turn.release.assert_awaited()
         assert boundary_events == [
             "reauthorized",
             "billing opened",
@@ -1970,7 +1973,9 @@ class TestExpertTurnsCheckTheirExpert:
         identities: list[str] = []
         billing_events: list[str] = []
         pause = TurnPause(reason="daily", started=False)
-        credit_turn = MagicMock(refusal=pause, cap_credits=5, budget=None)
+        credit_turn = MagicMock(
+            refusal=pause, cap_credits=5, budget=None, release=AsyncMock()
+        )
         allowance_check = AsyncMock(return_value=pause)
         credit_check = AsyncMock(return_value=credit_turn)
 

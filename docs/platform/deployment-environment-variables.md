@@ -89,23 +89,26 @@ published ports instead: `http://<server>:3000` for the frontend,
 | `autogpt_platform/.env` | `FRONTEND_BASE_URL` | `https://autogpt.example.com` | Links the backend sends people: OAuth redirects, emails, Stripe |
 | `autogpt_platform/.env` | `NEXT_PUBLIC_FRONTEND_BASE_URL` | `https://autogpt.example.com` | The frontend's own address |
 | `frontend/.env` | `BETTER_AUTH_URL` | `https://autogpt.example.com` | The login service's own address, used in password-reset and verification links and social sign-in callbacks |
-| `frontend/.env` | `BETTER_AUTH_INTERNAL_URL` | `http://localhost:3000` | Where the frontend's server reaches its own login service. Always `http://localhost:3000` under Docker |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_SERVER_URL` | `https://api.autogpt.example.com/api` | The backend API, as the browser reaches it |
 | `frontend/.env` | `NEXT_PUBLIC_AGPT_WS_SERVER_URL` | `wss://api.autogpt.example.com/ws` | The WebSocket server, as the browser reaches it |
-| `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services |
+| `backend/.env` | `PLATFORM_BASE_URL` | `https://api.autogpt.example.com` | Webhook and MCP URLs the backend hands to other services, and where the Claude Code block's E2B sandbox sends its model calls |
 | `backend/.env` | `BACKEND_CORS_ALLOW_ORIGINS` | `["https://autogpt.example.com"]` | Origins the API and WebSocket server accept calls from (a JSON list; the default only allows `http://localhost:3000`) |
 
 Some of these lines are not in the files yet, so add them:
 `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` in
-`autogpt_platform/.env`, `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`, and
-`BETTER_AUTH_INTERNAL_URL` in `frontend/.env`. Leave out the trailing `/`.
+`autogpt_platform/.env`, and `BACKEND_CORS_ALLOW_ORIGINS` in `backend/.env`.
+Leave out the trailing `/`.
 
-Without `BETTER_AUTH_INTERNAL_URL`, the frontend's server calls
-`BETTER_AUTH_URL` to fetch a signed-in visitor's token. That works only if the
-frontend container can resolve your public hostname, reach it, and trust its
-certificate. With a name only your network's clients know about, or a
-self-signed or internal certificate, it cannot: sign-up then fails, and the
-sign-up page stays where it is without an error.
+The Claude Code block needs E2B's cloud to reach `PLATFORM_BASE_URL`, and
+fails with an error saying so when it's empty, `localhost` or a private address.
+On a server E2B can't reach, set `CLAUDE_CODE_KEY_IN_SANDBOX=true` in
+`backend/.env` to give the block's sandbox the user's Anthropic key instead.
+
+The frontend's server also calls its own login service: to fetch a signed-in
+visitor's token, and to check that whoever opens an admin page is an admin.
+The compose file sends those calls straight to the frontend container's own
+port (`BETTER_AUTH_INTERNAL_URL` is `http://localhost:3000`), not out through
+your public address and proxy, so leave that setting alone.
 
 Give `FRONTEND_BASE_URL`, `NEXT_PUBLIC_FRONTEND_BASE_URL` and
 `BETTER_AUTH_URL` the same value. The backend sends password-reset and
@@ -167,6 +170,18 @@ proxy, so rate limits, the sign-in history and IP blocks see each visitor
 rather than the proxy. [Client IP Addresses](client-ip.md) says which
 addresses to list on each, and which older settings it replaces.
 
+The frontend, the API and the WebSocket server keep an idle connection open
+for 620 seconds, longer than nginx (60 seconds), Traefik (90 seconds) and Caddy
+(2 minutes) keep one by default, so the proxy is the one that closes it. A proxy
+that keeps idle connections longer would now and then send a request on a
+connection a server is closing, and answer 502, which it doesn't retry for a
+POST: set `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` in `backend/.env`, and
+`KEEP_ALIVE_TIMEOUT` (in milliseconds) on the `frontend` service in
+`docker-compose.platform.yml`, above its idle timeout. With no proxy in front,
+a connection a browser leaves idle holds one of a server's file descriptors for
+that long; on a server that clients reach directly, a shorter setting such as
+75 seconds is enough.
+
 ## 4. Decide who can sign up
 
 Anyone who can reach the frontend can create an account. To limit that, set
@@ -220,7 +235,7 @@ files do not set them, so setting those two in `backend/.env` is enough.
 - [ ] `make init-env` in `autogpt_platform/`
 - [ ] A real `mailto:` `VAPID_CLAIM_EMAIL` in `backend/.env`
 - [ ] `FRONTEND_BASE_URL` and `NEXT_PUBLIC_FRONTEND_BASE_URL` added to `autogpt_platform/.env`
-- [ ] `BETTER_AUTH_URL`, `BETTER_AUTH_INTERNAL_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
+- [ ] `BETTER_AUTH_URL`, `NEXT_PUBLIC_AGPT_SERVER_URL` and `NEXT_PUBLIC_AGPT_WS_SERVER_URL` in `frontend/.env`
 - [ ] `PLATFORM_BASE_URL` and `BACKEND_CORS_ALLOW_ORIGINS` (added) in `backend/.env`
 - [ ] A TLS reverse proxy in front of `3000`, `8001` and `8006`, those ports firewalled, and `TRUSTED_PROXIES` set in `backend/.env` and `frontend/.env`
 - [ ] Sign-ups limited, if the server is public

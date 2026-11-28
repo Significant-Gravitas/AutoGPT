@@ -2809,7 +2809,9 @@ async def set_preset_webhook(
             ):
                 raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
             update_data["organizationId"] = organization_id
-            update_data["teamId"] = team_id
+            update_data["Team"] = (
+                {"connect": {"id": team_id}} if team_id else {"disconnect": True}
+            )
 
     updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},

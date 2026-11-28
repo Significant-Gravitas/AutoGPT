@@ -35,7 +35,7 @@ export function BotsList() {
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-        <Text variant="large-medium" as="span">
+        <Text variant="large" weight="medium" as="span">
           No bots enabled
         </Text>
         <Text variant="body" tone="muted" className="max-w-[360px]">

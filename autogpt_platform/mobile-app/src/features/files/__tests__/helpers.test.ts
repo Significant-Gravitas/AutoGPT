@@ -1,6 +1,7 @@
 import {
   capText,
   decodeUtf8,
+  fileKind,
   isPreviewed,
   TEXT_DISPLAY_LIMIT,
   trimPartialUtf8,
@@ -86,5 +87,20 @@ describe("decodeUtf8", () => {
     expect(decodeUtf8(new Uint8Array([0x61, 0xf0, 0x9f, 0x98]))).toBe(
       "a\ufffd",
     );
+  });
+});
+
+describe("fileKind", () => {
+  it("opens CSV and TSV as tables and PDFs as PDFs", () => {
+    expect(fileKind({ name: "pipeline.csv", mime_type: "text/plain" })).toBe("table");
+    expect(fileKind({ name: "export.tsv", mime_type: "" })).toBe("table");
+    expect(fileKind({ name: "report", mime_type: "text/csv" })).toBe("table");
+    expect(fileKind({ name: "deck.pdf", mime_type: "application/octet-stream" })).toBe("pdf");
+    expect(fileKind({ name: "scan", mime_type: "application/pdf" })).toBe("pdf");
+  });
+
+  it("keeps code as text and Office files as other", () => {
+    expect(fileKind({ name: "report.json", mime_type: "application/json" })).toBe("text");
+    expect(fileKind({ name: "notes.docx", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })).toBe("other");
   });
 });

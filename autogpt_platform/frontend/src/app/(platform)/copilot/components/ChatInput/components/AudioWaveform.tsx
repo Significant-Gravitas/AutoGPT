@@ -107,33 +107,26 @@ export function AudioWaveform({
 
   return (
     <div
-      className="flex items-center justify-center"
-      style={{
-        width: totalWidth,
-        height: maxBarHeight,
-        gap: barGap,
-      }}
+      className="flex h-(--wave-height) w-(--wave-width) items-center justify-center gap-(--bar-gap)"
+      style={
+        {
+          "--wave-width": `${totalWidth}px`,
+          "--wave-height": `${maxBarHeight}px`,
+          "--bar-gap": `${barGap}px`,
+          "--bar-width": `${barWidth}px`,
+          "--bar-color": barColor,
+        } as React.CSSProperties
+      }
     >
       {bars.map((height, i) => {
         const barHeight = Math.max(minBarHeight, height);
         return (
-          <div
-            key={i}
-            className="relative"
-            style={{
-              width: barWidth,
-              height: maxBarHeight,
-            }}
-          >
+          <div key={i} className="relative h-(--wave-height) w-(--bar-width)">
             <div
-              className="absolute left-0 rounded-full transition-[height] duration-75"
-              style={{
-                width: barWidth,
-                height: barHeight,
-                top: "50%",
-                transform: "translateY(-50%)",
-                backgroundColor: barColor,
-              }}
+              className="absolute top-1/2 left-0 h-(--bar-height) w-(--bar-width) -translate-y-1/2 rounded-pill bg-(--bar-color) transition-[height] duration-75"
+              style={
+                { "--bar-height": `${barHeight}px` } as React.CSSProperties
+              }
             />
           </div>
         );

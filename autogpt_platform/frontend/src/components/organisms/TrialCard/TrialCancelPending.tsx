@@ -32,12 +32,12 @@ export function TrialCancelPending({
         <TrialTitle>Your trial</TrialTitle>
         <span
           data-slot="trial-cancel-pending-status"
-          className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-body"
+          className="inline-flex items-center gap-1.5 rounded-pill bg-surface-hover px-2 py-0.5 text-caption text-foreground-body"
         >
           <span
             aria-hidden
             data-slot="trial-cancel-pending-status-dot"
-            className="size-1.5 rounded-full bg-foreground-subtle"
+            className="size-1.5 rounded-full bg-fill-subtle"
           />
           Cancellation pending
         </span>

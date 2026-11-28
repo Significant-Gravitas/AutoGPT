@@ -41,7 +41,7 @@ export function BotCardDmTile({
       <div className="flex min-w-0 items-center gap-3 text-foreground-tertiary">
         <Icon icon={Chatting01Icon} size={20} className="shrink-0" />
         <div className="flex min-w-0 flex-col">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             {title}
           </Text>
           <Text variant="small" as="span" tone="muted">

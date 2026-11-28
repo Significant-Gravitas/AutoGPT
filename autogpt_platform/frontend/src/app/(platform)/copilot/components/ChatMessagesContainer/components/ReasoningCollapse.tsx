@@ -57,7 +57,7 @@ export function ReasoningCollapse({ children, isActive = false }: Props) {
             Reasoning
           </AccordionPrimitive.Trigger>
         </AccordionPrimitive.Header>
-        <AccordionContent className="pt-0 pb-1 font-sans text-body text-foreground-tertiary [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-body [&_pre]:whitespace-pre-wrap [&_pre]:text-foreground-tertiary">
+        <AccordionContent className="pb-1 font-sans text-body text-foreground-tertiary [&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:font-sans [&_pre]:text-body [&_pre]:whitespace-pre-wrap [&_pre]:text-foreground-tertiary">
           {children}
           <Button
             variant="secondary"

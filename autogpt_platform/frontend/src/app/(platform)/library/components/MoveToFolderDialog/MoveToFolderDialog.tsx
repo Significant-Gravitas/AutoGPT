@@ -112,7 +112,9 @@ export function MoveToFolderDialog({
               >
                 <span className="text-lead">📂</span>
                 <div className="flex flex-col items-start">
-                  <Text variant="small-medium">My Library (root)</Text>
+                  <Text variant="small" weight="medium">
+                    My Library (root)
+                  </Text>
                   <Text variant="small" tone="subtle">
                     Remove from folder
                   </Text>
@@ -140,7 +142,9 @@ export function MoveToFolderDialog({
                       {folder.icon ?? "📁"}
                     </span>
                     <div className="flex flex-col items-start">
-                      <Text variant="small-medium">{folder.name}</Text>
+                      <Text variant="small" weight="medium">
+                        {folder.name}
+                      </Text>
                       <Text variant="small" tone="subtle">
                         {folder.agent_count ?? 0}{" "}
                         {(folder.agent_count ?? 0) === 1

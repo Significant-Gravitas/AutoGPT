@@ -37,7 +37,7 @@ export function AgentImageItem({
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-xl border border-separator bg-foreground-subtle sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-[15rem] overflow-hidden rounded-xl border border-separator bg-fill-subtle sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
           isYouTubeUrl(image) ? (
             <YouTubeEmbed url={image} />

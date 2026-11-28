@@ -44,6 +44,10 @@ const config: StorybookConfig = {
         /(^|[\\/])lib[\\/]auth[\\/]actions(\.ts)?$/,
         path.resolve(__dirname, "mocks/auth-actions.ts"),
       ),
+      new webpack.NormalModuleReplacementPlugin(
+        /(^|[\\/])lib[\\/]auth[\\/]server[\\/]getServerUser(\.ts)?$/,
+        path.resolve(__dirname, "mocks/get-server-user.ts"),
+      ),
     );
     return config;
   },

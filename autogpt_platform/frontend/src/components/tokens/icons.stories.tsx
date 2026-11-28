@@ -233,7 +233,8 @@ export function AllVariants() {
               </div>
               <div className="rounded-lg border border-border-base p-4">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="mb-2 font-semibold text-foreground-emphasis"
                 >
                   Stroke Width
@@ -259,7 +260,8 @@ export function AllVariants() {
             <div className="space-y-4">
               <div className="rounded-lg border-2 border-dashed border-info/30 bg-info-surface p-4">
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="mb-2 font-semibold text-info-foreground"
                 >
                   ✅ Always Use Hugeicons
@@ -323,7 +325,8 @@ export function AllVariants() {
 
         <div className="rounded-lg border-2 border-dashed border-warning-border bg-warning-surface p-6">
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             className="mb-3 font-semibold text-warning-foreground"
           >
             🎨 Always Match Figma Designs

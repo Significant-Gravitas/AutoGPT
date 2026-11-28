@@ -240,7 +240,8 @@ export function isSystemCredential(credential: {
   title?: string | null;
   is_system?: boolean;
 }): boolean {
-  if (credential.is_system === true) return true;
+  // The backend sets the flag from the key's id; the title is only a guess
+  if (typeof credential.is_system === "boolean") return credential.is_system;
   if (!credential.title) return false;
   const titleLower = credential.title.toLowerCase();
   return (

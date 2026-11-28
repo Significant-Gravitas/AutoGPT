@@ -138,7 +138,7 @@ function ChatGPTConnectionDialog({
               <Text variant="small" tone="muted">
                 Connected account
               </Text>
-              <Text variant="body-medium">
+              <Text variant="body" weight="medium">
                 {snapshot?.email ?? account ?? "Your ChatGPT account"}
               </Text>
               {accountQuery.isLoading ? (
@@ -294,7 +294,7 @@ function Microsoft365CopilotConnectionDialog({
               <Text variant="small" tone="muted">
                 Connected work account
               </Text>
-              <Text variant="body-medium">
+              <Text variant="body" weight="medium">
                 {displayName ??
                   credential?.username ??
                   "Microsoft 365 Copilot account"}
@@ -312,7 +312,7 @@ function Microsoft365CopilotConnectionDialog({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Text variant="small-medium" tone="body">
+              <Text variant="small" weight="medium" tone="body">
                 Access granted
               </Text>
               {accessLabels.length > 0 ? (

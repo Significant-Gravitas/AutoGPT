@@ -655,6 +655,14 @@ describe("useAuthStore.seedFromServer", () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 
+  it("lets the WebSocket connect for the seeded user", async () => {
+    const { clearWebSocketDisconnectIntent } = await import("../../helpers");
+
+    useAuthStore.getState().seedFromServer(user);
+
+    expect(clearWebSocketDisconnectIntent).toHaveBeenCalledTimes(1);
+  });
+
   it("is taken once per page load", () => {
     useAuthStore.getState().seedFromServer(user);
     useAuthStore.setState({ user: null, isUserLoading: true });

@@ -1,5 +1,6 @@
 import type { Browser, Page } from "@playwright/test";
 import { expect, test } from "../coverage-fixture";
+import { markChangelogSeen } from "../utils/changelog";
 import { JOURNEY_USER_AGENT } from "./user-agent";
 
 // Several people signing up to one self-hosted install at once. That burst
@@ -70,6 +71,7 @@ async function signUp(
     baseURL,
     userAgent: JOURNEY_USER_AGENT,
   });
+  await markChangelogSeen(context);
   const page = await context.newPage();
   const problems: string[] = [];
   const password = `Burst-${Date.now()}-journey`;

@@ -170,13 +170,15 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
               </TooltipProvider>
             )}
             <Text
-              variant={isBroken ? "body-line-through" : "body"}
+              variant="body"
+              decoration={isBroken ? "line-through" : undefined}
               tone={isBroken ? "error" : "body"}
             >
               {fieldTitle}
             </Text>
             <Text
-              variant={isBroken ? "small-line-through" : "small"}
+              variant="small"
+              decoration={isBroken ? "line-through" : undefined}
               as="span"
               tone={isBroken ? "error" : undefined}
               className={isBroken ? undefined : colorClass}
@@ -211,7 +213,8 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
         onClick={() => setIsOutputVisible(!isOutputVisible)}
       >
         <Text
-          variant="body-semibold"
+          variant="body"
+          weight="semibold"
           tone="body"
           className="flex items-center gap-2"
         >

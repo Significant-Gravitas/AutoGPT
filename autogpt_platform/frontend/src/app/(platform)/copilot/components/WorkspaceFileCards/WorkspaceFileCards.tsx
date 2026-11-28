@@ -62,7 +62,8 @@ export function WorkspaceFileCards({ sessionId, expert = null }: Props) {
           action={
             files.length > 0 && (
               <Button
-                variant="ghost-subtle"
+                variant="ghost"
+                tone="quiet-subtle"
                 size="icon-2xs"
                 shape="soft"
                 withTooltip={false}

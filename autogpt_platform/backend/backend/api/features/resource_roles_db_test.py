@@ -26,6 +26,7 @@ from backend.api.features.graph_executions.routes import router as executions_ro
 from backend.api.features.graphs.routes import router as graphs_router
 from backend.api.features.library.routes import router as library_router
 from backend.api.features.orgs.db import resolve_member_tenancy
+from backend.api.features.store import submission_media
 from backend.api.features.store.routes import router as store_router
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -42,7 +43,8 @@ class World(BaseModel):
     """One shared org with one team. ``team_billing`` is a plain org member who
     only manages the team's billing, ``org_billing`` manages the org's billing
     and is a plain member of the team, as adding them to the org leaves them
-    on its default team."""
+    on its default team. ``admin_billing`` is an org admin who also manages its
+    billing."""
 
     org: str
     team: str
@@ -50,6 +52,7 @@ class World(BaseModel):
     member: str
     team_billing: str
     org_billing: str
+    admin_billing: str
     personal: dict[str, tuple[str, str]]
     owner_graph: str
     owner_run: str
@@ -83,9 +86,9 @@ async def world() -> AsyncIterator[World]:
 
 async def _build_world(users: list[str], orgs: list[str]) -> World:
     suffix = uuid.uuid4().hex[:8]
-    owner, member, team_billing, org_billing = [
+    owner, member, team_billing, org_billing, admin_billing = [
         await _user(f"{role}-{suffix}", users)
-        for role in ("owner", "member", "teambill", "orgbill")
+        for role in ("owner", "member", "teambill", "orgbill", "adminbill")
     ]
     personal = {uid: await _personal_org(uid, orgs) for uid in users}
     org = await prisma.organization.create(
@@ -98,6 +101,7 @@ async def _build_world(users: list[str], orgs: list[str]) -> World:
         (member, {}),
         (team_billing, {}),
         (org_billing, {"isBillingManager": True}),
+        (admin_billing, {"isAdmin": True, "isBillingManager": True}),
     ):
         await prisma.orgmember.create(
             data={"orgId": org.id, "userId": uid, "status": "ACTIVE", **flags}
@@ -121,6 +125,7 @@ async def _build_world(users: list[str], orgs: list[str]) -> World:
         member=member,
         team_billing=team_billing,
         org_billing=org_billing,
+        admin_billing=admin_billing,
         personal=personal,
         owner_graph=owner_graph.id,
         owner_run=await _run(owner, owner_graph, org.id, team.id),
@@ -497,6 +502,31 @@ async def test_an_org_billing_manager_is_refused_the_orgs_workflows_and_runs(
             response = await _call(api, method, path, w.org_billing, w.org, team, body)
             assert _refused_by_role(response), (method, path, team, response.text)
     assert await prisma.agentgraph.count(where={"userId": w.org_billing}) == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_private_submission_media_needs_a_role_that_covers_workflows(
+    api, world, mocker
+):
+    """As listing the org's submissions does."""
+    w = world
+    mocker.patch.object(
+        submission_media, "metadata", AsyncMock(return_value={"size": 3})
+    )
+
+    async def media_bytes(*_args):
+        yield b"png"
+
+    mocker.patch.object(submission_media, "stream", media_bytes)
+    path = f"/store/submissions/media/{w.member}/images/cover.png"
+    for reader, readable in (
+        (w.owner, True),
+        (w.team_billing, True),
+        (w.admin_billing, True),
+        (w.org_billing, False),
+    ):
+        response = await _call(api, "GET", path, reader)
+        assert response.status_code == (200 if readable else 404), reader
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -4,6 +4,7 @@ import { describeChatError } from "../chatErrorGuidance";
 import { CopilotAuthError } from "../helpers";
 import {
   ChatUnavailableError,
+  DroppedSendError,
   MessageTooLongError,
   SendRefusedError,
   UnconfirmedSendError,
@@ -16,6 +17,18 @@ describe("describeChatError", () => {
     expect(describeChatError(new UnconfirmedSendError())).toEqual({
       title:
         "We couldn't confirm your message was sent. Check your connection and send it again.",
+      action: "resend",
+    });
+  });
+
+  it("a send the network dropped says so, and offers to send it again", () => {
+    expect(
+      describeChatError(
+        new DroppedSendError("local:1", new TypeError("Failed to fetch")),
+      ),
+    ).toEqual({
+      title:
+        "The connection dropped before your message was sent. Check your connection and send it again.",
       action: "resend",
     });
   });
@@ -108,7 +121,10 @@ describe("describeChatError", () => {
   );
 
   it.each([
-    ["a dropped connection", new TypeError("Failed to fetch")],
+    [
+      "a dropped connection outside the stream runtime",
+      new TypeError("Failed to fetch"),
+    ],
     [
       "a proxy's 502",
       new SendRefusedError("Couldn't reach the server (HTTP 502).", 502),

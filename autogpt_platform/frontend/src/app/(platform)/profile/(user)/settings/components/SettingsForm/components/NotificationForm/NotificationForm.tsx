@@ -37,7 +37,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
 
   return (
     <div>
-      <Text variant="h3" size="large-semibold">
+      <Text variant="h3" size="large" weight="semibold">
         Notifications
       </Text>
       <Text variant="body" tone="muted" className="mt-2">
@@ -56,7 +56,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <div className="mb-2 space-y-0.5">
-                    <Text variant="h4" size="body-medium">
+                    <Text variant="h4" size="body" weight="medium">
                       Briefing
                     </Text>
                     <Text variant="body">
@@ -88,7 +88,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between">
                   <div className="space-y-0.5">
-                    <Text variant="h4" size="body-medium">
+                    <Text variant="h4" size="body" weight="medium">
                       Alerts
                     </Text>
                     <Text variant="body">
@@ -113,7 +113,7 @@ export function NotificationForm({ preferences, user }: NotificationFormProps) {
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between">
                   <div className="space-y-0.5">
-                    <Text variant="h4" size="body-medium">
+                    <Text variant="h4" size="body" weight="medium">
                       Marketplace reviews
                     </Text>
                     <Text variant="body">

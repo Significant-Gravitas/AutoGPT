@@ -1,6 +1,7 @@
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { environment } from "@/services/environment";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { signOutIfRefused } from "@/lib/auth/account-banned";
 import { DefaultChatTransport } from "ai";
 import type { ChatTransport, FileUIPart, UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
@@ -113,6 +114,13 @@ export function createCopilotTransport({
 function keepPaywallStatus(inner: typeof fetch): typeof fetch {
   return async (input, init) => {
     const response = await inner(input, init);
+    if (response.status === 401 || response.status === 403) {
+      const refusal = await response
+        .clone()
+        .json()
+        .catch(() => null);
+      signOutIfRefused(response.status, refusal);
+    }
     if (response.status !== 402) return response;
     const body = await response.json().catch(() => null);
     const detail = (body as { detail?: unknown } | null)?.detail;

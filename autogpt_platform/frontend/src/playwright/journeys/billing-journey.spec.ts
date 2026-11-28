@@ -19,6 +19,20 @@ const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
 const CREDITS_PATH = "/api/proxy/api/credits";
 const HISTORY_PATH = "/api/proxy/api/credits/transactions";
+// Page time the second test runs. The page's backup read comes 10 s after its
+// fulfil call (LATE_WEBHOOK_MS in useTopupCheckoutReturn.ts), and the clock is
+// paused before that call answers, so the backup is armed on page time the
+// test runs: the refresh steps plus the steps for the answers, kept far below.
+// Keep BACKUP_READ_MS equal to LATE_WEBHOOK_MS; the test can't import it.
+const BACKUP_READ_MS = 10_000;
+const PAUSE_JUMP_MS = 1_000;
+// One step per poll (every 100 ms): REFRESH_CLOCK_BUDGET_MS lasts its poll's
+// 15 s, and ANSWER_RUN_MS about 10 s of the two answer polls it's shared by. A
+// runner that stalls before the page handles an answer still gets its timers
+// run, and the steps only fire due timers, at most each budget's worth.
+const REFRESH_STEP_MS = 10;
+const REFRESH_CLOCK_BUDGET_MS = 1_500;
+const ANSWER_RUN_MS = 1_000;
 const USD = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -101,6 +115,10 @@ test.describe("billing journey", () => {
     page,
     journeyUser: _user,
   }) => {
+    expect(
+      PAUSE_JUMP_MS + REFRESH_CLOCK_BUDGET_MS + ANSWER_RUN_MS,
+      "the page time this test runs should stay far below the backup read",
+    ).toBeLessThanOrEqual(BACKUP_READ_MS / 2);
     await requireFakeStripe();
     const stripeCursor = await stripeRequestCursor();
     const before = await getCreditBalance(page);
@@ -115,9 +133,23 @@ test.describe("billing journey", () => {
     const balanceRead = page
       .waitForResponse(isBalanceRead, { timeout: 15_000 })
       .catch(() => null);
+    // A route handler's error doesn't fail the test, so keep it for the body.
+    let pauseError: unknown;
     await page.route(`**${CREDITS_PATH}`, async (route) => {
-      if (route.request().method() === "PATCH") await balanceRead;
-      await route.fallback();
+      try {
+        if (route.request().method() === "PATCH") {
+          await balanceRead;
+          // Freeze the page's clock before its fulfil call answers. The page
+          // handles the answer, and arms its 10 s backup read, only as this
+          // test runs the clock, so time the test doesn't run never counts.
+          await page.clock.pauseAt(Date.now() + PAUSE_JUMP_MS);
+        }
+      } catch (error) {
+        pauseError = error;
+      } finally {
+        // Even if the pause failed, so no request is left hanging.
+        await route.fallback();
+      }
     });
     let completed: StripeEvent;
     try {
@@ -125,14 +157,19 @@ test.describe("billing journey", () => {
       const fulfilled = page.waitForResponse(isFulfilment);
       // Once its fulfil call is done, the page reads the credits again
       // (#17269), and a second time 10 s later for a webhook still on its
-      // way. On the page's own clock, paused as the call answers, that
+      // way. On the page's own clock, paused before the call answers, that
       // second read can never stand in for the first.
       await page.clock.install();
       await payAndReturn(page);
       expect((await fulfilled).ok(), "PATCH credits from the return page").toBe(
         true,
       );
-      await page.clock.pauseAt(Date.now() + 1_000);
+      // Without the pause the clock runs in real time, and the backup read
+      // could stand in for the refresh this test is about.
+      expect(
+        pauseError,
+        "the page's clock should have paused before the fulfil call answered",
+      ).toBeUndefined();
       // The wait's timeout still lets the call go, but without the read
       // first this test proves nothing about the page, so it fails here.
       const read = await balanceRead;
@@ -140,11 +177,27 @@ test.describe("billing journey", () => {
         read?.ok(),
         "the return page should have read the balance before its fulfil call",
       ).toBe(true);
+      // The page handles the answer on timers, which the paused clock fires
+      // only when run. Run it a step at a time while waiting, within
+      // REFRESH_CLOCK_BUDGET_MS, far short of the backup read, which
+      // therefore can't stand in for the first.
+      const refreshStep = clockStepper(page, REFRESH_CLOCK_BUDGET_MS);
       await expect
-        .poll(() => refreshReads.map(pathOf), {
-          message:
-            "the page should read the credits and their history again once its fulfil call answered",
-        })
+        .poll(
+          async () => {
+            const paths = refreshReads.map(pathOf);
+            const bothRead = [CREDITS_PATH, HISTORY_PATH].every((path) =>
+              paths.includes(path),
+            );
+            await refreshStep(!bothRead);
+            return paths;
+          },
+          {
+            message:
+              "the page should read the credits and their history again once its fulfil call answered",
+            intervals: [100],
+          },
+        )
         .toEqual(expect.arrayContaining([CREDITS_PATH, HISTORY_PATH]));
       await Promise.all(
         refreshReads
@@ -153,17 +206,37 @@ test.describe("billing journey", () => {
           )
           .map((request) => request.response()),
       );
-      // Their answers reach the page on its zero-delay timers: run a second
-      // of its time, far short of the 10 s read.
-      await page.clock.runFor(1_000);
-      await expect(
-        balance(page, before + TOP_UP),
-        "the page should show the credits its own fulfil call added",
-      ).toBeVisible();
-      await expect(
-        purchases(page),
-        "the history should list the purchase without a reload",
-      ).toHaveCount(1);
+      // Their answers reach the page on its zero-delay timers, which may be
+      // set only after a response is seen here: step the clock while
+      // waiting for what the page shows, within ANSWER_RUN_MS in all.
+      const answerStep = clockStepper(page, ANSWER_RUN_MS);
+      await expect
+        .poll(
+          async () => {
+            const shown = await balance(page, before + TOP_UP).isVisible();
+            await answerStep(!shown);
+            return shown;
+          },
+          {
+            message:
+              "the page should show the credits its own fulfil call added",
+            intervals: [100],
+          },
+        )
+        .toBe(true);
+      await expect
+        .poll(
+          async () => {
+            const rows = await purchases(page).count();
+            await answerStep(rows !== 1);
+            return rows;
+          },
+          {
+            message: "the history should list the purchase without a reload",
+            intervals: [100],
+          },
+        )
+        .toBe(1);
       await page.clock.resume();
 
       const [held, ...others] = await stripeEvents(sessionID);
@@ -267,6 +340,20 @@ function paymentIntent(event: { event: { data: { object: object } } }) {
   const session = event.event.data.object as { payment_intent?: unknown };
   expect(typeof session.payment_intent).toBe("string");
   return String(session.payment_intent);
+}
+
+/**
+ * Runs the page's paused clock one REFRESH_STEP_MS step per call while the
+ * caller is still waiting, and never more than `budgetMs` in all, so a poll
+ * can fire the page's timers without carrying it toward a later one.
+ */
+function clockStepper(page: Page, budgetMs: number) {
+  let run = 0;
+  return async (waiting: boolean) => {
+    if (!waiting || run >= budgetMs) return;
+    await page.clock.runFor(REFRESH_STEP_MS);
+    run += REFRESH_STEP_MS;
+  };
 }
 
 /**

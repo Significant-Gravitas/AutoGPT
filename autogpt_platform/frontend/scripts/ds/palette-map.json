@@ -738,25 +738,25 @@
     },
     "zinc-400": {
       "text": "foreground-subtle",
-      "fill": "foreground-subtle",
+      "fill": "fill-subtle",
       "line": "foreground-subtle",
       "change": "none"
     },
     "zinc-500": {
       "text": "foreground-tertiary",
-      "fill": "foreground-tertiary",
+      "fill": "fill-soft",
       "line": "foreground-tertiary",
       "change": "none"
     },
     "zinc-600": {
       "text": "foreground-secondary",
-      "fill": "foreground-secondary",
+      "fill": "fill-medium",
       "line": "foreground-secondary",
       "change": "none"
     },
     "zinc-700": {
       "text": "foreground-body",
-      "fill": "foreground-body",
+      "fill": "fill-bold",
       "line": "foreground-body",
       "change": "none"
     },

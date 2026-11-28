@@ -6,6 +6,8 @@ on:
     paths:
       - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
+      - ".github/scripts/apt_refresh.py"
+      - ".github/scripts/test_apt_refresh.py"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
@@ -28,6 +30,8 @@ on:
     paths:
       - ".dockerignore"
       - ".github/workflows/platform-fullstack-ci.yml"
+      - ".github/scripts/apt_refresh.py"
+      - ".github/scripts/test_apt_refresh.py"
       - ".github/scripts/validate_playwright_json.py"
       - ".github/scripts/test_validate_playwright_json.py"
       - ".github/scripts/validate_cobertura.py"
@@ -121,6 +125,7 @@ jobs:
             ../../.github/scripts/test_frontend_build_context.py \
             ../../.github/scripts/test_hosted_journeys_env.py \
             ../../.github/scripts/test_rabbitmq_healthcheck_contract.py \
+            ../../.github/scripts/test_apt_refresh.py \
             ../scripted_model/tests \
             --junitxml="$RUNNER_TEMP/fullstack-validator-results/playwright-validator-tests.xml"
 
@@ -231,9 +236,9 @@ jobs:
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
             # Pinned inventory of the whole suite, the same on every shard:
-            # 55 tests in 25 files; raise when adding journeys. Each shard's
+            # 81 tests in 29 files; raise when adding journeys. Each shard's
             # own floor is counted at run time ("Count the shard's tests").
-            min_tests: 55
+            min_tests: 81
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
@@ -254,7 +259,7 @@ jobs:
             shard_total: 2
             config: playwright.journeys.config.ts
             playwright_args: --project hosted
-            min_tests: 55
+            min_tests: 81
             embeddings: false
             seed: false
             hosted: true
@@ -495,10 +500,12 @@ jobs:
         run: |
           targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
           echo "Baking: $targets"
-          # The UTC date re-runs the backend's package installs once a day
-          # (APT_REFRESH), so E2E tests the OS packages that ship.
+          # A new APT_REFRESH re-runs the backend's package installs. The key
+          # changes daily and whenever Debian publishes security updates, so
+          # E2E tests the OS packages that ship.
+          apt_refresh="$(python3 "$GITHUB_WORKSPACE/.github/scripts/apt_refresh.py")"
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
-            --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
+            --set "*.args.APT_REFRESH=$apt_refresh" $targets
 
       - name: Set up Platform - Build frontend Docker image
         id: platform-build-frontend
@@ -772,6 +779,25 @@ jobs:
 
           PyJWKClient(os.environ["JWT_JWKS_URL"], timeout=5).get_signing_keys()
           PY
+
+      # publish_skills is a one-shot nothing else waits for, and the skill
+      # journeys need what it publishes: wait for it, and fail on its own
+      # error rather than on the tests it would leave skipped. The cap covers
+      # its GitHub retries at their slowest (skill_catalog_github.py): no
+      # token is set here, so it downloads the catalog from codeload in up to
+      # six attempts (120 s each) with about 93 s of backoff, ~810 s.
+      - name: Set up Platform - Wait for the skills catalog publish
+        if: matrix.suite == 'journeys'
+        run: |
+          compose() { docker compose -f ../docker-compose.resolved.yml "$@"; }
+          container=$(compose ps -a -q publish_skills 2>/dev/null) || true
+          [ -n "$container" ] || exit 0
+          code=$(timeout 1200 docker wait "$container") || code="none after 1200 s"
+          [ "$code" = 0 ] && exit 0
+          error=$(compose logs --no-log-prefix publish_skills 2>&1 | sed -n 's/^error: //p' | tail -n 1)
+          echo "::error title=publish_skills failed::publish_skills failed: ${error:-exit status $code}"
+          exit 1
+
       - name: Stop runner memory log
         if: always()
         run: touch /tmp/stop-memory-log

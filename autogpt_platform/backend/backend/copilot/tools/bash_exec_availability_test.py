@@ -50,6 +50,23 @@ def test_only_offered_with_a_supported_sandbox(
         assert BashExecTool().is_available is available
 
 
+@pytest.mark.parametrize("missing", ["choom", "prlimit"])
+def test_not_offered_without_the_tools_that_limit_the_sandbox(
+    monkeypatch: pytest.MonkeyPatch, missing: str
+):
+    monkeypatch.setattr(chat_config, "use_e2b_sandbox", False)
+    monkeypatch.setattr(chat_config, "e2b_api_key", None)
+    with (
+        patch("backend.copilot.tools.sandbox._BWRAP_AVAILABLE", None),
+        patch("backend.copilot.tools.sandbox.platform.system", return_value="Linux"),
+        patch(
+            "backend.copilot.tools.sandbox.shutil.which",
+            side_effect=lambda tool: None if tool == missing else f"/usr/bin/{tool}",
+        ),
+    ):
+        assert BashExecTool().is_available is False
+
+
 def test_a_local_pc_chat_offers_bash_without_a_server_sandbox(
     monkeypatch: pytest.MonkeyPatch,
 ):

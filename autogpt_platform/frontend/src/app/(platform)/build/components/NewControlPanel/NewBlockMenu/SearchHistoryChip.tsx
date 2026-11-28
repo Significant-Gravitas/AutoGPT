@@ -48,11 +48,7 @@ export const SearchHistoryChip: SearchHistoryChipComponent = ({
 const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
   className,
 }) => {
-  return (
-    <Skeleton
-      className={cn("h-[2.25rem] w-32 rounded-3xl bg-surface-hover", className)}
-    />
-  );
+  return <Skeleton className={cn("h-[2.25rem] w-32 rounded-3xl", className)} />;
 };
 
 SearchHistoryChip.Skeleton = SearchHistoryChipSkeleton;

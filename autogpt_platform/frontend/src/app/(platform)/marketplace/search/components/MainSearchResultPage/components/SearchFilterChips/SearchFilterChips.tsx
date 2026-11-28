@@ -29,7 +29,7 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
       {getFilterOptions(counts).map((filter) => {
         const isSelected = selected === filter.value;
         const isDisabled = filter.value !== "all" && filter.count === 0;
-        const variant = isSelected ? "large-medium" : "large";
+        const weight = isSelected ? "medium" : undefined;
         return (
           <button
             key={filter.value}
@@ -38,7 +38,7 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
             onClick={() => handleFilterClick(filter.value)}
             disabled={isDisabled}
             className={cn(
-              "flex items-center gap-2.5 rounded-full px-5 py-2",
+              "flex items-center gap-2.5 rounded-pill px-5 py-2",
               isDisabled
                 ? "cursor-not-allowed border border-border-base text-foreground-disabled"
                 : isSelected
@@ -46,10 +46,10 @@ export function SearchFilterChips({ onFilterChange, ...counts }: Props) {
                   : "border border-foreground-secondary text-foreground-emphasis",
             )}
           >
-            <Text variant={variant} as="span" tone="inherit">
+            <Text variant="large" weight={weight} as="span" tone="inherit">
               {filter.label}
             </Text>
-            <Text variant={variant} as="span" tone="inherit">
+            <Text variant="large" weight={weight} as="span" tone="inherit">
               {filter.count}
             </Text>
           </button>

@@ -23,7 +23,8 @@ export function WorkItemRow({ item, timezone }: Props) {
         />
       </span>
       <Text
-        variant="body-tight"
+        variant="body"
+        leading="5"
         tone="secondary"
         className="min-w-0 flex-1 truncate"
       >

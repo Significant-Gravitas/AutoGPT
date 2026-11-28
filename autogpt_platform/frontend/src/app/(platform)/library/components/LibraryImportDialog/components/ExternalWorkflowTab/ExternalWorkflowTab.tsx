@@ -66,7 +66,7 @@ export default function ExternalWorkflowTab({
             type="button"
             disabled={importWorkflow.isSubmitting}
             onClick={() => importWorkflow.setUrlValue(p.url)}
-            className="rounded-full border border-border-base px-3 py-1 text-caption text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
+            className="rounded-pill border border-border-base px-3 py-1 text-caption text-foreground-secondary hover:border-brand hover:text-brand-hover disabled:opacity-50"
           >
             {p.label}
           </button>

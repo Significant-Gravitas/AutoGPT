@@ -277,7 +277,7 @@ export default function IntegrationSetupWizardPage() {
                         className="object-contain group-disabled:opacity-50"
                       />
                     </div>
-                    <Text className="mx-1" variant="large-medium">
+                    <Text className="mx-1" variant="large" weight="medium">
                       {toDisplayName(config.provider)}
                     </Text>
                     <div className="grow"></div>

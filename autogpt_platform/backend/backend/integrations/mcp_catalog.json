@@ -655,6 +655,22 @@
     }
   },
   {
+    "name": "mcp_fireflies",
+    "display_name": "Fireflies",
+    "description": "Search and review your Fireflies meeting recordings: find transcripts, summaries and action items across your meetings.",
+    "mcp_server": {
+      "server_url": "https://api.fireflies.ai/mcp",
+      "documentation_url": "https://docs.fireflies.ai/getting-started/mcp-configuration",
+      "setup_instructions": "Sign in with your Fireflies account and approve access, or use your Fireflies API key from the Developer Settings page. The assistant sees the meetings your account can see.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "fireflies"
+    }
+  },
+  {
     "name": "mcp_github",
     "display_name": "GitHub",
     "description": "Search repositories, read code, and work with issues and pull requests through GitHub's MCP tools.",
@@ -912,6 +928,21 @@
         "bearer"
       ],
       "icon_id": "monday"
+    }
+  },
+  {
+    "name": "mcp_neon",
+    "display_name": "Neon",
+    "description": "Manage Neon Postgres projects: create databases and branches, run SQL, review query performance and apply schema migrations.",
+    "mcp_server": {
+      "server_url": "https://mcp.neon.tech/mcp",
+      "documentation_url": "https://neon.com/docs/ai/neon-mcp-server",
+      "setup_instructions": "Sign in with your Neon account and approve access. Tools can read and change your projects and databases, so connect a development project rather than production.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "neon"
     }
   },
   {

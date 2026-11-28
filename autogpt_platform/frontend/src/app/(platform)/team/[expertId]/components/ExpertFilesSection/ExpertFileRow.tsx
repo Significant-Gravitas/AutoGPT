@@ -29,7 +29,8 @@ export function ExpertFileRow({ file }: Props) {
       <FileThumbnail file={file} />
       <span className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-md-medium"
+          variant="body-md"
+          weight="medium"
           tone="primary"
           as="span"
           className="truncate"
