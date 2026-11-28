@@ -22199,6 +22199,20 @@
         "title": "BlockDetailsResponse",
         "description": "Response for block details (describe_capability / first run attempt)."
       },
+      "BlockFilter": {
+        "properties": {
+          "blocks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "blocks_exclude": { "type": "boolean", "title": "Blocks Exclude" }
+        },
+        "type": "object",
+        "required": ["blocks", "blocks_exclude"],
+        "title": "BlockFilter",
+        "description": "One block filter of a run that this one runs under."
+      },
       "BlockInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -23995,6 +24009,12 @@
             "title": "Blocks Exclude",
             "default": true
           },
+          "block_ceilings": {
+            "items": { "$ref": "#/components/schemas/BlockFilter" },
+            "type": "array",
+            "title": "Block Ceilings",
+            "default": []
+          },
           "providers": {
             "items": { "type": "string" },
             "type": "array",
@@ -24009,7 +24029,7 @@
         },
         "type": "object",
         "title": "CopilotPermissions",
-        "description": "Capability filter for a single copilot execution.\n\nAttributes:\n    tools: Tool names to filter (short names, e.g. ``run_capability``).\n    tools_exclude: When True (default) ``tools`` is a blacklist;\n        when False it is a whitelist.  Ignored when *tools* is empty.\n    blocks: Block identifiers (name, full UUID, or 8-char partial UUID).\n    blocks_exclude: Same semantics as *tools_exclude* but for blocks.\n    providers: Provider slugs (``github``) whose connected accounts the\n        run's sandbox may use.\n    providers_exclude: Same semantics as *tools_exclude* but for\n        providers."
+        "description": "Capability filter for a single copilot execution.\n\nAttributes:\n    tools: Tool names to filter (short names, e.g. ``run_capability``).\n    tools_exclude: When True (default) ``tools`` is a blacklist;\n        when False it is a whitelist.  Ignored when *tools* is empty.\n    blocks: Block identifiers (name, full UUID, or 8-char partial UUID).\n    blocks_exclude: Same semantics as *tools_exclude* but for blocks.\n    block_ceilings: The block filters of the runs this one runs under;\n        a block must pass each of them as well.\n    providers: Provider slugs (``github``) whose connected accounts the\n        run's sandbox may use.\n    providers_exclude: Same semantics as *tools_exclude* but for\n        providers."
       },
       "CopilotSkillDetail": {
         "properties": {

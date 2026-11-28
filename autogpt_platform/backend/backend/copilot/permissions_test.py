@@ -178,28 +178,27 @@ class TestIsBlockAllowed:
 
     def test_parent_blocks_when_child_allows(self):
         parent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        child = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child._parent = parent
+        child = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_parent_allows_when_child_blocks(self):
         parent = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        child._parent = parent
+        child = CopilotPermissions(
+            blocks=["HTTP Request"], blocks_exclude=True
+        ).merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_both_must_allow(self):
         parent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=False)
-        child = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=False)
-        child._parent = parent
+        child = CopilotPermissions(
+            blocks=["HTTP Request"], blocks_exclude=False
+        ).merged_with_parent(parent, ALL_TOOL_NAMES)
         assert child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_grandparent_blocks_propagate(self):
         grandparent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        parent = CopilotPermissions(blocks=[], blocks_exclude=True)
-        parent._parent = grandparent
-        child = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child._parent = parent
+        parent = CopilotPermissions().merged_with_parent(grandparent, ALL_TOOL_NAMES)
+        child = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
 

@@ -396,20 +396,46 @@ class TestRecoveryEnqueue:
         )
 
     @pytest.mark.asyncio
-    async def test_recovery_stays_under_an_outer_blocks_ceiling(self, block):
+    @pytest.mark.parametrize(
+        "own_tools, outer, tools_left, web_requests_allowed",
+        [
+            (
+                ["web_fetch", "bash_exec"],
+                CopilotPermissions(
+                    tools=["web_fetch", "web_search"], tools_exclude=False
+                ),
+                {"web_fetch"},
+                True,
+            ),
+            (
+                ["web_fetch"],
+                CopilotPermissions(tools=["web_search"], tools_exclude=False),
+                set(),
+                True,
+            ),
+            (
+                [],
+                CopilotPermissions(blocks=["SendWebRequestBlock"]),
+                ALL_TOOL_NAMES,
+                False,
+            ),
+        ],
+        ids=["shared-tools", "no-shared-tool", "outer-block-filter"],
+    )
+    async def test_recovery_stays_under_an_outer_blocks_ceiling(
+        self, block, own_tools, outer, tools_left, web_requests_allowed
+    ):
         """A block nested in another one's turn re-runs under both filters,
-        as its first run did."""
+        as its first run did, in the form the executor queue carries."""
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
         block.create_session = AsyncMock(return_value="sess-nested")
         input_data = block.Input(
             prompt="do work",
             max_recursion_depth=3,
-            tools=["web_fetch", "bash_exec"],
-            tools_exclude=False,
+            tools=own_tools,
+            tools_exclude=not own_tools,
         )
-        token = _inherited_permissions.set(
-            CopilotPermissions(tools=["web_fetch", "web_search"], tools_exclude=False)
-        )
+        token = _inherited_permissions.set(outer)
         try:
             with patch(
                 "backend.blocks.autopilot._enqueue_for_recovery"
@@ -420,8 +446,16 @@ class TestRecoveryEnqueue:
         finally:
             _inherited_permissions.reset(token)
 
-        permissions = mock_enqueue.call_args.kwargs["permissions"]
-        assert permissions.effective_allowed_tools(ALL_TOOL_NAMES) == {"web_fetch"}
+        sent = CopilotPermissions.model_validate_json(
+            mock_enqueue.call_args.kwargs["permissions"].model_dump_json()
+        )
+        assert sent.effective_allowed_tools(ALL_TOOL_NAMES) == tools_left
+        assert (
+            sent.is_block_allowed(
+                "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+            )
+            is web_requests_allowed
+        )
 
     @pytest.mark.asyncio
     async def test_recovery_not_enqueued_for_recursion_limit(self, block):

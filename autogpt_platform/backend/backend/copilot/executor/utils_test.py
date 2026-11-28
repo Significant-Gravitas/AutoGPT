@@ -544,18 +544,33 @@ class TestNarrowPermissions:
         assert merged is not None
         assert not merged.is_provider_allowed("github")
 
-    def test_a_parents_provider_ceiling_is_kept_through_the_queue(self) -> None:
+    @pytest.mark.parametrize(
+        "parent, allowed",
+        [
+            (
+                CopilotPermissions(providers=["github"], providers_exclude=True),
+                lambda p: p.is_provider_allowed("github"),
+            ),
+            (
+                CopilotPermissions(blocks=["SendWebRequestBlock"]),
+                lambda p: p.is_block_allowed(
+                    "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+                ),
+            ),
+        ],
+        ids=["provider", "block"],
+    )
+    def test_a_parents_ceiling_is_kept_through_the_queue(self, parent, allowed) -> None:
         narrowed = root_envelope("t").model_copy(
             update={"tools": frozenset({"bash_exec"})}
         )
-        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
         caller = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
 
         merged = utils._narrow_permissions(caller, narrowed)
 
         assert merged is not None
         again = CopilotPermissions.model_validate_json(merged.model_dump_json())
-        assert not again.is_provider_allowed("github")
+        assert not allowed(again)
 
 
 @pytest.mark.asyncio

@@ -456,8 +456,8 @@ verdicts out of 18 to 15. Findings that carry a quote are what make a report
 child without re-doing its work.
 
 Also named and not built: the deadline watcher; block filters in the envelope
-(tools only today — `CopilotPermissions._parent` is a private attribute and
-is dropped when the queue entry is serialised); workspace write confinement;
+(tools only today; a turn's block filters travel on its permissions instead,
+its own in `blocks` and those of the runs above it in `block_ceilings`); workspace write confinement;
 withholding the team roster from children that cannot spawn, which matters
 because injecting the full roster is the one part of session creation that
 grows with the number of experts.
