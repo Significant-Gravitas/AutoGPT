@@ -649,5 +649,54 @@
     "external": [
       "score"
     ]
+  },
+  "mcp_hubspot": {
+    "source": "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server",
+    "read": [
+      "discover_hubspot_schema",
+      "get_aeo_metrics",
+      "get_campaign_attribution_reports",
+      "get_content_analytics_report",
+      "get_conversation_channel_metadata",
+      "get_crm_objects",
+      "get_marketing_email_analytics",
+      "get_organization_details",
+      "get_properties",
+      "get_social_channels",
+      "get_social_post_analytics",
+      "get_user_details",
+      "query_crm_data",
+      "read_campaign_data",
+      "read_social_posts",
+      "render_asset",
+      "search_communications",
+      "search_conversations",
+      "search_crm_objects",
+      "search_intent_signals",
+      "search_owners",
+      "search_properties",
+      "tool_guidance"
+    ],
+    "external": [
+      "manage_aeo_prompts",
+      "manage_aeo_recommendations",
+      "manage_association_labels",
+      "manage_blog_post",
+      "manage_campaign_objects",
+      "manage_crm_objects",
+      "manage_custom_object_types",
+      "manage_custom_pipelines",
+      "manage_custom_properties",
+      "manage_landing_page",
+      "manage_marketing_email",
+      "manage_object_type_activations",
+      "manage_object_type_renames",
+      "manage_segment",
+      "manage_website_page",
+      "submit_feedback"
+    ],
+    "irreversible": [
+      "manage_social_posts"
+    ]
   }
 }
