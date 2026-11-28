@@ -18,8 +18,15 @@ def _org_member(*, status: str = "ACTIVE", deleted: bool = False):
     )
 
 
-def _team_member(*, status: str = "ACTIVE", org_id: str = "org-1"):
-    return SimpleNamespace(status=status, Team=SimpleNamespace(orgId=org_id))
+def _team_member(
+    *, status: str = "ACTIVE", org_id: str = "org-1", archived: bool = False
+):
+    return SimpleNamespace(
+        status=status,
+        Team=SimpleNamespace(
+            orgId=org_id, archivedAt="2026-11-01" if archived else None
+        ),
+    )
 
 
 @pytest.fixture
@@ -106,8 +113,13 @@ async def test_a_membership_that_isnt_active_counts_as_none(
 
 @pytest.mark.parametrize(
     "team_membership",
-    [None, _team_member(status="REMOVED"), _team_member(org_id="other-org")],
-    ids=["not-on-team", "removed-from-team", "team-of-another-org"],
+    [
+        None,
+        _team_member(status="REMOVED"),
+        _team_member(org_id="other-org"),
+        _team_member(archived=True),
+    ],
+    ids=["not-on-team", "removed-from-team", "team-of-another-org", "team-deleted"],
 )
 @pytest.mark.asyncio
 async def test_a_team_the_user_isnt_on_is_replaced_by_the_users_own(
