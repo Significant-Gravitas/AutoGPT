@@ -21,6 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 MergeMethod = Literal["merge", "squash", "rebase"]
 
@@ -138,7 +139,7 @@ class GithubListPullRequestsBlock(Block):
 
         data = await get_paginated(
             api,
-            input_data.repo_url + "/pulls",
+            canonical_repo_url(input_data.repo_url) + "/pulls",
             limit=input_data.limit,
             params=params,
         )
@@ -235,6 +236,7 @@ class GithubMakePullRequestBlock(Block):
         base: str,
     ) -> tuple[int, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         pulls_url = repo_url + "/pulls"
         data = {"title": title, "body": body, "head": head, "base": base}
         response = await api.post(pulls_url, json=data)
