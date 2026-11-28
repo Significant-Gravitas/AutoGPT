@@ -260,4 +260,4 @@ For more information and in-depth documentation, check out the [llamafile docume
    set `LLAMAFILE_API_BASE` in `.env` to the right base URL
 
 [llamafile documentation]: https://github.com/Mozilla-Ocho/llamafile#readme
-[classic/forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/llm/providers/llamafile/llamafile.py
+[classic/forge/llamafile.py]: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/forge/forge/llm/providers/llamafile/llamafile.py
