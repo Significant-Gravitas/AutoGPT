@@ -55,7 +55,7 @@ export function WorkflowCredentialStack({ providers }: Props) {
           className={cn(
             "flex size-7 items-center justify-center rounded-full border border-border-base bg-surface ring-2 ring-surface",
             index > 0 && "-ml-2",
-            ["z-30", "z-20", "z-10"][index],
+            ["z-floating", "z-sticky", "z-raised"][index],
           )}
         >
           <IntegrationLogo

@@ -442,7 +442,7 @@ class TestFixAiModelParameter:
                 "id": block_id,
                 "categories": [{"category": "AI"}],
                 "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
+                    "properties": {"model": {"type": "string", "llm_model": True}},
                 },
             }
         ]
@@ -466,7 +466,7 @@ class TestFixAiModelParameter:
                 "id": block_id,
                 "categories": [{"category": "AI"}],
                 "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
+                    "properties": {"model": {"type": "string", "llm_model": True}},
                 },
             }
         ]
@@ -493,7 +493,7 @@ class TestFixAiModelParameter:
                 "id": block_id,
                 "categories": [{"category": "AI"}],
                 "inputSchema": {
-                    "properties": {"model": {"type": "string"}},
+                    "properties": {"model": {"type": "string", "llm_model": True}},
                 },
             }
         ]
@@ -501,6 +501,60 @@ class TestFixAiModelParameter:
         result = fixer.fix_ai_model_parameter(agent, blocks)
 
         assert result["nodes"][0]["input_default"]["model"] == "claude-opus-5-5"
+
+    def test_free_form_model_field_keeps_its_value_and_gets_no_llm(self):
+        """A model field that is neither an LLM field nor an enum names a
+        model of the block's own service, which no LLM list knows."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        named = _make_node(
+            node_id="n1", block_id=block_id, input_default={"model": "own-model-2"}
+        )
+        unnamed = _make_node(node_id="n2", block_id=block_id, input_default={})
+        agent = _make_agent(nodes=[named, unnamed])
+
+        blocks = [
+            {
+                "id": block_id,
+                "categories": [{"category": "AI"}],
+                "inputSchema": {"properties": {"model": {"type": "string"}}},
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "own-model-2"
+        assert "model" not in result["nodes"][1]["input_default"]
+
+    def test_block_specific_enum_respells_a_prefixed_spelling(self):
+        """Another spelling the enum takes of a model the block offers is
+        written as the block lists it, not replaced by the block's default."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(
+            node_id="n1", block_id=block_id, input_default={"model": "openai/gpt-4o"}
+        )
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "enum": ["gpt-4o", "claude-opus-5"],
+                            "default": "claude-opus-5",
+                        }
+                    },
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "gpt-4o"
 
     def test_block_specific_enum_uses_block_default(self):
         """Blocks with their own model enum (e.g. PerplexityBlock) should use

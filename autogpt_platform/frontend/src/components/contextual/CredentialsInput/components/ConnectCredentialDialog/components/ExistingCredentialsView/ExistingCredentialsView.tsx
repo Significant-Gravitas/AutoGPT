@@ -104,14 +104,16 @@ export function ExistingCredentialsView({
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <Text
-                  variant="body-semibold-tight"
+                  variant="body"
+                  weight="semibold"
+                  leading="5"
                   as="span"
                   tone="primary"
                   className="truncate"
                 >
                   {credential.title}
                 </Text>
-                <Text variant="small-tight" as="span" tone="muted">
+                <Text variant="small" leading="4" as="span" tone="muted">
                   {credential.type === "oauth2" ? "OAuth" : "API key"}
                 </Text>
               </span>

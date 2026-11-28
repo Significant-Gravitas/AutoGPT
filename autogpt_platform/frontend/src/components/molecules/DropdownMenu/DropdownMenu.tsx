@@ -85,7 +85,7 @@ const DropdownMenuSubContent = React.forwardRef<
     ref={ref}
     data-slot="menu-submenu-popup"
     className={cn(
-      "z-50 min-w-[8rem] overflow-hidden rounded-md border border-border-base bg-surface p-1 text-foreground-base shadow-lg data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+      "z-overlay min-w-[8rem] overflow-hidden rounded-md border border-border-base bg-surface p-1 text-foreground-base shadow-lg data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
       className,
     )}
     {...props}
@@ -104,7 +104,7 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       data-slot="menu-popup"
       className={cn(
-        "z-50 min-w-[8rem] overflow-hidden rounded-md border border-border-base bg-surface p-1 text-foreground-base shadow-md",
+        "z-overlay min-w-[8rem] overflow-hidden rounded-md border border-border-base bg-surface p-1 text-foreground-base shadow-md",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
         className,
       )}
@@ -114,18 +114,28 @@ const DropdownMenuContent = React.forwardRef<
 ));
 DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 
+// A destructive item (delete, fire), red with a red wash on focus: `danger`
+// in the brighter red, `error-strong` in the darker.
+const ITEM_TONES = {
+  danger: "text-error-hover focus:bg-error-surface focus:text-error-foreground",
+  "error-strong":
+    "text-error-foreground focus:bg-error-surface focus:text-error-foreground",
+} as const;
+
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
     inset?: boolean;
+    tone?: keyof typeof ITEM_TONES;
   }
->(({ className, inset, ...props }, ref) => (
+>(({ className, inset, tone, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
     data-slot="menu-item"
     className={cn(
       "relative flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-body leading-5 transition-colors outline-none select-none focus:bg-surface-hover focus:text-foreground-strong data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [@media(pointer:coarse)]:py-3",
       inset && "pl-8",
+      tone && ITEM_TONES[tone],
       className,
     )}
     {...props}
@@ -188,7 +198,8 @@ const DropdownMenuRadioItem = React.forwardRef<
           aria-hidden
           icon={CircleIcon}
           data-slot="menu-radio-item-icon"
-          className="h-1.5 w-1.5 fill-current"
+          fill="currentColor"
+          className="h-1.5 w-1.5"
         />
       </DropdownMenuPrimitive.ItemIndicator>
     </span>

@@ -151,14 +151,18 @@ export function MessageAttachments({
                 />
                 <div className="min-w-0">
                   <Text
-                    variant="body-medium-tight"
+                    variant="body"
+                    weight="medium"
+                    leading="5"
                     tone="emphasis"
                     className="truncate"
                   >
                     {file.filename || "file"}
                   </Text>
                   <Text
-                    variant="small-mono-tight"
+                    variant="small"
+                    mono
+                    leading="4"
                     as="p"
                     tone="emphasis"
                     className="mt-0.5 truncate"
@@ -247,14 +251,16 @@ function FolderAttachmentCard({
       <Icon icon={Folder01Icon} size={20} tone="body" className="shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium-tight"
+          variant="body"
+          weight="medium"
+          leading="5"
           as="span"
           tone="emphasis"
           className="truncate"
         >
           {folder.name}
         </Text>
-        <Text variant="small-tight" as="span" tone="secondary">
+        <Text variant="small" leading="4" as="span" tone="secondary">
           {/* The part counts direct files only, so zero is not "Empty". */}
           {folder.fileCount > 0
             ? `Folder · ${folderSummary(folder.fileCount, 0)}`

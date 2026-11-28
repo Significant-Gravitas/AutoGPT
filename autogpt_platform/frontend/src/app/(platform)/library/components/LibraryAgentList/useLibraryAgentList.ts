@@ -1,7 +1,10 @@
 "use client";
 
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListFavoriteLibraryAgentsQueryKey,
+  getGetV2ListLibraryAgentsQueryKey,
+} from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV2ListLibraryFolders,
   useGetV2GetFolder,
@@ -26,6 +29,8 @@ import type { AgentStatusFilter } from "../../types";
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
+import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
+import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -62,10 +67,12 @@ export function useLibraryAgentList({
     null,
   );
 
+  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
+    isFetching,
     isFetchingNextPage,
     isLoading: allAgentsLoading,
   } = useGetV2ListLibraryAgentsInfinite(
@@ -81,6 +88,14 @@ export function useLibraryAgentList({
     {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
+        // Without the scheduler the agents load with their schedules
+        // unknown; recheck after its Retry-After until they are known.
+        refetchInterval: (query) =>
+          recheckWhileSchedulesUnknown(
+            hasUnknownSchedules(
+              query.state.data ? unpaginate(query.state.data, "agents") : [],
+            ),
+          ),
       },
     },
   );
@@ -258,6 +273,7 @@ export function useLibraryAgentList({
     errorGraphIds,
     completedGraphIds,
   );
+  const schedulesUnknown = hasUnknownSchedules(agents);
 
   useEffect(() => {
     if (statusFilter === "all") {
@@ -282,11 +298,13 @@ export function useLibraryAgentList({
     prevFilteredLengthRef.current = filteredAgents.length;
   }, [agents.length, filteredAgents.length, statusFilter]);
 
+  // Pages read while schedules were unknown say nothing about the Scheduled
+  // and Idle filters, so their count starts over once the scheduler answers.
   useEffect(() => {
     setConsecutiveEmptyPages(0);
     prevFilteredLengthRef.current = 0;
     prevAgentsLengthRef.current = 0;
-  }, [statusFilter]);
+  }, [statusFilter, schedulesUnknown]);
 
   const filteredExhausted =
     statusFilter !== "all" && consecutiveEmptyPages >= FILTER_EXHAUST_THRESHOLD;
@@ -294,6 +312,15 @@ export function useLibraryAgentList({
   // When a filter is active, show the filtered count instead of the API total.
   const displayedCount =
     statusFilter === "all" ? allAgentsCount : filteredAgents.length;
+
+  function retrySchedules() {
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListLibraryAgentsQueryKey(),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: getGetV2ListFavoriteLibraryAgentsQueryKey(),
+    });
+  }
 
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
@@ -309,6 +336,11 @@ export function useLibraryAgentList({
     displayedCount,
     favoritesCount: favoriteAgentsData.agentCount,
     agents: filteredAgents,
+    schedulesUnknown,
+    retrySchedules,
+    retryingSchedules: isFavoritesTab
+      ? favoriteAgentsData.isFetching && !favoriteAgentsData.isFetchingNextPage
+      : isFetching && !isFetchingNextPage,
     hasNextPage: agentsHasNextPage && !filteredExhausted,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,
@@ -329,6 +361,7 @@ function filterAgentsByStatus<
     graph_id: string;
     has_external_trigger: boolean;
     is_scheduled?: boolean;
+    schedule_info_unavailable?: boolean;
     recommended_schedule_cron?: string | null;
   },
 >(
@@ -354,9 +387,14 @@ function filterAgentsByStatus<
       return (
         !isRunning && !hasError && !agent.has_external_trigger && isScheduled
       );
+    // An unknown schedule may be a scheduled workflow, so it isn't idle.
     if (statusFilter === "idle")
       return (
-        !isRunning && !hasError && !agent.has_external_trigger && !isScheduled
+        !isRunning &&
+        !hasError &&
+        !agent.has_external_trigger &&
+        !isScheduled &&
+        !agent.schedule_info_unavailable
       );
     if (statusFilter === "healthy") return !hasError;
     return true;

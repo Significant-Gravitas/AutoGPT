@@ -134,6 +134,7 @@ export const DateTimeInput = ({
 
   const triggerStyles = cn(
     // The box a ghost Button drew before this became a plain button.
+    // oxlint-disable-next-line design-system/no-misused-role -- disabled text is surface-active (#DADADC); foreground-disabled is #C5C5C9, so the swap waits for a design call
     "inline-flex h-[2.875rem] min-w-[7.7rem] items-center gap-2 py-2.5 font-sans whitespace-nowrap transition-colors hover:border-surface-muted hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none disabled:pointer-events-none disabled:text-surface-active",
     // Base styles matching other form components
     "rounded-3xl border border-border-base bg-surface px-4 shadow-none",
@@ -260,7 +261,8 @@ export const DateTimeInput = ({
         >
           <Text
             data-slot="date-time-input-error"
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="span"
             tone="error"
             className="block"
@@ -284,7 +286,12 @@ export const DateTimeInput = ({
         data-slot="date-time-input-header"
         className="flex items-center justify-between"
       >
-        <Text data-slot="date-time-input-label" variant="body-medium" as="span">
+        <Text
+          data-slot="date-time-input-label"
+          variant="body"
+          weight="medium"
+          as="span"
+        >
           {label}
         </Text>
         {hint ? (

@@ -99,6 +99,14 @@ async def _run_block(block: ClaudeCodeBlock, inputs: dict, cli_stdout: str) -> N
 
     box.commands.run = AsyncMock(side_effect=run)
     with (
+        patch(
+            "backend.blocks.claude_code.relay_base_url",
+            return_value="https://platform.example/api/anthropic-relay",
+        ),
+        patch(
+            "backend.blocks.claude_code.mint_relay_token", AsyncMock(return_value="t")
+        ),
+        patch("backend.blocks.claude_code.revoke_relay_token", AsyncMock()),
         patch("backend.blocks.claude_code.create_sandbox", AsyncMock(return_value=box)),
         patch("backend.blocks.claude_code.kill_sandbox", AsyncMock()),
         patch(

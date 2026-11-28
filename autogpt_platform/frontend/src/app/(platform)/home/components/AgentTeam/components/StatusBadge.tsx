@@ -6,7 +6,7 @@ const STATUS_CONFIG = {
   working: { label: "Working", dot: "bg-action", pulse: true },
   ready: { label: "Ready", dot: "bg-success", pulse: false },
   needs_setup: { label: "Finish setup", dot: "bg-warning", pulse: false },
-  paused: { label: "Paused", dot: "bg-foreground-subtle", pulse: false },
+  paused: { label: "Paused", dot: "bg-fill-subtle", pulse: false },
   failed: { label: "Failed", dot: "bg-error", pulse: false },
 };
 
@@ -27,7 +27,8 @@ export function StatusBadge({ status }: Props) {
 
   return (
     <Text
-      variant="small-medium"
+      variant="small"
+      weight="medium"
       as="span"
       tone="muted"
       className="inline-flex shrink-0 items-center gap-1.5"

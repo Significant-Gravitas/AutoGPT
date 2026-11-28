@@ -1,7 +1,21 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { tones } from "@/components/styles/tones";
-import { Text, textTones, textVariants } from "./Text";
+import { Text, textTones, textVariants, type TextProps } from "./Text";
+
+const weights = ["normal", "medium", "semibold", "bold"] as const;
+const leadings = [
+  "none",
+  "tight",
+  "snug",
+  "normal",
+  "relaxed",
+  "inherit",
+  "4",
+  "5",
+  "6",
+  "8",
+] as const;
 
 const meta: Meta<typeof Text> = {
   title: "Atoms/Text",
@@ -13,7 +27,7 @@ const meta: Meta<typeof Text> = {
     docs: {
       description: {
         component:
-          "A flexible Text component that supports all typography variants from our design system. Uses Poppins for headings and Geist Sans for body text.",
+          "Renders text in a type role (`variant`: its size, family and the weight, tracking or line height the role always has). Props adjust the role: `weight`, `leading`, `tracking`, `mono`, `tabular`, `italic`, `decoration`, `transform`, `narrowSize`, `align` and `tone`. Uses Poppins for headings and Geist Sans for body text.",
       },
       source: {
         state: "open",
@@ -24,7 +38,38 @@ const meta: Meta<typeof Text> = {
     variant: {
       control: { type: "select" },
       options: textVariants,
-      description: "Typography variant to apply",
+      description: "Type role",
+    },
+    weight: {
+      control: { type: "select" },
+      options: [undefined, ...weights],
+      description: "Font weight over the role's own",
+    },
+    leading: {
+      control: { type: "select" },
+      options: [undefined, ...leadings],
+      description: "Line height over the role's own",
+    },
+    tracking: {
+      control: { type: "select" },
+      options: [undefined, "tight", "normal", "title", "caps", "eyebrow"],
+      description: "Letter-spacing over the role's own",
+    },
+    narrowSize: {
+      control: { type: "select" },
+      options: [undefined, "body", "large"],
+      description: "The size below the md breakpoint",
+    },
+    mono: { control: "boolean" },
+    tabular: { control: "boolean" },
+    italic: { control: "boolean" },
+    decoration: {
+      control: { type: "select" },
+      options: [undefined, "underline", "line-through", "none"],
+    },
+    transform: {
+      control: { type: "select" },
+      options: [undefined, "uppercase", "lowercase", "capitalize", "none"],
     },
     tone: {
       control: { type: "select" },
@@ -46,115 +91,103 @@ const meta: Meta<typeof Text> = {
 export default meta;
 type Story = StoryObj<typeof Text>;
 
-//=============================================================================
-// All Variants Overview
-//=============================================================================
-export function AllVariants() {
+function SectionTitle({ children }: { children: string }) {
   return (
-    <div className="space-y-8">
-      {/* Headings */}
-      <div className="mb-20 space-y-6">
-        <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
-          Headings
-        </h2>
-        <Text variant="h1">Heading 1</Text>
-        <Text variant="h2">Heading 2</Text>
-        <Text variant="h3">Heading 3</Text>
-        <Text variant="h4">Heading 4</Text>
-        <Text variant="h5">Heading 5</Text>
-        <StoryCode
-          code={`<Text variant="h1">Heading 1</Text>
-<Text variant="h2">Heading 2</Text>
-<Text variant="h3">Heading 3</Text>
-<Text variant="h4">Heading 4</Text>
-<Text variant="h5">Heading 5</Text>`}
-        />
-      </div>
-      {/* Body Text */}
-      <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
-        Body Text
-      </h2>
-      <div className="flex flex-row gap-8">
-        <Text variant="lead">Lead</Text>
-        <Text variant="lead-medium">Lead Medium</Text>
-        <Text variant="lead-semibold">Lead Semibold</Text>
-      </div>
+    <div className="mb-4 border-b border-border-base pb-2">
+      <Text variant="lead" tone="muted" as="h2">
+        {children}
+      </Text>
+    </div>
+  );
+}
+
+//=============================================================================
+// Every role
+//=============================================================================
+export function Roles() {
+  return (
+    <div className="space-y-4 p-8">
+      {textVariants.map((variant) => (
+        <div key={variant} className="flex items-baseline gap-6">
+          <Text variant="small" mono tone="muted" className="w-28 shrink-0">
+            {variant}
+          </Text>
+          <Text variant={variant}>Find decision-makers at any company</Text>
+        </div>
+      ))}
       <StoryCode
-        code={`<Text variant="lead">Lead</Text>
-<Text variant="lead-medium">Lead Medium</Text>
-<Text variant="lead-semibold">Lead Semibold</Text>`}
-      />
-      <div className="flex flex-row gap-8">
-        <Text variant="large">Large</Text>
-        <Text variant="large-medium">Large Medium</Text>
-        <Text variant="large-semibold">Large Semibold</Text>
-      </div>
-      <StoryCode
-        code={`<Text variant="large">Large</Text>
-<Text variant="large-medium">Large Medium</Text>
-<Text variant="large-semibold">Large Semibold</Text>`}
-      />
-      <div className="flex flex-row gap-8">
-        <Text variant="large">Large</Text>
-        <Text variant="large-medium">Large Medium</Text>
-        <Text variant="large-semibold">Large Semibold</Text>
-      </div>
-      <StoryCode
-        code={`<Text variant="large">Large</Text>
-<Text variant="large-medium">Large Medium</Text>
-<Text variant="large-semibold">Large Semibold</Text>`}
-      />
-      <div className="flex flex-row gap-8">
-        <Text variant="body">Body</Text>
-        <Text variant="body-medium">Body Medium</Text>
-      </div>
-      <StoryCode
-        code={`<Text variant="body">Body</Text>
-<Text variant="body-medium">Body Medium</Text>`}
-      />
-      <div className="flex flex-row gap-8">
-        <Text variant="small">Small</Text>
-        <Text variant="small-medium">Small Medium</Text>
-      </div>
-      <StoryCode
-        code={`<Text variant="small">Small</Text>
-<Text variant="small-medium">Small Medium</Text>`}
+        code={`<Text variant="h3">…</Text>
+<Text variant="body">…</Text>
+<Text variant="small" as="span">…</Text>`}
       />
     </div>
   );
 }
 
 //=============================================================================
-// Headings Only
+// Roles × weight
 //=============================================================================
-export function Headings() {
+export function Weights() {
+  const roles = textVariants.filter(
+    (variant) => variant !== "hero" && variant !== "h1",
+  );
   return (
-    <div className="space-y-8">
-      <Text variant="h1">Heading 1</Text>
-      <Text variant="h2">Heading 2</Text>
-      <Text variant="h3">Heading 3</Text>
-      <Text variant="h4">Heading 4</Text>
-      <Text variant="h5">Heading 5</Text>
+    <div className="space-y-3 p-8">
+      <SectionTitle>Weight over the role&apos;s own</SectionTitle>
+      {roles.map((variant) => (
+        <div key={variant} className="flex items-baseline gap-6">
+          <Text variant="small" mono tone="muted" className="w-28 shrink-0">
+            {variant}
+          </Text>
+          {weights.map((weight) => (
+            <Text key={weight} variant={variant} weight={weight} as="span">
+              {weight}
+            </Text>
+          ))}
+        </div>
+      ))}
+      <StoryCode
+        code={`<Text variant="body" weight="medium">…</Text>
+<Text variant="small" weight="semibold">…</Text>`}
+      />
     </div>
   );
 }
 
 //=============================================================================
-// Body Text Only
+// Roles × leading. The parent's 30px line height shows what `inherit` keeps.
 //=============================================================================
-export function BodyText() {
+export function LineHeights() {
+  const roles = ["large", "body", "body-sm", "small"] as const;
   return (
-    <div className="space-y-8">
-      <Text variant="lead">Lead</Text>
-      <Text variant="lead-medium">Lead Medium</Text>
-      <Text variant="lead-semibold">Lead Semibold</Text>
-      <Text variant="large">Large</Text>
-      <Text variant="large-medium">Large Medium</Text>
-      <Text variant="large-semibold">Large Semibold</Text>
-      <Text variant="body">Body</Text>
-      <Text variant="body-medium">Body Medium</Text>
-      <Text variant="small">Small</Text>
-      <Text variant="small-medium">Small Medium</Text>
+    <div className="space-y-6 p-8 leading-[30px]">
+      <SectionTitle>Line height over the role&apos;s own</SectionTitle>
+      {roles.map((variant) => (
+        <div key={variant} className="space-y-2">
+          <Text variant="small" mono tone="muted">
+            {variant}
+          </Text>
+          <div className="grid grid-cols-5 gap-4">
+            {[undefined, ...leadings].map((leading) => (
+              <div key={leading ?? "role"} className="space-y-1">
+                <Text variant="small" mono tone="subtle">
+                  {leading ?? "(role)"}
+                </Text>
+                <div className="bg-surface-hover">
+                  <Text variant={variant} leading={leading}>
+                    Find decision-makers at any company, in two lines
+                  </Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <StoryCode
+        code={`<Text variant="small" leading="4">…</Text>
+<Text variant="body" leading="5">…</Text>
+<Text variant="body-sm" leading="inherit">…</Text>`}
+      />
     </div>
   );
 }
@@ -166,13 +199,29 @@ export const Playground: Story = {
   args: {
     variant: "body",
     children:
-      "Edit this text and try different variants via the controls below",
+      "Edit this text and try different roles and props via the controls below",
   },
   parameters: {
-    controls: { include: ["variant", "as", "children"] },
+    controls: {
+      include: [
+        "variant",
+        "weight",
+        "leading",
+        "tracking",
+        "narrowSize",
+        "mono",
+        "tabular",
+        "italic",
+        "decoration",
+        "transform",
+        "tone",
+        "as",
+        "children",
+      ],
+    },
   },
   render: (args) => (
-    <div className="space-y-8">
+    <div className="space-y-8 p-8">
       <Text {...args} />
     </div>
   ),
@@ -224,7 +273,7 @@ export function Tones() {
 }
 
 //=============================================================================
-// All tones, each on every variant
+// All tones, each on every role
 //=============================================================================
 export function AllTones() {
   return (
@@ -232,7 +281,7 @@ export function AllTones() {
       <Text variant="body">Default (foreground-base)</Text>
       {textTones.map((tone) => (
         <div key={tone} className="space-y-1">
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {tone} · {tones[tone]}
           </Text>
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
@@ -249,60 +298,33 @@ export function AllTones() {
 }
 
 //=============================================================================
-// Pinned line heights: a size role with its line height fixed (the -tight,
-// -loose, -relaxed, -inherit and -lh-* variants), for copy that keeps the
-// line height of the raw size it replaced. The parent's 30px line height
-// shows what the -inherit variants pick up.
-//=============================================================================
-export function PinnedLineHeights() {
-  const pinned = textVariants.filter((variant) =>
-    // `-tracking-tight` pins letter-spacing, not line height.
-    /(?<!-tracking)-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(
-      variant,
-    ),
-  );
-  return (
-    <div className="space-y-3 p-8 leading-[30px]">
-      {pinned.map((variant) => (
-        <div key={variant} className="flex items-baseline gap-6">
-          <Text variant="small" tone="muted" className="w-56 shrink-0">
-            {variant}
-          </Text>
-          <Text variant={variant}>Find decision-makers at any company</Text>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-//=============================================================================
 // Text roles (Home / Team)
 //=============================================================================
 export function TextRoles() {
   return (
     <div className="max-w-md space-y-3 p-8">
       <Text variant="eyebrow">Needs you</Text>
-      <Text variant="large-medium" tone="primary">
-        Section title · large-medium
+      <Text variant="large" weight="medium" tone="primary">
+        Section title · large · medium
       </Text>
-      <Text variant="body-medium" tone="primary">
-        Row title · body-medium
+      <Text variant="body" weight="medium" tone="primary">
+        Row title · body · medium
       </Text>
       <Text variant="body" tone="secondary">
         Description · body · secondary
       </Text>
-      <Text variant="small" tone="muted" className="tabular-nums">
+      <Text variant="small" tone="muted" tabular>
         Meta · small · muted · 2 files · 1 action
       </Text>
-      <Text variant="small-medium" tone="muted">
-        Chip label · small-medium
+      <Text variant="small" weight="medium" tone="muted">
+        Chip label · small · medium
       </Text>
       <StoryCode
         code={`<Text variant="eyebrow">Needs you</Text>
-<Text variant="large-medium" tone="primary">Section title</Text>
-<Text variant="body-medium" tone="primary">Row title</Text>
+<Text variant="large" weight="medium" tone="primary">Section title</Text>
+<Text variant="body" weight="medium" tone="primary">Row title</Text>
 <Text variant="body" tone="secondary">Description</Text>
-<Text variant="small" tone="muted" className="tabular-nums">Meta</Text>`}
+<Text variant="small" tone="muted" tabular>Meta</Text>`}
       />
       <Text variant="small" tone="muted">
         Floor is 12px (small). No arbitrary px sizes.
@@ -312,41 +334,47 @@ export function TextRoles() {
 }
 
 //=============================================================================
-// Modifier props: adjust a variant without a className
+// Modifier props: adjust a role without a className
 //=============================================================================
+const MODIFIERS: { label: string; props: Partial<TextProps> }[] = [
+  { label: 'weight="semibold"', props: { weight: "semibold" } },
+  { label: 'leading="5"', props: { leading: "5" } },
+  { label: 'tracking="tight"', props: { tracking: "tight" } },
+  { label: "mono · run_7f3a2c", props: { mono: true } },
+  { label: "tabular · 1,204.50 credits", props: { tabular: true } },
+  { label: "italic", props: { italic: true } },
+  {
+    label: 'decoration="line-through"',
+    props: { decoration: "line-through", tone: "muted" },
+  },
+  { label: 'decoration="underline"', props: { decoration: "underline" } },
+  {
+    label: 'narrowSize="large" (resize below md)',
+    props: { narrowSize: "large" },
+  },
+  { label: 'align="center"', props: { align: "center" } },
+];
+
 export function Modifiers() {
   return (
     <div className="space-y-3 p-8">
-      <Text variant="body" weight="semibold">
-        weight=&quot;semibold&quot;
-      </Text>
-      <Text variant="body" mono>
-        mono · run_7f3a2c
-      </Text>
-      <Text variant="body" tabular>
-        tabular · 1,204.50 credits
-      </Text>
-      <Text variant="body" italic>
-        italic
-      </Text>
-      <Text variant="body" decoration="line-through" tone="muted">
-        decoration=&quot;line-through&quot;
-      </Text>
+      {MODIFIERS.map(({ label, props }) => (
+        <Text key={label} variant="body" {...props}>
+          {label}
+        </Text>
+      ))}
       <Text variant="small" transform="uppercase" tone="muted">
         transform=&quot;uppercase&quot;
       </Text>
       <Text variant="small" transform="uppercase" tracking="caps">
         tracking=&quot;caps&quot;
       </Text>
-      <Text variant="body" align="center">
-        align=&quot;center&quot;
-      </Text>
       <StoryCode
         code={`<Text variant="body" weight="semibold">…</Text>
-<Text variant="body" mono>…</Text>
-<Text variant="body" tabular>…</Text>
+<Text variant="body" leading="5">…</Text>
+<Text variant="small" mono leading="4">…</Text>
 <Text variant="body" decoration="line-through" tone="muted">…</Text>
-<Text variant="small" transform="uppercase" tone="muted">…</Text>`}
+<Text variant="small" weight="medium" leading="4" narrowSize="body">…</Text>`}
       />
     </div>
   );

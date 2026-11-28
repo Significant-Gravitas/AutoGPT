@@ -77,20 +77,27 @@ export function BlockListCard({ blocks }: BlockListCardProps) {
             </div>
             <div className="min-w-0 flex-1">
               <Text
-                variant="body-sm-medium-inherit"
+                variant="body-sm"
+                weight="medium"
+                leading="inherit"
                 tone="emphasis"
                 className="truncate"
               >
                 {getBlockDisplayName(block.name, block) ?? "Block"}
               </Text>
               {str(block, "description") && (
-                <Text variant="small-tight" tone="muted" className="truncate">
+                <Text
+                  variant="small"
+                  leading="4"
+                  tone="muted"
+                  className="truncate"
+                >
                   {str(block, "description")}
                 </Text>
               )}
             </div>
             {categories[0] && (
-              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {categories[0].toLowerCase()}
               </span>
             )}
@@ -119,7 +126,9 @@ export function BlockOutputCard({ output }: BlockOutputCardProps) {
           />
         </div>
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="min-w-0 flex-1 truncate"
         >

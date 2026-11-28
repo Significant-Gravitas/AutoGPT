@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
+import { parseIntegerInput } from "@/lib/integer-input";
 import { InputExpanderModal } from "./TextInputExpanderModal";
 import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -63,11 +64,7 @@ export default function TextWidget(props: WidgetProps) {
     [InputType.INTEGER]: {
       htmlType: "number",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => {
-        if (v === "") return undefined;
-        const n = Number(v);
-        return Number.isFinite(n) ? Math.trunc(n) : undefined;
-      },
+      handleChange: parseIntegerInput,
     },
   };
 

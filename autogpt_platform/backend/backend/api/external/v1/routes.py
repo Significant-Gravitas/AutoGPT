@@ -273,28 +273,15 @@ async def execute_graph(
     # Consistent with the JWT-gated internal graph-execute route.
     await enforce_payment_paywall(auth.user_id)
 
-    # Attribute the execution to the API key's org when the key is org-scoped,
-    # so a key issued for org A doesn't get billed/attributed to the user's
-    # default (personal) org. A team-restricted key pins the execution to
-    # that team; otherwise team stays org-home (None). Only fall back to the
-    # user's default org/team when the key carries no org.
-    org_id: str | None
-    team_id: str | None
-    if auth.organization_id:
-        org_id, team_id = auth.organization_id, auth.team_id_restriction
-    else:
-        # Best-effort: a DB hiccup here must not collapse a subsequent
-        # UserPaywalledError into 400 via the broad except below.
-        from backend.api.features.orgs.db import get_user_default_team
-
-        try:
-            org_id, team_id = await get_user_default_team(auth.user_id)
-        except Exception:
-            logger.warning(
-                "get_user_default_team failed for external execute",
-                exc_info=True,
-            )
-            org_id, team_id = None, None
+    # The run is attributed to the organization the credential acts in, and to
+    # its team when it is restricted to one; it acts only on workflows there.
+    if not await graph_db.get_graph(
+        graph_id=graph_id,
+        version=graph_version,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+    ):
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
 
     try:
         graph_exec = await add_graph_execution(
@@ -302,8 +289,8 @@ async def execute_graph(
             user_id=auth.user_id,
             inputs=node_input,
             graph_version=graph_version,
-            organization_id=org_id,
-            team_id=team_id,
+            organization_id=auth.organization_id,
+            team_id=auth.team_id_restriction,
             trigger=ExecutionTrigger.API,
             trigger_ref=auth.id if isinstance(auth, APIKeyInfo) else auth.type,
         )
@@ -329,7 +316,7 @@ class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
     nodes: list[ExecutionNode]
-    output: Optional[list[dict[str, str]]]
+    output: Optional[list[dict[str, Any]]]
 
 
 @v1_router.get(
@@ -346,12 +333,18 @@ async def get_graph_execution_results(
         require_resource_permission(APIKeyPermission.READ_GRAPH)
     ),
 ) -> GraphExecutionResult:
+    # The credential's own runs, in the organization it acts in.
     graph_exec = await execution_db.get_graph_execution(
         user_id=auth.user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
+        organization_id=auth.organization_id,
     )
-    if not graph_exec:
+    if (
+        not graph_exec
+        or graph_exec.user_id != auth.user_id
+        or graph_exec.graph_id != graph_id
+    ):
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
@@ -360,6 +353,7 @@ async def get_graph_execution_results(
         graph_id=graph_exec.graph_id,
         version=graph_exec.graph_version,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
     ):
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 

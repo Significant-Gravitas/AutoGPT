@@ -52,6 +52,9 @@ function getCanonicalURL(request: NextRequest) {
 
 export const config = {
   matcher: [
+    // The pattern below skips paths that end like an image. An admin path
+    // never serves one, so the admin gate still sees every admin path.
+    "/admin/:path*",
     /*
      * Match all request paths except for the ones starting with:
      * - /_next/static (static files)

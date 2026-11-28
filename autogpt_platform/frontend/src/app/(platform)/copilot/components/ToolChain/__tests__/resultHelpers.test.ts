@@ -141,6 +141,20 @@ describe("integrationIconSrc", () => {
   it("rejects providers without safe characters", () => {
     expect(integrationIconSrc("../../")).toBeNull();
   });
+
+  it("maps MCP catalog provider slugs to their service logos", () => {
+    expect(integrationIconSrc("mcp_amplitude")).toBe(
+      "/integrations/amplitude.png",
+    );
+    expect(integrationIconSrc("mcp_linear")).toBe("/integrations/linear.png");
+    expect(integrationIconSrc("mcp_agentmail")).toBe(
+      "/integrations/agent_mail.png",
+    );
+    expect(integrationIconSrc("constructor")).toBe(
+      "/integrations/constructor.png",
+    );
+    expect(integrationIconSrc("mcp_")).toBeNull();
+  });
 });
 
 describe("result formatting", () => {

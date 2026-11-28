@@ -18,8 +18,8 @@ const AVATAR_CLASS =
 // Same motion as the side panel's empty-state tiles: the outer two lean out
 // and spread a little further on hover.
 const POSITIONS = [
-  "left-0 top-1 z-0 -rotate-6 group-hover:-translate-x-1 group-hover:-rotate-12",
-  "right-0 top-1 z-0 rotate-6 group-hover:translate-x-1 group-hover:rotate-12",
+  "left-0 top-1 z-base -rotate-6 group-hover:-translate-x-1 group-hover:-rotate-12",
+  "right-0 top-1 z-base rotate-6 group-hover:translate-x-1 group-hover:rotate-12",
 ];
 
 /** Otto flanked by the first two hires, over the page title and a line on
@@ -48,7 +48,7 @@ export function TeamPageHeader({ experts }: Props) {
               />
             </span>
           ))}
-          <span className="absolute top-0 left-1/2 z-10 -translate-x-1/2 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 motion-reduce:transition-none">
+          <span className="absolute top-0 left-1/2 z-raised -translate-x-1/2 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 motion-reduce:transition-none">
             <AutopilotAvatar size={52} className={AVATAR_CLASS} />
           </span>
         </div>

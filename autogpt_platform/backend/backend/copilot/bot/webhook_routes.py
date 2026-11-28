@@ -24,11 +24,14 @@ from .handler import MessageHandler
 logger = logging.getLogger(__name__)
 
 
-def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
+def register_webhook_adapters(app: FastAPI, api: BotBackend) -> list[WebhookAdapter]:
     """Wire every configured webhook adapter's routes onto ``app``.
 
     The caller owns the ``api`` lifecycle (close it in the app's lifespan
     cleanup) — matching the pattern used by the socket bridge in ``app.py``.
+    It also runs the returned adapters' startup hooks from that lifespan, via
+    :func:`run_webhook_adapter_startup`: an app with a lifespan never fires
+    Starlette ``on_startup`` handlers.
     """
     handler = MessageHandler(api)
     adapters = build_webhook_adapters(api)
@@ -36,6 +39,19 @@ def register_webhook_adapters(app: FastAPI, api: BotBackend) -> None:
         adapter.on_message(handler.handle)
         adapter.register_routes(app)
     logger.info(f"Mounted {len(adapters)} webhook adapter(s) on the main backend API")
+    return adapters
+
+
+async def run_webhook_adapter_startup(adapters: list[WebhookAdapter]) -> None:
+    """Run each adapter's startup hook; one failing never stops the others."""
+    for adapter in adapters:
+        try:
+            await adapter.on_startup()
+        except Exception:
+            logger.warning(
+                f"Startup of the {adapter.platform_name} webhook adapter failed",
+                exc_info=True,
+            )
 
 
 def build_webhook_adapters(api: BotBackend) -> list[WebhookAdapter]:

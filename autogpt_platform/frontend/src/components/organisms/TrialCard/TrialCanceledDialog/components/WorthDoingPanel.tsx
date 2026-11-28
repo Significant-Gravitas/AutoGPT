@@ -69,7 +69,7 @@ export function WorthDoingPanel({ offer, endsAt }: Props) {
               data-slot="worth-doing-panel-content"
               className="flex min-w-0 flex-col gap-0.5"
             >
-              <Text variant="body-medium" tone="primary">
+              <Text variant="body" weight="medium" tone="primary">
                 {row.title}
               </Text>
               <Text variant="small" tone="secondary">

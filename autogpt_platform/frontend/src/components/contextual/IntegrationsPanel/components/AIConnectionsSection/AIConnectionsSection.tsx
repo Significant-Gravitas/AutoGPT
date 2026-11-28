@@ -56,7 +56,8 @@ export function AIConnectionsSection() {
   return (
     <section aria-labelledby="ai-connections-heading" className="pb-8 pl-4">
       <Text
-        variant="small-medium"
+        variant="small"
+        weight="medium"
         as="h2"
         id="ai-connections-heading"
         tone="body"
@@ -188,7 +189,7 @@ function ConnectionRow({
       )}
       <span className="flex min-w-0 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             {connection.display_name}
           </Text>
           {connection.auth_method !== "deployment" &&

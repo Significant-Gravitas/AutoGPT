@@ -115,7 +115,9 @@ export function TierToggle({
             />
             <span className="flex min-w-0 flex-1 flex-col">
               <Text
-                variant="body-medium-tight"
+                variant="body"
+                weight="medium"
+                leading="5"
                 as="span"
                 tone="primary"
                 className="truncate"
@@ -174,7 +176,9 @@ function LockedSegment({ segment }: { segment: Segment }) {
         />
         <span className="flex min-w-0 flex-col">
           <Text
-            variant="body-medium-tight"
+            variant="body"
+            weight="medium"
+            leading="5"
             as="span"
             tone="muted"
             className="truncate"

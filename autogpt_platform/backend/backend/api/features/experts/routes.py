@@ -12,6 +12,10 @@ from backend.api.features.experts import reset as expert_reset
 from backend.api.features.experts import scheduling
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.errors import ExpertScheduleCleanupError
+from backend.api.features.experts.kickoff import (
+    SERVER_KICKOFF_SURFACES,
+    start_expert_kickoff,
+)
 from backend.api.features.experts.models import (
     EXPERT_AVATAR_URL_MAX_LENGTH,
     EXPERT_COLOR_MAX_LENGTH,
@@ -43,14 +47,16 @@ from backend.api.features.experts.reset import ExpertResetResult
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot.computer import (
     ComputerInfo,
+    DesktopRefused,
     describe_computer,
     mounts_for,
-    open_desktop,
+    open_desktop_from_ui,
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.e2b_sandbox import SandboxOwner, kill_expert_sandbox
 from backend.copilot.tools.skills import SkillVersionConflictError, SkillWriteLockError
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.sandbox_limits import SandboxLimitError
@@ -184,9 +190,12 @@ async def list_expert_templates(
 async def hire_expert(
     request: HireRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
 ) -> HireResult:
     try:
-        return await experts_db.hire_expert(
+        result = await experts_db.hire_expert(
             user_id, request.template_id, request.name, request.surface
         )
     except experts_db.ExpertTemplateNotFoundError as e:
@@ -208,6 +217,20 @@ async def hire_expert(
             status_code=409,
             detail={"code": "active_expert_limit", "limit": e.limit},
         )
+    # The expert page and onboarding open the new expert's thread, which
+    # sends its kickoff. An API caller naming no surface lands nowhere, so
+    # the server sends it.
+    if request.surface in SERVER_KICKOFF_SURFACES:
+        spawn_background_task(
+            start_expert_kickoff(
+                user_id,
+                result.expert.id,
+                organization_id=ctx.org_id,
+                team_id=ctx.team_id,
+            ),
+            name=f"expert-kickoff-{result.expert.id}",
+        )
+    return result
 
 
 @router.post(
@@ -410,7 +433,7 @@ async def get_expert_computer(
     operation_id="postV2StartExpertDesktop",
     responses={
         404: {"description": "Expert not found"},
-        429: {"description": "Too many sandboxes are running"},
+        429: {"description": "Usage allowance spent, or too many sandboxes running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -435,13 +458,13 @@ async def start_expert_desktop(
             status_code=503, detail="E2B is not configured on this deployment."
         )
     try:
-        stream, _created, _shared = await open_desktop(
+        stream, _created, _shared = await open_desktop_from_ui(
             SandboxOwner(kind="expert", id=expert_id),
             mounts_for(user_id, expert_id),
             api_key,
             user_id=user_id,
         )
-    except SandboxLimitError as refusal:
+    except (DesktopRefused, SandboxLimitError) as refusal:
         raise fastapi.HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(

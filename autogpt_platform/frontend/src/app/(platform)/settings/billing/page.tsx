@@ -16,12 +16,8 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import {
-  getGetSubscriptionStatusQueryKey,
-  usePatchV1FulfillCheckoutSession,
-} from "@/app/api/__generated__/endpoints/credits/credits";
+import { getGetSubscriptionStatusQueryKey } from "@/app/api/__generated__/endpoints/credits/credits";
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
-import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 import {
   trackCheckoutAbandoned,
@@ -35,12 +31,8 @@ import {
   type AbandonedPlan,
 } from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
-
-type BillingTab = "subscription" | "automation-credits";
-
-function isBillingTab(value: string): value is BillingTab {
-  return value === "subscription" || value === "automation-credits";
-}
+import { billingTabURL, isBillingTab, type BillingTab } from "./helpers";
+import { useTopupCheckoutReturn } from "./useTopupCheckoutReturn";
 
 function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   const tabParam = searchParams.get("tab");
@@ -63,12 +55,9 @@ function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const identityKey = useAuthStore((state) => state.user?.id ?? null);
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
   const trialStatus = searchParams.get("trial");
-  const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
-  const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
   // Set on return from an upgrade checkout left unpaid; the plan is null when
   // the cancel URL did not name one.
@@ -85,45 +74,16 @@ function SettingsBillingPage() {
   );
 
   function handleTabChange(value: string) {
-    if (isBillingTab(value)) setActiveTab(value);
+    if (!isBillingTab(value)) return;
+    setActiveTab(value);
+    router.replace(billingTabURL(value, searchParams), { scroll: false });
   }
 
   useEffect(function setBillingDocumentTitle() {
     document.title = "Billing – AutoGPT Platform";
   }, []);
 
-  useEffect(
-    function handleTopupRedirect() {
-      if (!topupStatus) return;
-      if (topupStatus === "success" && identityKey === null) return;
-      // Stripe re-renders the page after redirect — guard so we don't
-      // fire fulfillCheckout twice or stack duplicate toasts.
-      if (handledTopupRef.current === topupStatus) return;
-      handledTopupRef.current = topupStatus;
-
-      if (topupStatus === "success") {
-        toast({
-          title: "Payment successful",
-          description:
-            "Your credits will appear shortly. Refresh if you don't see them.",
-        });
-        fulfillCheckout().catch(() => {
-          // Background fulfillment call — webhook is the source of truth,
-          // so a failure here is non-blocking.
-        });
-      } else if (topupStatus === "cancel") {
-        trackCheckoutAbandoned({ checkout_kind: "top_up", surface: "billing" });
-        toast({
-          title: "Payment cancelled",
-          description: "Your payment method was not charged.",
-          variant: "destructive",
-        });
-      }
-
-      router.replace("/settings/billing");
-    },
-    [topupStatus, fulfillCheckout, identityKey, router],
-  );
+  useTopupCheckoutReturn({ topupStatus, activeTab });
 
   useEffect(
     function handleSubscriptionRedirect() {
@@ -167,13 +127,14 @@ function SettingsBillingPage() {
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
         <div className="flex items-center gap-1">
-          <Text variant="h3-tracking-tight" as="h1">
+          <Text variant="h3" tracking="tight" as="h1">
             Billing &amp; usage
           </Text>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
             tone="muted"

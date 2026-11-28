@@ -194,7 +194,9 @@ const MultiSelectorTrigger = forwardRef<
           variant="secondary"
         >
           <Text
-            variant="small-semibold-tight"
+            variant="small"
+            weight="semibold"
+            leading="4"
             as="span"
             tone="inherit"
             data-slot="multi-select-badge-label"
@@ -282,14 +284,15 @@ const MultiSelectorList = forwardRef<
       ref={ref}
       data-slot="multi-select-list"
       className={cn(
-        "absolute top-0 z-10 scrollbar-thin flex w-full scrollbar-thumb-foreground-tertiary scrollbar-track-transparent flex-col gap-2 rounded-md border border-surface-hover bg-canvas p-2 shadow-md transition-colors scrollbar-thumb-rounded-lg",
+        "absolute top-0 z-raised scrollbar-thin flex w-full scrollbar-thumb-foreground-tertiary scrollbar-track-transparent flex-col gap-2 rounded-md border border-surface-hover bg-canvas p-2 shadow-md transition-colors scrollbar-thumb-rounded-lg",
         className,
       )}
     >
       {children}
       <CommandEmpty data-slot="multi-select-empty">
         <Text
-          variant="body-tight"
+          variant="body"
+          leading="5"
           as="span"
           data-slot="multi-select-empty-text"
           tone="muted"
@@ -336,7 +339,8 @@ const MultiSelectorItem = forwardRef<
       onMouseDown={mousePreventDefault}
     >
       <Text
-        variant="body-tight"
+        variant="body"
+        leading="5"
         as="span"
         tone="inherit"
         data-slot="multi-select-item-label"

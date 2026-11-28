@@ -80,6 +80,7 @@ export function ExpertWorkflowCardMenu({
             type="button"
             variant={variant}
             size={size}
+            shape={size === "icon-sm" ? "soft" : "sharp"}
             aria-label="More actions"
             leadingIcon={MoreHorizontalIcon}
           />

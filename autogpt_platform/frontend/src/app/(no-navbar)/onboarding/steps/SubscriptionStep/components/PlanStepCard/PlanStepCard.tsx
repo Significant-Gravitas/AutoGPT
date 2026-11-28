@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   labelledBy: string;
@@ -16,7 +17,7 @@ export function PlanStepCard({ labelledBy, twoColumns, children }: Props) {
     <motion.div
       initial={reduceMotion ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: duration.slower, ease: ease.out }}
       className="w-full px-4 pt-10 lg:pt-0"
     >
       <section
@@ -24,8 +25,7 @@ export function PlanStepCard({ labelledBy, twoColumns, children }: Props) {
         className={cn(
           // Clipped rather than hidden, so the narrow layout's sticky
           // checkout still sticks to the viewport.
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's soft lift shadow has no shadow token yet
-          "mx-auto grid w-full overflow-clip rounded-3xl border border-border-base/80 bg-surface shadow-[0_1px_2px_rgba(24,24,27,0.04),0_32px_64px_-32px_rgba(24,24,27,0.18)]",
+          "mx-auto grid w-full overflow-clip rounded-3xl border border-border-base/80 bg-surface shadow-lift",
           twoColumns ? "max-w-[64rem] lg:grid-cols-2" : "max-w-[34rem]",
         )}
       >

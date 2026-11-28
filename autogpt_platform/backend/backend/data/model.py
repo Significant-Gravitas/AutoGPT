@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import enum
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from json import JSONDecodeError
@@ -20,6 +21,7 @@ from typing import (
     get_args,
 )
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from prisma.enums import BriefingFrequency, CreditTransactionType, SubscriptionTier
 from pydantic import (
@@ -45,7 +47,7 @@ from backend.data.credential_scope import ServerTarget, scope_rule
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.onboarding_wizard import OnboardingWizardProgress
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import ExecutionFailureReason
+from backend.util.exceptions import CredentialsExpiredError, ExecutionFailureReason
 from backend.util.json import loads as json_loads
 from backend.util.request import parse_url
 from backend.util.settings import Secrets
@@ -376,6 +378,33 @@ def sdk_default_refused_message(cred_id: str) -> str:
     )
 
 
+# A managed credential the platform pays for, such as AgentMail's per-user pod
+# key, has an ID like "{provider}-managed-{uuid}". Billing reads the ID alone,
+# without loading the credential or trusting its provider string (legacy rows
+# can carry "ProviderName.AGENT_MAIL"), so these runs are priced like the
+# platform's own keys while a key the user connected stays free. Ayrshare's managed key is
+# not listed: its blocks charge per post whichever key they run on.
+PLATFORM_FUNDED_MANAGED_PROVIDERS: frozenset[str] = frozenset({"agent_mail"})
+_MANAGED_ID_INFIX = "-managed-"
+
+# Set on each credentials input before cost filters are matched (see
+# `backend.executor.utils`), from the credential ID, never from the input.
+PLATFORM_FUNDED_COST_KEY = "platform_funded"
+
+
+def platform_funded_managed_id(provider: str) -> str:
+    if provider not in PLATFORM_FUNDED_MANAGED_PROVIDERS:
+        raise ValueError(f"{provider} has no platform-funded managed credential")
+    return f"{provider}{_MANAGED_ID_INFIX}{uuid4()}"
+
+
+def is_platform_funded_managed(cred_id: str) -> bool:
+    return any(
+        cred_id.startswith(f"{provider}{_MANAGED_ID_INFIX}")
+        for provider in PLATFORM_FUNDED_MANAGED_PROVIDERS
+    )
+
+
 def provider_label(provider: str) -> str:
     """The name people know a provider by, for messages about its shared key."""
     return _PROVIDER_LABELS.get(provider, provider)
@@ -437,6 +466,26 @@ class APIKeyCredentials(_BaseCredentials):
         description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
     )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
+
+    def is_expired(self, now: int | None = None) -> bool:
+        """Whether ``expires_at`` is at or before *now* (default: the current time)."""
+        if self.expires_at is None:
+            return False
+        return self.expires_at <= (int(time.time()) if now is None else now)
+
+    def expired_error(self, user_timezone: str = "UTC") -> CredentialsExpiredError:
+        """Dated in *user_timezone* (an IANA name), so its owner reads the day
+        they picked; in UTC when that zone is unknown."""
+        try:
+            zone = ZoneInfo(user_timezone)
+        except (KeyError, ValueError):  # not a zone name, or not one we know
+            zone = ZoneInfo("UTC")
+        # Clamped: a key stored with a far-past expiry still gets this message.
+        expired_on = datetime.fromtimestamp(max(self.expires_at or 0, 0), zone)
+        name = f" '{self.title}'" if self.title else ""
+        return CredentialsExpiredError(
+            f"API key{name} expired on {expired_on:%Y-%m-%d %H:%M %Z}. Add a new key."
+        )
 
     def auth_header(self) -> str:
         # Linear API keys should not have Bearer prefix
@@ -1084,6 +1133,11 @@ class NodeExecutionStats(BaseModel):
     billing_mode: Optional[str] = None
     auth_provider: Optional[str] = None
     execution_path: Optional[str] = None
+    # The model the run ran. An LLM block records the model it resolved when
+    # the run started (Block._execute: a switched-off model's fallback from
+    # its shutdown date), and billing and the cost log price and name that
+    # model, whatever the date when they read it. Codex records the model its
+    # provider reports. A merge keeps the first one (__iadd__).
     resolved_model: Optional[str] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
@@ -1107,6 +1161,10 @@ class NodeExecutionStats(BaseModel):
             if current is None:
                 # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
+            elif key == "resolved_model":
+                # The run is billed for the model it started on: merging in
+                # stats that name another model can't change it.
+                continue
             elif isinstance(value, dict) and isinstance(current, dict):
                 current.update(value)
             elif isinstance(value, (int, float)) and isinstance(current, (int, float)):

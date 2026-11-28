@@ -188,6 +188,34 @@ def test_build_trigger_run_at_returns_datetrigger():
     assert isinstance(trigger, DateTrigger)
 
 
+@pytest.mark.parametrize(
+    "cron",
+    [
+        "0 * * * *",  # 60 minutes → hourly
+        "0 0 * * *",  # 24 hours → daily
+        "*/59 * * * *",
+        "0 */23 * * *",
+        "15 9 */30 * *",  # day cap 30, not 31
+        "*/1 * * * *",
+    ],
+)
+def test_build_trigger_accepts_frontend_custom_interval_crons(cron: str):
+    """Every interval the frontend's custom-interval clamp emits must build a
+    trigger."""
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize(
+    "cron",
+    ["*/60 * * * *", "0 */24 * * *", "0 0 */31 * *", "*/0 * * * *"],
+)
+def test_build_trigger_rejects_out_of_range_custom_interval_crons(cron: str):
+    with pytest.raises(ValueError):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
 # ---------------------------------------------------------------------------
 # _next_run_time_iso
 # ---------------------------------------------------------------------------
@@ -597,6 +625,72 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session_id", [None, "session-1"], ids=["new", "existing"])
+@pytest.mark.parametrize(
+    "still_a_member, tenancy",
+    [(True, ("org-sched", "team-sched")), (False, ("personal-org", "personal-team"))],
+)
+async def test_a_turn_runs_in_its_scheduled_org_only_while_its_owner_belongs(
+    _turn_owners_belong_to_their_org, still_a_member, tenancy, session_id
+):
+    orgs = _turn_owners_belong_to_their_org
+    orgs.is_active_member.return_value = still_a_member
+    orgs.resolve_default_tenancy.return_value = ("personal-org", "personal-team")
+    args = _args(
+        session_id=session_id, organization_id="org-sched", team_id="team-sched"
+    )
+    chat = MagicMock(archived_at=None, session_id="new-session", expert_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(return_value=chat)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=chat)),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session_metadata", AsyncMock(return_value=chat)
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    dispatched = mock_schedule_turn.call_args.kwargs
+    assert (dispatched["organization_id"], dispatched["team_id"]) == tenancy
+    if session_id is None:
+        created = mock_create_session.await_args.kwargs
+        assert (created["organization_id"], created["team_id"]) == tenancy
+    orgs.is_active_member.assert_awaited_once_with("user-1", "org-sched", "team-sched")
+    if still_a_member:
+        orgs.resolve_default_tenancy.assert_not_awaited()
+    else:
+        orgs.resolve_default_tenancy.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_whose_membership_cannot_be_read_is_not_dispatched(
+    _turn_owners_belong_to_their_org,
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1894,7 +1988,10 @@ def _registered_jobs(
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(
+            f"{_SCHEDULER_PATH}.StopSafeBackgroundScheduler",
+            return_value=mock_scheduler,
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),

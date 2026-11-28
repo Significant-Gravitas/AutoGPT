@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toDateTimeLocalValue } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/schema";
 import {
   TabsLine,
   TabsLineContent,
@@ -144,7 +145,7 @@ type OAuthTabContentProps = {
 function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
   return (
     <div className="space-y-4">
-      <Text variant="body-tight" as="p" tone="secondary">
+      <Text variant="body" leading="5" as="p" tone="secondary">
         Sign in with your {providerName} account using OAuth.
       </Text>
       <Button
@@ -200,7 +201,7 @@ function APIKeyTabContent({
   return (
     <div className="space-y-4">
       {schemaDescription && (
-        <Text variant="body-tight" as="p" tone="secondary">
+        <Text variant="body" leading="5" as="p" tone="secondary">
           {schemaDescription}
         </Text>
       )}
@@ -231,12 +232,15 @@ function APIKeyTabContent({
                 placeholder="Enter API Key..."
                 hint={
                   schema.credentials_scopes ? (
-                    <FormDescription className="text-body-sm leading-inherit">
+                    <FormDescription size="body-sm">
                       Required scope(s) for this block:{" "}
                       {schema.credentials_scopes?.map((s, i, a) => (
                         <span key={i}>
                           <Text
-                            variant="small-mono-bold-tight"
+                            variant="small"
+                            weight="bold"
+                            mono
+                            leading="4"
                             as="code"
                             tone="inherit"
                           >
@@ -255,13 +259,15 @@ function APIKeyTabContent({
           <FormField
             control={form.control}
             name="expiresAt"
-            render={({ field }) => (
+            render={({ field, fieldState }) => (
               <Input
                 id="expiresAt"
                 label="Expiration Date"
                 type="datetime-local"
                 placeholder="Select expiration date..."
                 value={field.value}
+                error={fieldState.error?.message}
+                min={toDateTimeLocalValue(new Date())}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
                 name={field.name}
@@ -295,7 +301,7 @@ function SimpleActionTab({
 }: SimpleActionTabProps) {
   return (
     <div className="space-y-4">
-      <Text variant="body-tight" as="p" tone="secondary">
+      <Text variant="body" leading="5" as="p" tone="secondary">
         {description}
       </Text>
       <Button variant="primary" size="small" onClick={onClick} type="button">

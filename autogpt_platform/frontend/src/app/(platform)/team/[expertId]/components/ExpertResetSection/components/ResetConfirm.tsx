@@ -89,7 +89,7 @@ interface GroupProps {
 function ResetGroup({ label, children }: GroupProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Text variant="small-medium" tone="muted">
+      <Text variant="small" weight="medium" tone="muted">
         {label}
       </Text>
       <ul className="flex flex-col gap-1.5">{children}</ul>

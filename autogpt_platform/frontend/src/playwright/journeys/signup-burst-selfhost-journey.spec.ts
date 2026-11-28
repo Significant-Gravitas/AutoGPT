@@ -1,5 +1,6 @@
 import type { Browser, Page } from "@playwright/test";
 import { expect, test } from "../coverage-fixture";
+import { markChangelogSeen } from "../utils/changelog";
 import { JOURNEY_USER_AGENT } from "./user-agent";
 
 // Several people signing up to one self-hosted install at once. That burst
@@ -70,6 +71,7 @@ async function signUp(
     baseURL,
     userAgent: JOURNEY_USER_AGENT,
   });
+  await markChangelogSeen(context);
   const page = await context.newPage();
   const problems: string[] = [];
   const password = `Burst-${Date.now()}-journey`;
@@ -78,7 +80,6 @@ async function signUp(
   await expect(page.getByText("Create your account")).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.locator("#password").fill(password);
-  await page.locator("#confirmPassword").fill(password);
   await page.getByRole("button", { name: "Sign up" }).click();
   try {
     await page.waitForURL((url) => !url.pathname.startsWith("/signup"), {

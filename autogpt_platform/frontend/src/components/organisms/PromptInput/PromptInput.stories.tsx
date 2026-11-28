@@ -25,7 +25,7 @@ import {
 // (single pill row) composer.
 const SEND_BUTTON_CLASS = "max-md:size-10";
 const QUEUE_BUTTON_CLASS =
-  "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100";
+  "size-[2.625rem] rounded-pill border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100";
 
 interface ComposerProps {
   initialValue?: string;
@@ -50,7 +50,7 @@ function Composer({
       className="relative w-full max-w-3xl pt-16"
       onSubmit={(event) => event.preventDefault()}
     >
-      <InputGroup className="relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl">
+      <InputGroup className="relative z-raised flex-col overflow-hidden !rounded-4xl border-border-base shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl">
         <div className="flex w-full flex-wrap items-end">
           <InputGroupAddon
             align="inline-start"
@@ -77,7 +77,7 @@ function Composer({
               tooltip={{ content: "Search the web", shortcut: "⌘K" }}
             >
               <Icon icon={GlobalSearchIcon} className="size-4" />
-              <Text variant="body-medium" as="span" tone="body">
+              <Text variant="body" weight="medium" as="span" tone="body">
                 Search
               </Text>
             </PromptInputButton>

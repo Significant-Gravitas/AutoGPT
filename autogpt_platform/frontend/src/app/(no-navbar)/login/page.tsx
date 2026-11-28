@@ -10,6 +10,7 @@ import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox"
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
+import { SignInWithoutConnecting } from "@/components/auth/SignInWithoutConnecting";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -18,6 +19,7 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import { SignInCode } from "./components/SignInCode/SignInCode";
 import {
   ACCOUNT_BANNED_NOTICE_COPY,
   EMAIL_VERIFICATION_NOTICE_COPY,
@@ -36,26 +38,39 @@ export default function LoginPage() {
   const {
     user,
     form,
+    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
+    isWaitingOnCode,
     showBannedNotice,
     isLoading,
     isGoogleLoading,
     isMicrosoftLoading,
     isMicrosoftEnabled,
     isCloudEnv,
-    isUserLoading,
+    isCheckingSession,
+    isHydrated,
     showNotAllowedModal,
     handleSubmit,
     handleProviderLogin,
+    connectFallback,
     handleCloseNotAllowedModal,
     handleBackToLogin,
+    handleLeaveSignInCode,
   } = useLoginPage();
 
-  if (isUserLoading || user) {
+  if (isCheckingSession || user) {
     return <LoadingLogin />;
+  }
+
+  if (isWaitingOnCode) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <SignInCode next={safeNextUrl} onBack={handleLeaveSignInCode} />
+      </AuthSplitLayout>
+    );
   }
 
   if (verificationEmail) {
@@ -94,7 +109,11 @@ export default function LoginPage() {
       ) : null}
 
       <FormProvider {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="flex w-full flex-col gap-1"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -135,7 +154,7 @@ export default function LoginPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading || isMicrosoftLoading}
+            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -151,17 +170,31 @@ export default function LoginPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderLogin("google")}
                   isLoading={isGoogleLoading}
-                  disabled={isLoading || isMicrosoftLoading}
+                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
                 <MicrosoftOAuthButton
                   onClick={() => handleProviderLogin("microsoft")}
                   isLoading={isMicrosoftLoading}
-                  disabled={isLoading || isGoogleLoading}
+                  disabled={!isHydrated || isLoading || isGoogleLoading}
                 />
               ) : null}
             </div>
+            {connectFallback ? (
+              <SignInWithoutConnecting
+                provider={connectFallback}
+                disabled={
+                  !isHydrated ||
+                  isLoading ||
+                  isGoogleLoading ||
+                  isMicrosoftLoading
+                }
+                onSignIn={() =>
+                  handleProviderLogin(connectFallback, { connect: false })
+                }
+              />
+            ) : null}
           </>
         ) : null}
 
@@ -174,7 +207,7 @@ export default function LoginPage() {
       </FormProvider>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" tone="muted">
+        <Text variant="body" weight="medium" tone="muted">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

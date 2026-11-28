@@ -36,7 +36,7 @@ function BasicCannonDemo() {
       </p>
       <button
         onClick={fire}
-        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Fire Cannon
       </button>
@@ -70,7 +70,7 @@ function RandomDirectionDemo() {
       </p>
       <button
         onClick={fire}
-        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Random Burst
       </button>
@@ -112,7 +112,7 @@ function SideCannonsDemo() {
       </p>
       <button
         onClick={fireSideCannons}
-        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95"
+        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95"
       >
         Fire Side Cannons
       </button>
@@ -167,7 +167,7 @@ function FireworksDemo() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-action-hover">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface-inverse-hover">
       <Confetti ref={confettiRef} manualstart />
       <p className="text-body text-foreground-subtle">
         Continuous stream from both sides
@@ -175,7 +175,7 @@ function FireworksDemo() {
       <button
         onClick={startFireworks}
         disabled={active}
-        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
+        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {active ? "Fireworks..." : "Launch Fireworks"}
       </button>
@@ -251,7 +251,7 @@ function CelebrationDemo() {
       <button
         onClick={celebrate}
         disabled={celebrating}
-        className="mt-4 rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
+        className="mt-4 rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {celebrating ? "Celebrating..." : "Celebrate!"}
       </button>
@@ -285,7 +285,7 @@ function StarsDemo() {
       <p className="text-body text-brand">Large star-shaped confetti</p>
       <button
         onClick={fireStars}
-        className="rounded-lg bg-brand-hover px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-accent-strong active:scale-95"
+        className="rounded-lg bg-brand-hover px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-accent-strong active:scale-95"
       >
         Purple Stars
       </button>
@@ -343,7 +343,7 @@ function FullScreenShowerDemo() {
       <button
         onClick={startShower}
         disabled={active}
-        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
+        className="rounded-lg bg-brand px-8 py-3 text-body-lg font-medium text-foreground-on-color shadow-md transition-colors hover:bg-brand-hover active:scale-95 disabled:opacity-50"
       >
         {active ? "Raining..." : "Confetti Shower"}
       </button>

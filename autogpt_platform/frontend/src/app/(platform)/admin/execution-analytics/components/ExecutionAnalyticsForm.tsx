@@ -394,7 +394,7 @@ export function ExecutionAnalyticsForm() {
         <div className="border-t pt-6">
           <Collapsible
             trigger={
-              <Text variant="lead-semibold" as="h3" tone="body">
+              <Text variant="lead" weight="semibold" as="h3" tone="body">
                 Advanced Options
               </Text>
             }
@@ -412,7 +412,13 @@ export function ExecutionAnalyticsForm() {
                   }
                 />
                 <Label htmlFor="skip_existing">
-                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     Skip executions that already have activity status and
                     correctness score
                   </Text>
@@ -427,7 +433,13 @@ export function ExecutionAnalyticsForm() {
                   onCheckedChange={(checked) => setShowAccuracyChart(!!checked)}
                 />
                 <Label htmlFor="show_accuracy_chart">
-                  <Text variant="body-medium-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     Show accuracy trends chart and historical data visualization
                   </Text>
                 </Label>
@@ -448,7 +460,7 @@ export function ExecutionAnalyticsForm() {
                   rows={6}
                   className="resize-y"
                 />
-                <Text variant="body-tight" tone="secondary">
+                <Text variant="body" leading="5" tone="secondary">
                   Customize how the AI evaluates execution success and failure.
                   Leave empty to use the default prompt shown above.
                 </Text>
@@ -469,7 +481,7 @@ export function ExecutionAnalyticsForm() {
                   rows={8}
                   className="resize-y"
                 />
-                <Text variant="body-tight" tone="secondary">
+                <Text variant="body" leading="5" tone="secondary">
                   Customize the analysis instructions. Use{" "}
                   <code className="rounded bg-surface-hover px-1">
                     {"{{GRAPH_NAME}}"}
@@ -545,7 +557,7 @@ export function ExecutionAnalyticsForm() {
       {trendsData && (
         <div className="space-y-4">
           <div className="flex items-start justify-between">
-            <Text variant="lead-semibold" as="h3" tone="inherit">
+            <Text variant="lead" weight="semibold" as="h3" tone="inherit">
               Execution Accuracy Trends
             </Text>
             <div className="rounded-md bg-info-surface px-3 py-2 text-caption leading-4 text-info-foreground">
@@ -610,34 +622,34 @@ export function ExecutionAnalyticsForm() {
           {/* Latest Data Summary */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div className="rounded-lg border bg-surface p-4 text-center text-info-foreground">
-              <Text variant="heading-md-bold" as="div" tone="inherit">
+              <Text variant="heading-md" weight="bold" as="div" tone="inherit">
                 {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" tone="secondary">
+              <Text variant="body" leading="5" as="div" tone="secondary">
                 Daily Score
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center">
-              <Text variant="heading-md-bold" as="div" tone="success">
+              <Text variant="heading-md" weight="bold" as="div" tone="success">
                 {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" tone="secondary">
+              <Text variant="body" leading="5" as="div" tone="secondary">
                 3-Day Avg
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center text-orange-foreground">
-              <Text variant="heading-md-bold" as="div" tone="inherit">
+              <Text variant="heading-md" weight="bold" as="div" tone="inherit">
                 {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" tone="secondary">
+              <Text variant="body" leading="5" as="div" tone="secondary">
                 7-Day Avg
               </Text>
             </div>
             <div className="rounded-lg border bg-surface p-4 text-center text-brand-hover">
-              <Text variant="heading-md-bold" as="div" tone="inherit">
+              <Text variant="heading-md" weight="bold" as="div" tone="inherit">
                 {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
               </Text>
-              <Text variant="body-tight" as="div" tone="secondary">
+              <Text variant="body" leading="5" as="div" tone="secondary">
                 14-Day Avg
               </Text>
             </div>
@@ -647,7 +659,8 @@ export function ExecutionAnalyticsForm() {
           {showAccuracyChart && trendsData?.historical_data && (
             <div className="mt-6">
               <Text
-                variant="lead-semibold"
+                variant="lead"
+                weight="semibold"
                 as="h4"
                 tone="inherit"
                 className="mb-4"

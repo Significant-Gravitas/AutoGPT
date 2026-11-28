@@ -53,7 +53,7 @@ export function PlanPanel({
     >
       <div className="flex items-center gap-2">
         <AutopilotAvatar size={26} />
-        <Text variant="small-medium" as="span" tone="secondary">
+        <Text variant="small" weight="medium" as="span" tone="secondary">
           Otto&apos;s plan
         </Text>
       </div>

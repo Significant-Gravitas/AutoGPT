@@ -19,12 +19,19 @@ export function OutputItem({
   return (
     <div className="relative">
       {label && (
-        <Text variant="large-medium" transform="capitalize">
+        <Text
+          variant="large"
+          weight="medium"
+          transform="capitalize"
+          data-testid="output-item-label"
+        >
           {label}
         </Text>
       )}
 
-      <div className="relative">{renderer.render(value, metadata)}</div>
+      <div className="relative" data-testid="output-item-value">
+        {renderer.render(value, metadata)}
+      </div>
     </div>
   );
 }

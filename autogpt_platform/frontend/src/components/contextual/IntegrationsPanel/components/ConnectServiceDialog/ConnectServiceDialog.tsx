@@ -15,6 +15,7 @@ import { ListLoading, ListView } from "./components/ListView";
 import { DetailView } from "./components/DetailView/DetailView";
 import { useConnectServiceDialog } from "./useConnectServiceDialog";
 import { useMeasuredHeight } from "./useMeasuredHeight";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   open: boolean;
@@ -32,10 +33,10 @@ const DEFAULT_TITLE = "Connect a service";
 const DEFAULT_DESCRIPTION =
   "Choose a service to connect your account or view its setup instructions.";
 
-const TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
+const TRANSITION = { duration: duration.fast, ease: ease.out };
 const HEIGHT_TRANSITION = {
-  duration: 0.2,
-  ease: [0, 0, 0.2, 1] as const,
+  duration: duration.base,
+  ease: ease.out,
 };
 
 const stepVariants = {

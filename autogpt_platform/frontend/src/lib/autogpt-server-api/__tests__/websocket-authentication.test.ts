@@ -38,7 +38,28 @@ describe("WebSocket authentication and recovery", () => {
     return FakeWebSocket.instances[index];
   }
 
-  it.each([4001, 4002, 4003, 4004])(
+  it("connects again after a 4001 from a backend that expects the token in the URL", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const connected = vi.fn();
+    api.onWebSocketConnect(connected);
+    void api.connectWebSocket();
+    const first = await socketAt();
+    first.open();
+    first.serverClose(4001);
+    // Expected while such a backend is still deployed, so not reported.
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining("WebSocket sign-in not read; retrying"),
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    const second = await socketAt(1);
+    second.open();
+    second.pong();
+    expect(connected).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([4002, 4003, 4004])(
     "does not report authenticated connection or retry after close %s",
     async (code) => {
       const connected = vi.fn();
@@ -95,7 +116,7 @@ describe("WebSocket authentication and recovery", () => {
     socket.open();
     expect(
       socket.send.mock.calls.map(([data]) => JSON.parse(data).method),
-    ).toEqual(["heartbeat"]);
+    ).toEqual(["authenticate", "heartbeat"]);
     expect(connected).not.toHaveBeenCalled();
     socket.pong();
     await subscription;
