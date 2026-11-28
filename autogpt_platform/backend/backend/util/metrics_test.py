@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import smtplib
 import sys
 import time
 from collections.abc import Callable
@@ -19,6 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import sentry_sdk
+from pydantic import SecretStr
 from sentry_sdk.consts import DEFAULT_OPTIONS
 from sentry_sdk.profiler.transaction_profiler import has_profiling_enabled
 from sentry_sdk.serializer import serialize
@@ -28,8 +30,13 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
 from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
+from backend.blocks import email_block
+from backend.blocks.email_block import SendEmailBlock, SMTPConfig
+from backend.blocks.helpers.smtp import SMTPDeadline
+from backend.data.model import UserPasswordCredentials
 from backend.util import metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.logging_test_helpers import CapturingTransport
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
     _FALKORDB_TEARDOWN_SIGNATURES,
@@ -1041,6 +1048,55 @@ def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> 
     assert len(scrubbed["extra"]["transcript"]) <= metrics._SENTRY_MAX_VALUE_LENGTH
     # And the budget the two bounds left over still caught the secret.
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_a_failed_email_send_reaches_sentry_without_the_smtp_login(
+    sentry: CapturingTransport, monkeypatch
+) -> None:
+    username, password = "smtp-user-SECRET-1", "smtp-pass-SECRET-2"
+    monkeypatch.setattr(email_block, "PinnedSMTP", _MailServerRefusingHello)
+
+    with pytest.raises(smtplib.SMTPHeloError) as raised:
+        SendEmailBlock.send_email(
+            SMTPConfig(smtp_server="smtp.example.com", smtp_port=587),
+            "recipient@example.com",
+            "Subject",
+            "Body",
+            UserPasswordCredentials(
+                provider="smtp",
+                username=SecretStr(username),
+                password=SecretStr(password),
+                title="SMTP login",
+            ),
+            addresses=["192.0.2.1"],
+            deadline=SMTPDeadline(5),
+        )
+    metrics.sentry_capture_error(raised.value)
+    sentry_sdk.get_client().flush()
+
+    [event] = sentry.events
+    frames = event["exception"]["values"][0]["stacktrace"]["frames"]
+    [send_email] = [
+        frame["vars"] for frame in frames if frame["function"] == "send_email"
+    ]
+    assert send_email["smtp_server"] == "'smtp.example.com'"
+    assert send_email["smtp_username"] == "[Filtered]"
+    assert username not in sentry.payload
+    assert password not in sentry.payload
+
+
+class _MailServerRefusingHello:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def __enter__(self) -> "_MailServerRefusingHello":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        pass
+
+    def starttls(self, **kwargs: object) -> None:
+        raise smtplib.SMTPHeloError(451, b"4.3.0 Temporary local problem")
 
 
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:

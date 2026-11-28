@@ -121,12 +121,34 @@ _SENTRY_SENSITIVE_FIELDS = sorted(
         "shareToken",
         "webhook_id",
         "webhookId",
+        # The names a saved credential's secret is held under once unwrapped, in
+        # our code and the clients it calls (architecture_frame_secrets_test.py).
+        "anthropic_api_key",
+        "api_token",
+        "appid",
+        "bearer_token",
+        "browserbase_api_key",
+        "e2b_api_key",
+        "explicit_token",
+        "model_api_key",
+        "profile_key",
+        "proxy_password",
+        "proxy_username",
+        "smtp_password",
+        "smtp_username",
     }
 )
-# A user is known to Sentry by their id only, so their email and IP address are
-# filtered wherever else they turn up, such as in extras or a frame's locals.
+# A user is known to Sentry by their id only, so their email, IP address and
+# usernames are filtered wherever else they turn up, such as in a frame's locals.
 # Exact names only: keys like ``email_verified`` stay readable.
-_SENTRY_PERSONAL_FIELDS = ("email", "user_email", "recipient", "ip", "ip_address")
+_SENTRY_PERSONAL_FIELDS = (
+    "email",
+    "user_email",
+    "recipient",
+    "ip",
+    "ip_address",
+    "username",
+)
 # Matched case-insensitively against every key in the event, as sentry's
 # EventScrubber does (with its PII list, since send_default_pii is off).
 _SENTRY_SENSITIVE_KEYS = frozenset(
@@ -426,11 +448,11 @@ def _scrub_keys(
 
 def _mask_headers(key: object, headers: object) -> None:
     """Mask every credential header, whatever it is called, under a ``headers``
-    key: the SDK knows a fixed list of names, which misses a webhook provider's
-    secret token such as Telegram's. Headers come as a mapping, or, in an ASGI
-    scope among a frame's variables, as name and value pairs, the names reprs of
-    bytes, such as ``["b'cookie'", "b'session=...'"]``."""
-    if key != "headers":
+    or ``extra_headers`` key: the SDK knows a fixed list of names, which misses a
+    webhook provider's secret token such as Telegram's. Headers come as a
+    mapping, or, in an ASGI scope among a frame's variables, as name and value
+    pairs, the names reprs of bytes, such as ``["b'cookie'", "b'session=...'"]``."""
+    if key not in ("headers", "extra_headers"):
         return
     if isinstance(headers, dict):
         for name in headers:
