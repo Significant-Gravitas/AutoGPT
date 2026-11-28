@@ -5672,11 +5672,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             raise
         graphiti_enabled = _graphiti_enabled(user_id)
         e2b_sandbox = await e2b_task
+        setup_failure: StreamError | None = None
         if e2b_refusal is not None:
             # E2B is configured but the box did not start: the turn ends here
             # rather than running its commands on the local fallback.  The
             # finally below saves the marker, so a reloaded chat shows why.
             _append_error_marker(session, str(e2b_refusal), retryable=True)
+            setup_failure = StreamError(
+                errorText=str(e2b_refusal), code=e2b_refusal.code
+            )
+        elif local_pc_folder_refused:
+            # The computer is connected, and a folder attaches only when a
+            # chat is created: nothing in this chat can put it right. The
+            # finally below saves the marker, so a reloaded chat still says why.
+            _append_error_marker(session, _LOCAL_PC_FOLDER_CHANGED)
+            setup_failure = StreamError(
+                errorText=_LOCAL_PC_FOLDER_CHANGED, code="local_pc_folder_changed"
+            )
+        elif execution_target.kind == "local" and e2b_sandbox is None:
+            setup_failure = StreamError(
+                errorText=(
+                    "Your Local PC executor is not connected. Start it for this "
+                    "chat session and try again."
+                ),
+                code="local_pc_executor_unavailable",
+            )
+        if setup_failure is not None:
             if continued_pending and any(pm.model_image for pm in continued_pending):
                 # Its rows were saved as text only; requeued, the next turn's
                 # drain finds them saved and attaches just their images.
@@ -5684,27 +5705,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     await restore_pending_messages(session_id, continued_pending)
                 except Exception:
                     logger.exception(f"{log_prefix} Could not requeue image batch")
-            yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
-            return
-
-        if local_pc_folder_refused:
-            # The computer is connected, and a folder attaches only when a
-            # chat is created: nothing in this chat can put it right. The
-            # finally below saves the marker, so a reloaded chat still says why.
-            _append_error_marker(session, _LOCAL_PC_FOLDER_CHANGED)
-            yield StreamError(
-                errorText=_LOCAL_PC_FOLDER_CHANGED, code="local_pc_folder_changed"
-            )
-            return
-
-        if execution_target.kind == "local" and e2b_sandbox is None:
-            yield StreamError(
-                errorText=(
-                    "Your Local PC executor is not connected. Start it for this "
-                    "chat session and try again."
-                ),
-                code="local_pc_executor_unavailable",
-            )
+            yield setup_failure
             return
 
         is_local_pc = isinstance(e2b_sandbox, LocalPCShim)
