@@ -284,10 +284,6 @@ class AIShortformVideoCreatorBlock(RevidVideoBlockBase):
                 lambda x: x.startswith(("workspace://", "data:")),
             ),
             test_mock={
-                "create_webhook": lambda *args, **kwargs: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
@@ -308,10 +304,6 @@ class AIShortformVideoCreatorBlock(RevidVideoBlockBase):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-        # Create a new Webhook.site URL
-        webhook_token, webhook_url = await self.create_webhook()
-        logger.debug(f"Webhook URL: {webhook_url}")
-
         payload = {
             "frameRate": input_data.frame_rate,
             "resolution": input_data.resolution,
