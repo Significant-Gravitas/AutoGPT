@@ -42,13 +42,16 @@ vi.mock("@/services/environment", async (importActual) => {
   };
 });
 
-vi.mock("../helpers", async (importActual) => {
-  const actual = await importActual<typeof import("../helpers")>();
-  return {
-    ...actual,
-    getCopilotAuthHeaders: async () => ({ "x-test-auth": "yes" }),
-  };
-});
+const tokenAnswer = vi.hoisted(() => ({
+  current: { token: "test-token" } as Awaited<
+    ReturnType<typeof import("@/lib/auth/actions").getWebSocketToken>
+  >,
+}));
+
+vi.mock("@/lib/auth/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
+  getWebSocketToken: async () => tokenAnswer.current,
+}));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -84,6 +87,7 @@ beforeEach(() => {
   useCopilotUIStore.setState({ initialPrompt: null });
   window.localStorage.clear();
   flagState.billing = false;
+  tokenAnswer.current = { token: "test-token" };
 });
 
 afterEach(() => {
@@ -646,3 +650,29 @@ describe.each(STREAM_PATHS)(
     }, 15_000);
   },
 );
+
+// The stream runtime's retry and give-up timing is proven in turnRuntime.test.ts.
+describe("on the AI SDK path, a token the server cannot mint", () => {
+  beforeEach(() => {
+    streamPath.runtime = false;
+  });
+
+  it("asks to send again instead of signing the user out", async () => {
+    tokenAnswer.current = {
+      token: null,
+      error: "connection timeout",
+      retryable: true,
+    };
+
+    renderHost();
+    await typeAndSend("hi");
+
+    expect(
+      await screen.findByText(/server had a problem/i, undefined, {
+        timeout: 5000,
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText(/signed out/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
+  });
+});

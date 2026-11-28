@@ -1,5 +1,6 @@
 import { getV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 import type { FileUIPart, UIMessage } from "ai";
@@ -667,13 +668,16 @@ export class TurnRuntime {
     this.onEnd(conn, end);
   }
 
-  // The token action answers "no token" for a sign-out and for a failed lookup
-  // alike, so a connection asks once more before it counts as signed out.
+  // A failed session lookup reads as a sign-out and a failed mint is transient,
+  // so a connection asks once more before it counts either.
   private async authHeaders(conn: Connection | null) {
     try {
       return await this.deps.headers();
     } catch (error) {
-      if (!(error instanceof CopilotAuthError)) throw error;
+      const askAgain =
+        error instanceof CopilotAuthError ||
+        error instanceof AuthTokenUnavailableError;
+      if (!askAgain) throw error;
       await sleep(TOKEN_RETRY_MS);
       if (conn?.controller.signal.aborted) throw error;
       return this.deps.headers();
@@ -687,7 +691,7 @@ export class TurnRuntime {
       await this.authHeaders(null);
       return false;
     } catch (error) {
-      return error instanceof CopilotAuthError && !error.retryable;
+      return error instanceof CopilotAuthError;
     }
   }
 

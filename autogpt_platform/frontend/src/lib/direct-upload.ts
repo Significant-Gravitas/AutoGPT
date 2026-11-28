@@ -1,5 +1,8 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import {
+  ApiError,
+  AuthTokenUnavailableError,
+} from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 
 interface WorkspaceUploadResponse {
@@ -74,7 +77,8 @@ async function postFileToBackend({
   file,
   searchParams,
 }: DirectUploadArgs): Promise<Response> {
-  const { token, error: tokenError } = await getWebSocketToken();
+  const { token, error: tokenError, retryable } = await getWebSocketToken();
+  if (tokenError && retryable) throw new AuthTokenUnavailableError();
   if (tokenError || !token) {
     throw new Error("Authentication error — please sign in again.");
   }
