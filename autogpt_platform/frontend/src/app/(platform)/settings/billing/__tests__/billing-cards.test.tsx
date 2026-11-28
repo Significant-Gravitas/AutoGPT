@@ -1,3 +1,4 @@
+import { getGetV1GetCreditHistoryMockHandler200 } from "@/app/api/__generated__/endpoints/credits/credits.msw";
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsStartTrialCheckoutMockHandler200,
@@ -1117,6 +1118,64 @@ describe("UsageCard", () => {
     render(<UsageCard />);
 
     expect(await screen.findByText(/last 30 days/i)).toBeDefined();
+  });
+
+  it("includes only the last 30 local dates across the spring clock change", async () => {
+    const originalTimezone = process.env.TZ;
+    try {
+      process.env.TZ = "America/New_York";
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-03-09T16:00:00Z"));
+      // 11:30 p.m. on March 8 in New York, after midnight in UTC.
+      const localMarch8 = new Date("2026-03-09T03:30:00Z");
+      server.use(
+        getGetV1GetCreditHistoryMockHandler200({
+          transactions: [
+            {
+              transaction_key: "in-window",
+              transaction_time: localMarch8,
+              transaction_type: "USAGE",
+              user_id: "billing-user",
+              amount: -150,
+            },
+            {
+              transaction_key: "before-window",
+              transaction_time: new Date("2026-02-07T17:00:00Z"),
+              transaction_type: "USAGE",
+              user_id: "billing-user",
+              amount: -999,
+            },
+          ],
+          next_transaction_time: null,
+        }),
+      );
+
+      render(<UsageCard />);
+
+      const dateFormat = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+      });
+      const dateLabel = dateFormat.format(localMarch8);
+      expect(
+        await screen.findByRole("button", {
+          name: `${dateLabel}: $1.50, 1 runs`,
+        }),
+      ).toBeDefined();
+      const bars = screen.getAllByRole("button");
+      expect(bars).toHaveLength(30);
+      expect(bars.at(0)?.getAttribute("aria-label")).toBe(
+        `${dateFormat.format(new Date("2026-02-08T17:00:00Z"))}: $0.00, 0 runs`,
+      );
+      expect(bars.at(-1)?.getAttribute("aria-label")).toBe(
+        `${dateFormat.format(new Date("2026-03-09T16:00:00Z"))}: $0.00, 0 runs`,
+      );
+      expect(screen.getByText("· 1 runs")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+    }
   });
 
   it("renders the zero-state when there is no usage at all", async () => {
