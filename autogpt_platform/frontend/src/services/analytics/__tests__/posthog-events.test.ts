@@ -36,6 +36,7 @@ const LIVE_EVENT_NAMES = [
   "credential_scope_shortfall_blocked_selection",
   "dictation_rejected",
   "dictation_rerecorded",
+  "dom_call_skipped",
   "expert_profile_opened",
   "expert_thread_created",
   "experts_section_viewed",
