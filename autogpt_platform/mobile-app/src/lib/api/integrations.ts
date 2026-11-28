@@ -134,6 +134,8 @@ export async function listCredentials() {
 export interface LoginStart {
   loginURL: string;
   state: string;
+  /** Where to end a ChatGPT sign-in early; null for every other sign-in. */
+  cancelURL: string | null;
 }
 
 function parseLogin(value: unknown): LoginStart {
@@ -143,7 +145,7 @@ function parseLogin(value: unknown): LoginStart {
   if (!loginURL || !state) {
     throw new ApiError(500, "The server sent no sign-in page.");
   }
-  return { loginURL, state };
+  return { loginURL, state, cancelURL: text(record?.cancel_url) };
 }
 
 interface ProviderLoginOptions {
@@ -179,6 +181,35 @@ export async function finishProviderLogin(
     { method: "POST", body: { code, state_token: state } },
   );
   return requireCredential(data);
+}
+
+/** Signs a link to Ayrshare's page, creating the managed Ayrshare account first. */
+export async function getAyrshareLink() {
+  const data = await apiRequest<unknown>("/api/integrations/ayrshare/sso_url");
+  const url = text(toRecord(data)?.sso_url);
+  if (!url) throw new ApiError(500, "The server sent no Ayrshare link.");
+  return { sso_url: url };
+}
+
+export type CodexLoginStatus = "pending" | "completed" | "failed" | "canceled";
+
+const CODEX_LOGIN_STATUSES = ["pending", "completed", "failed", "canceled"] as const;
+
+function codexLoginPath(loginID: string) {
+  return `/api/integrations/codex/device-login/${encodeURIComponent(loginID)}`;
+}
+
+export async function getCodexLoginStatus(loginID: string) {
+  const record = toRecord(await apiRequest<unknown>(`${codexLoginPath(loginID)}/status`));
+  const status = record?.status;
+  if (typeof status !== "string" || !(CODEX_LOGIN_STATUSES as readonly string[]).includes(status)) {
+    throw new ApiError(500, "The server sent an unreadable sign-in status.");
+  }
+  return { status: status as CodexLoginStatus, error: text(record?.error) };
+}
+
+export async function cancelCodexLogin(loginID: string) {
+  await apiRequest<unknown>(`${codexLoginPath(loginID)}/cancel`, { method: "POST" });
 }
 
 /** Mirrors `NO_OAUTH_CODE` in `backend/api/features/mcp/routes.py`. */

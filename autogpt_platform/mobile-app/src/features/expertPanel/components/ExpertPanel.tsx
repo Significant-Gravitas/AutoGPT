@@ -45,7 +45,12 @@ export function ExpertPanel({
         { paddingTop: insets.top + spacing.xs, paddingBottom: insets.bottom + spacing.xl },
       ]}
     >
-      <PanelTopBar sessionID={sessionID} onClose={onClose} />
+      <PanelTopBar
+        sessionID={sessionID}
+        expertID={expertID}
+        expertName={name}
+        onClose={onClose}
+      />
       <View style={styles.identity}>
         <ExpertAvatar
           name={name}

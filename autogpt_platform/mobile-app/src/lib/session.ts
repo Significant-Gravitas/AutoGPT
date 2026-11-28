@@ -1,5 +1,6 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 
+import { resetAnalytics } from "@/lib/analytics/client";
 import { billingKeys } from "@/lib/api/billing";
 import { chatKeys } from "@/lib/api/chat";
 import { ApiError, onPlanRequired } from "@/lib/api/client";
@@ -79,6 +80,7 @@ async function clearSession() {
   queryClient.clear();
   void queryPersister.removeClient();
   clearSharedFiles();
+  resetAnalytics();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SIGN_OUT_TIMEOUT_MS);
   try {

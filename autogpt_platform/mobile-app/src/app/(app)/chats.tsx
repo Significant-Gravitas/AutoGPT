@@ -10,9 +10,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { IconButton } from "@/components/IconButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { Toast } from "@/components/Toast";
 import { ChatGroupSection } from "@/features/chats/components/ChatGroupSection";
+import { RenameChatSheet } from "@/features/chats/components/RenameChatSheet";
 import { useAllChats } from "@/features/chats/useAllChats";
-import { DRAWER_SESSION_LIMIT } from "@/features/drawer/helpers";
+import { useChatActions } from "@/features/chats/useChatActions";
+import { chatTitle, DRAWER_SESSION_LIMIT } from "@/features/drawer/helpers";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function AllChatsScreen() {
@@ -26,6 +29,8 @@ export default function AllChatsScreen() {
     goBack,
     openChat,
   } = useAllChats();
+  const { openMenu, renameTarget, closeRename, submitRename, toast } =
+    useChatActions();
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const colors = useColors();
@@ -61,6 +66,7 @@ export default function AllChatsScreen() {
             group={item}
             isTruncated={isTruncated}
             onOpenChat={openChat}
+            onLongPressChat={openMenu}
           />
         )}
         ListEmptyComponent={renderEmpty}
@@ -83,6 +89,13 @@ export default function AllChatsScreen() {
           { paddingBottom: insets.bottom + spacing.lg },
         ]}
       />
+      <RenameChatSheet
+        isOpen={renameTarget !== null}
+        initialTitle={renameTarget ? chatTitle(renameTarget) : ""}
+        onClose={closeRename}
+        onSubmit={submitRename}
+      />
+      {toast ? <Toast toast={toast} /> : null}
     </View>
   );
 }

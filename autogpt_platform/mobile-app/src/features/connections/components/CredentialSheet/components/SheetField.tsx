@@ -1,4 +1,4 @@
-import { Text, TextInput, View } from "react-native";
+import { Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
@@ -9,6 +9,10 @@ interface Props {
   placeholder?: string;
   isSecret?: boolean;
   autoFocus?: boolean;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
+  keyboardType?: TextInputProps["keyboardType"];
+  /** Grows with its text; Return adds a line instead of submitting. */
+  isMultiline?: boolean;
   onSubmitEditing?: () => void;
 }
 
@@ -20,6 +24,9 @@ export function SheetField({
   placeholder,
   isSecret = false,
   autoFocus = false,
+  autoCapitalize = "none",
+  keyboardType,
+  isMultiline = false,
   onSubmitEditing,
 }: Props) {
   const styles = useStyles();
@@ -35,15 +42,17 @@ export function SheetField({
         accessibilityLabel={label}
         secureTextEntry={isSecret}
         autoCorrect={false}
-        autoCapitalize="none"
+        autoCapitalize={autoCapitalize}
         autoComplete="off"
         spellCheck={false}
         textContentType={isSecret ? "password" : "none"}
         importantForAutofill={isSecret ? "yes" : "no"}
         autoFocus={autoFocus}
-        returnKeyType="done"
+        keyboardType={keyboardType}
+        multiline={isMultiline}
+        returnKeyType={isMultiline ? "default" : "done"}
         onSubmitEditing={onSubmitEditing}
-        style={styles.input}
+        style={[styles.input, isMultiline && styles.multiline]}
       />
     </View>
   );
@@ -61,4 +70,5 @@ const useStyles = createStyles((colors) => ({
   },
   label: { fontSize: 12, lineHeight: 16, color: colors.textTertiary },
   input: { ...type.body, color: colors.text, paddingVertical: spacing.xs },
+  multiline: { minHeight: 72, maxHeight: 200, textAlignVertical: "top" },
 }));

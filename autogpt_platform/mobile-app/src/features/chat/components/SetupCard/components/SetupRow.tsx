@@ -38,7 +38,7 @@ export function SetupRow({
   const colors = useColors();
 
   function renderAction() {
-    if (isConnected) {
+    if (isConnected && !actionLabel) {
       return (
         <View style={styles.connected}>
           <Icon icon={CheckmarkCircle02Icon} size={16} color={colors.success} />
@@ -50,7 +50,7 @@ export function SetupRow({
     if (!actionLabel) return null;
     return (
       <Button
-        label={isBusy ? "Signing in…" : actionLabel}
+        label={actionLabel}
         accessibilityLabel={`${actionLabel}: ${name}`}
         onPress={onPress}
         variant={actionLabel === "Sign in" ? "primary" : "outline"}

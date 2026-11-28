@@ -15,6 +15,8 @@ export type ServiceAction =
   /** An MCP server's own sign-in; one with none falls back to a token. */
   | { kind: "mcp"; serverURL: string }
   | { kind: "mcp_token"; serverURL: string }
+  | { kind: "ayrshare" }
+  | { kind: "device_code" }
   | { kind: "web" };
 
 /** One service in the "New" list: a block provider, an MCP server, or both. */
@@ -165,6 +167,9 @@ function nativeAction(provider: ProviderInfo): ServiceAction | null {
     case "user_password":
     case "host_scoped":
       return { kind: "sheet", sheet: method, provider: provider.name };
+    case "ayrshare":
+    case "device_code":
+      return { kind: method };
     case "web":
       return { kind: "web" };
     case "mcp":
@@ -253,7 +258,10 @@ export function actionLabel(action: ServiceAction) {
   switch (action.kind) {
     case "oauth":
     case "mcp":
+    case "device_code":
       return "Sign in";
+    case "ayrshare":
+      return "Link accounts";
     case "sheet":
       return action.sheet === "user_password" ? "Add login" : "Add key";
     case "mcp_token":

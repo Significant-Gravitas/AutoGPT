@@ -1,5 +1,7 @@
 import type { UIMessage } from "ai";
 
+import { messageNotice, parseNotice, type ChatNotice } from "./notice";
+
 type Part = UIMessage["parts"][number];
 
 interface Row {
@@ -10,6 +12,7 @@ interface Row {
   sequence: number | null;
   createdAt: string | null;
   isHidden: boolean;
+  notice: ChatNotice | null;
 }
 
 interface Options {
@@ -51,12 +54,17 @@ export function toUIMessages(
     const role = row.role === "user" ? "user" : "assistant";
     if (role === "assistant" && isInActiveTurn(row, turnStart)) break;
 
+    const id = `${sessionID}-${row.sequence ?? `idx-${index}`}`;
+    // A routine's notice is a card of its own, never part of a reply.
+    if (row.notice) {
+      messages.push({ id, role: "assistant", parts: [], metadata: { notice: row.notice } });
+      continue;
+    }
     const parts = buildParts(row, outputs);
     if (parts.length === 0) continue;
 
-    const id = `${sessionID}-${row.sequence ?? `idx-${index}`}`;
     const previous = messages[messages.length - 1];
-    if (role === "assistant" && previous?.role === "assistant") {
+    if (role === "assistant" && previous?.role === "assistant" && !messageNotice(previous.metadata)) {
       previous.parts.push(...parts);
       previous.id = id;
       continue;
@@ -163,6 +171,7 @@ function toRow(raw: unknown): Row | null {
     sequence: typeof row.sequence === "number" ? row.sequence : null,
     createdAt: typeof row.created_at === "string" ? row.created_at : null,
     isHidden: isHiddenMetadata(row.metadata),
+    notice: parseNotice(row.metadata),
   };
 }
 

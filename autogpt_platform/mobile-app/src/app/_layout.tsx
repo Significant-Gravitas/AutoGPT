@@ -12,6 +12,8 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
+import { startAnalytics, trackScreen } from "@/lib/analytics/client";
+import { focusedRouteNames, screenName } from "@/lib/analytics/rules";
 import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { useSession } from "@/lib/auth/nativeSession";
 import { CachePersistence } from "@/components/CachePersistence";
@@ -24,6 +26,7 @@ import { useMountEffect } from "@/lib/useMountEffect";
 
 // Before anything renders, so a crash in the first render is reported too.
 startMonitoring();
+startAnalytics();
 
 // Before the first render, so the app opens in the scheme picked last time.
 applyAppearance(readAppearance());
@@ -77,7 +80,12 @@ function RootStack() {
     <>
       {/* Keyed by user: a new account starts from its own saved copy, or none. */}
       {userID ? <CachePersistence key={userID} userID={userID} /> : null}
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{ headerShown: false }}
+        screenListeners={{
+          state: (event) => trackScreen(screenName(focusedRouteNames(event.data.state))),
+        }}
+      >
         <Stack.Protected guard={update === "required"}>
           <Stack.Screen name="update-required" />
         </Stack.Protected>

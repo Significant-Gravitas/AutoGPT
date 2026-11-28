@@ -196,6 +196,25 @@ describe("toUIMessages", () => {
     expect(messages[0].id).toBe("s1-2");
   });
 
+  it("keeps a routine notice as its own message with no text", () => {
+    const messages = toUIMessages("s1", [
+      { role: "assistant", content: "A", sequence: 1 },
+      {
+        role: "assistant",
+        content: "note",
+        sequence: 2,
+        metadata: { kind: "scheduled_chat_notice", headline: "Skipped", body: "No budget left." },
+      },
+      { role: "assistant", content: "B", sequence: 3 },
+    ]);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1].parts.some((part) => part.type === "text")).toBe(false);
+    expect((messages[1].metadata as { notice: { headline: string } }).notice.headline).toBe(
+      "Skipped",
+    );
+  });
+
   it("leaves out the hidden kickoff the server writes for a new hire", () => {
     const messages = toUIMessages("s1", [
       {

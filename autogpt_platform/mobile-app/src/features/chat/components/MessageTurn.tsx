@@ -2,6 +2,7 @@ import type { ChatStatus } from "ai";
 import { Pressable, View, type LayoutChangeEvent } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
+import type { ToastState } from "@/components/useToast";
 import { createStyles, spacing } from "@/lib/theme";
 
 import { openMessageActions } from "../messageActions";
@@ -13,13 +14,24 @@ import { ThinkingIndicator } from "./ThinkingIndicator";
 interface Props {
   turn: Turn;
   sessionID: string;
+  expertID: string | null;
   isLast: boolean;
   status: ChatStatus;
   onSend: (text: string) => boolean;
+  onToast: (toast: ToastState) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-export function MessageTurn({ turn, sessionID, isLast, status, onSend, onLayout }: Props) {
+export function MessageTurn({
+  turn,
+  sessionID,
+  expertID,
+  isLast,
+  status,
+  onSend,
+  onToast,
+  onLayout,
+}: Props) {
   const styles = useStyles();
   const isBusy = status === "submitted" || status === "streaming";
   const isWaiting = isLast && status === "submitted";
@@ -46,10 +58,12 @@ export function MessageTurn({ turn, sessionID, isLast, status, onSend, onLayout 
               <MessageBubble
                 message={message}
                 sessionID={sessionID}
+                expertID={expertID}
                 isLive={isBusy && isFinal && message.role === "assistant"}
                 replyText={replyText}
                 isBusy={isBusy}
                 onSend={onSend}
+                onToast={onToast}
               />
             </Pressable>
           </Animated.View>

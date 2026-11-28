@@ -3,11 +3,14 @@ import type { UIMessage } from "ai";
 import { Text, View } from "react-native";
 
 import { Icon } from "@/components/Icon";
+import type { ToastState } from "@/components/useToast";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { messageFiles } from "../attachmentHelpers";
+import { messageNotice } from "../notice";
 import { groupParts } from "../steps";
 import { Markdown } from "./Markdown";
+import { NoticeCard } from "./NoticeCard/NoticeCard";
 import { OnboardingCard } from "./OnboardingCard/OnboardingCard";
 import { SetupCard } from "./SetupCard/SetupCard";
 import { StepsBlock } from "./StepsBlock";
@@ -15,20 +18,25 @@ import { StepsBlock } from "./StepsBlock";
 interface Props {
   message: UIMessage;
   sessionID: string;
+  /** Set in an expert's chat. */
+  expertID: string | null;
   isLive?: boolean;
   /** Text of the next message, or null when this one is the last. */
   replyText: string | null;
   isBusy: boolean;
   onSend: (text: string) => boolean;
+  onToast: (toast: ToastState) => void;
 }
 
 export function MessageBubble({
   message,
   sessionID,
+  expertID,
   isLive = false,
   replyText,
   isBusy,
   onSend,
+  onToast,
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
@@ -56,9 +64,14 @@ export function MessageBubble({
     );
   }
 
+  // A notice has no parts of its own; a stream resumed onto it still shows.
+  const notice = messageNotice(message.metadata);
   const blocks = groupParts(message.parts);
   return (
     <View style={styles.assistant}>
+      {notice ? (
+        <NoticeCard notice={notice} sessionID={sessionID} expertID={expertID} onToast={onToast} />
+      ) : null}
       {blocks.map((block, index) => {
         if (block.kind === "text") {
           return <Markdown key={block.key} text={block.text} />;

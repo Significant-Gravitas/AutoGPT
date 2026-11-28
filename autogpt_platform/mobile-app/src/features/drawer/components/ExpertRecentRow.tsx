@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from "react-native";
 
-import { prefetchSession } from "@/lib/api/chat";
+import { prefetchSession, type SessionSummary } from "@/lib/api/chat";
 import { queryClient } from "@/lib/session";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { chatTitle, type ChatGroup } from "@/features/drawer/helpers";
@@ -13,9 +13,10 @@ interface Props {
   group: ChatGroup;
   isActive: boolean;
   onOpenChat: (sessionID: string) => void;
+  onLongPress: (session: SessionSummary) => void;
 }
 
-export function ExpertRecentRow({ group, isActive, onOpenChat }: Props) {
+export function ExpertRecentRow({ group, isActive, onOpenChat, onLongPress }: Props) {
   const styles = useStyles();
   const { latest } = group;
 
@@ -27,12 +28,19 @@ export function ExpertRecentRow({ group, isActive, onOpenChat }: Props) {
     onOpenChat(latest.id);
   }
 
+  function handleLongPress() {
+    onLongPress(latest);
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityHint="Hold for options"
       accessibilityState={{ selected: isActive }}
       onPressIn={handlePressIn}
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.row,
         isActive && styles.active,

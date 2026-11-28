@@ -1,20 +1,28 @@
+import { PinIcon } from "@hugeicons/core-free-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { Icon } from "@/components/Icon";
 import { prefetchSession } from "@/lib/api/chat";
 import { queryClient } from "@/lib/session";
 import { chatTitle } from "@/features/drawer/helpers";
 import type { SessionSummary } from "@/lib/api/chat";
-import { createStyles, radius, spacing } from "@/lib/theme";
+import { createStyles, radius, spacing, useColors } from "@/lib/theme";
 import { shortTime } from "@/lib/time";
 
 interface Props {
   session: SessionSummary;
   isFirst: boolean;
   onOpenChat: (sessionID: string) => void;
+  onLongPress: (session: SessionSummary) => void;
 }
 
-export function ChatListRow({ session, isFirst, onOpenChat }: Props) {
+export function ChatListRow({ session, isFirst, onOpenChat, onLongPress }: Props) {
   const styles = useStyles();
+  const colors = useColors();
+  const time = shortTime(session.updated_at);
+  const label = [chatTitle(session), session.is_pinned && "Pinned", time]
+    .filter(Boolean)
+    .join(", ");
 
   function handlePressIn() {
     prefetchSession(queryClient, session.id);
@@ -24,11 +32,19 @@ export function ChatListRow({ session, isFirst, onOpenChat }: Props) {
     onOpenChat(session.id);
   }
 
+  function handleLongPress() {
+    onLongPress(session);
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Hold for options"
       onPressIn={handlePressIn}
       onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.row,
         !isFirst && styles.divider,
@@ -39,7 +55,10 @@ export function ChatListRow({ session, isFirst, onOpenChat }: Props) {
         {chatTitle(session)}
       </Text>
       {session.is_processing ? <View style={styles.dot} /> : null}
-      <Text style={styles.time}>{shortTime(session.updated_at)}</Text>
+      {session.is_pinned ? (
+        <Icon icon={PinIcon} size={14} color={colors.textTertiary} />
+      ) : null}
+      <Text style={styles.time}>{time}</Text>
     </Pressable>
   );
 }

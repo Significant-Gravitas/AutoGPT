@@ -1,3 +1,5 @@
+import { track } from "@/lib/analytics/client";
+import { EVENTS } from "@/lib/analytics/rules";
 import {
   type Expert,
   type ExpertTemplate,
@@ -18,16 +20,19 @@ import {
 } from "./hireStore";
 
 interface Args {
+  /** Where the hire button was, for analytics. */
+  surface: "expert_page" | "marketplace_list";
   onHired: (expert: Expert, template: ExpertTemplate) => void;
   onError: (message: string, template: ExpertTemplate) => void;
 }
 
-export function useHireExpert({ onHired, onError }: Args) {
+export function useHireExpert({ surface, onHired, onError }: Args) {
   const store = hireStateFor(useHireStore(), sessionGeneration());
 
   async function hire(template: ExpertTemplate) {
     const generation = sessionGeneration();
     if (!claimHire(template.id, generation)) return;
+    track(EVENTS.hireStarted, { template_id: template.id, surface });
     try {
       const { expert } = await hireExpert(template.id);
       // Signed out meanwhile: the old account's expert stays out of the cache.

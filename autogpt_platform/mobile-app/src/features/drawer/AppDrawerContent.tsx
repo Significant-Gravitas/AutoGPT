@@ -8,6 +8,9 @@ import type { DrawerContentComponentProps } from "expo-router/drawer";
 import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Toast } from "@/components/Toast";
+import { RenameChatSheet } from "@/features/chats/components/RenameChatSheet";
+import { useChatActions } from "@/features/chats/useChatActions";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 import { DrawerHeader } from "./components/DrawerHeader";
@@ -17,6 +20,7 @@ import { RecentHeading } from "./components/RecentHeading";
 import { SearchResultRow } from "./components/SearchResultRow";
 import { UserMenu } from "./components/UserMenu";
 import { DrawerRow, ROW_INSET } from "./DrawerRow";
+import { chatTitle } from "./helpers";
 import { useAppDrawer } from "./useAppDrawer";
 
 // The floating buttons' height, plus room to scroll the last row clear of them.
@@ -54,6 +58,8 @@ export function AppDrawerContent({ navigation }: Props) {
     openSettings,
     handleSignOut,
   } = useAppDrawer(navigation);
+  const { openMenu, renameTarget, closeRename, submitRename, toast } =
+    useChatActions();
   const styles = useStyles();
   const colors = useColors();
   const footerBottom = insets.bottom + spacing.sm;
@@ -119,6 +125,7 @@ export function AppDrawerContent({ navigation }: Props) {
               match={item}
               isActive={item.session.id === activeSessionID}
               onOpenChat={openChat}
+              onLongPress={openMenu}
             />
           )}
           ListEmptyComponent={
@@ -144,6 +151,7 @@ export function AppDrawerContent({ navigation }: Props) {
               group={item}
               isActive={item.sessions.some((session) => session.id === activeSessionID)}
               onOpenChat={openChat}
+              onLongPress={openMenu}
             />
           )}
           ListHeaderComponent={renderListHeader()}
@@ -166,6 +174,13 @@ export function AppDrawerContent({ navigation }: Props) {
           onSignOut={handleSignOut}
         />
       </View>
+      <RenameChatSheet
+        isOpen={renameTarget !== null}
+        initialTitle={renameTarget ? chatTitle(renameTarget) : ""}
+        onClose={closeRename}
+        onSubmit={submitRename}
+      />
+      {toast ? <Toast toast={toast} /> : null}
     </View>
   );
 }

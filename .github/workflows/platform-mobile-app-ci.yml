@@ -1,0 +1,61 @@
+name: AutoGPT Platform - Mobile App CI
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - ".github/workflows/platform-mobile-app-ci.yml"
+      - "autogpt_platform/mobile-app/**"
+  pull_request:
+    paths:
+      - ".github/workflows/platform-mobile-app-ci.yml"
+      - "autogpt_platform/mobile-app/**"
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'merge_group' && format('merge-queue-{0}', github.ref) || format('{0}-{1}', github.ref, github.event.pull_request.number || github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/mobile-app
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: mobile app checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 10.29.2
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.18.0"
+          cache: pnpm
+          cache-dependency-path: autogpt_platform/mobile-app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm types
+
+      - name: Test
+        run: pnpm test

@@ -6,6 +6,7 @@ import { Linking } from "react-native";
 
 import { planName } from "@/features/plan/helpers";
 import { usePlanCheck } from "@/features/plan/usePlanGate";
+import { analyticsConsentState, hasAnalyticsKey, setAnalyticsConsent } from "@/lib/analytics/client";
 import { billingKeys, getSubscription } from "@/lib/api/billing";
 import { useSession } from "@/lib/auth/nativeSession";
 import { signOut } from "@/lib/session";
@@ -23,6 +24,7 @@ export function useSettingsScreen() {
     enabled: isPaymentEnabled,
   });
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [usage, setUsage] = useState(analyticsConsentState);
 
   function openWeb(url: string) {
     Linking.openURL(url).catch(() => undefined);
@@ -30,6 +32,23 @@ export function useSettingsScreen() {
 
   function openPlan() {
     router.navigate("/plan");
+  }
+
+  function openNotifications() {
+    router.navigate("/notifications");
+  }
+
+  function openMemory() {
+    router.navigate("/memory");
+  }
+
+  function changeSharesUsage(allowed: boolean) {
+    setAnalyticsConsent(allowed);
+    setUsage(analyticsConsentState());
+  }
+
+  function retryUsageChoice() {
+    if (usage.unsavedChoice !== null) changeSharesUsage(usage.unsavedChoice);
   }
 
   function handleSignOut() {
@@ -43,10 +62,17 @@ export function useSettingsScreen() {
     isPaymentEnabled,
     planLabel: subscription.data ? planName(subscription.data.tier) : undefined,
     version: Constants.expoConfig?.version ?? null,
+    // A build with nowhere to send usage data has nothing to ask.
+    canShareUsage: hasAnalyticsKey(),
+    ...usage,
+    changeSharesUsage,
+    retryUsageChoice,
     isDeleteOpen,
     openDelete: () => setIsDeleteOpen(true),
     closeDelete: () => setIsDeleteOpen(false),
     openPlan,
+    openNotifications,
+    openMemory,
     openHelp: () => openWeb(HELP_URL),
     openTerms: () => openWeb(TERMS_OF_USE_URL),
     openPrivacy: () => openWeb(PRIVACY_POLICY_URL),

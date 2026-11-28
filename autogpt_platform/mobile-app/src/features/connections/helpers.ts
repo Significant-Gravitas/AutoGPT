@@ -39,13 +39,14 @@ export type ConnectMethod =
   | "api_key"
   | "user_password"
   | "host_scoped"
+  /** AutoGPT holds the account; the social networks are linked on Ayrshare's page. */
+  | "ayrshare"
+  /** ChatGPT (Codex): a code you enter on ChatGPT's page. */
+  | "device_code"
   | "web";
 
-/**
- * AutoGPT holds the Ayrshare account (linking happens on Ayrshare's page) and
- * Codex signs in with a device code: both are still web-only.
- */
-const WEB_ONLY_PROVIDERS = ["ayrshare", "codex"];
+export const AYRSHARE_PROVIDER = "ayrshare";
+export const CODEX_PROVIDER = "codex";
 
 export const MCP_PROVIDER = "mcp";
 
@@ -133,12 +134,18 @@ export function connectMethod(
   request: Pick<CredentialRequest, "provider" | "types">,
 ): ConnectMethod {
   if (request.provider === MCP_PROVIDER) return "mcp";
-  if (WEB_ONLY_PROVIDERS.includes(request.provider)) return "web";
+  if (request.provider === AYRSHARE_PROVIDER) return "ayrshare";
+  if (request.provider === CODEX_PROVIDER) return "device_code";
   if (request.types.includes("oauth2")) return "oauth";
   if (request.types.includes("api_key")) return "api_key";
   if (request.types.includes("user_password")) return "user_password";
   if (request.types.includes("host_scoped")) return "host_scoped";
   return "web";
+}
+
+/** Whether a link is safe to open: https, with a host. */
+export function isHTTPSURL(url: string) {
+  return /^https:\/\/[^\s/?#]+/i.test(url.trim());
 }
 
 /** Mirrors the backend's `normalize_mcp_url`. */

@@ -4,6 +4,7 @@ import { Text, View } from "react-native";
 import { Button } from "@/components/Button";
 import { AccountPickerSheet } from "@/features/connections/components/AccountPickerSheet";
 import { CredentialSheet } from "@/features/connections/components/CredentialSheet/CredentialSheet";
+import { DeviceCodeSheet } from "@/features/connections/components/DeviceCodeSheet/DeviceCodeSheet";
 import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 import { FollowUpSender } from "./components/FollowUpSender";
@@ -66,7 +67,7 @@ export function SetupCard(props: Props) {
               label={run.error ? "Try again" : "Continue"}
               onPress={card.handleContinue}
               size="small"
-              disabled={props.isBusy}
+              disabled={props.isBusy || card.isAnyBusy}
             />
           ) : null}
         </View>
@@ -90,7 +91,7 @@ export function SetupCard(props: Props) {
           hint={rowHint(request, status, props.setup)}
           error={connect.errors[request.key] ?? null}
           isConnected={status.kind === "connected"}
-          actionLabel={usesToken ? "Add token" : actionLabel(status)}
+          actionLabel={usesToken ? "Add token" : actionLabel(status, request.provider)}
           isBusy={connect.busyKey === request.key}
           isLoading={card.isLoading && !run.picks[request.key]}
           isLocked={card.isAnyBusy || run.followUp !== "idle"}
@@ -103,6 +104,12 @@ export function SetupCard(props: Props) {
         target={connect.sheet}
         onClose={connect.closeSheet}
         onSaved={connect.handleSaved}
+      />
+      <DeviceCodeSheet
+        target={connect.deviceLogin}
+        onClose={connect.closeDeviceLogin}
+        onSaved={connect.handleSaved}
+        onPlanRequired={connect.handleDevicePlanRequired}
       />
       <AccountPickerSheet
         choice={connect.choice}

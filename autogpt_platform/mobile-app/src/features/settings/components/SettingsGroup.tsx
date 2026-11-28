@@ -5,11 +5,13 @@ import { createStyles, radius, spacing, type } from "@/lib/theme";
 
 interface Props {
   title?: string;
+  /** A line under the card, about the whole group. */
+  note?: string;
   children: ReactNode;
 }
 
 /** A white card of rows on the grey Settings page, with lines between them. */
-export function SettingsGroup({ title, children }: Props) {
+export function SettingsGroup({ title, note, children }: Props) {
   const styles = useStyles();
   const rows = Children.toArray(children);
   return (
@@ -23,6 +25,7 @@ export function SettingsGroup({ title, children }: Props) {
           </Fragment>
         ))}
       </View>
+      {note ? <Text style={styles.note}>{note}</Text> : null}
     </View>
   );
 }
@@ -32,6 +35,11 @@ const useStyles = createStyles((colors) => ({
   title: {
     ...type.small,
     marginLeft: spacing.sm,
+    color: colors.textTertiary,
+  },
+  note: {
+    ...type.small,
+    marginHorizontal: spacing.sm,
     color: colors.textTertiary,
   },
   card: {

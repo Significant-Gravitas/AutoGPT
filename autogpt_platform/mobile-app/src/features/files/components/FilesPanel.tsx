@@ -25,7 +25,7 @@ export function FilesPanel({ sessionID, isOpen, onClose }: Props) {
         { paddingTop: insets.top + spacing.xs, paddingBottom: insets.bottom + spacing.xl },
       ]}
     >
-      <PanelTopBar sessionID={sessionID} onClose={onClose} />
+      <PanelTopBar sessionID={sessionID} expertID={null} onClose={onClose} />
       <Text accessibilityRole="header" style={styles.title}>
         Files
       </Text>

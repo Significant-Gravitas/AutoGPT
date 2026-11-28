@@ -55,7 +55,8 @@ rename therefore has to search for the old string, not just edit the modules:
   Telegram, webhooks), cannot be blocked by an ad blocker, and is what the
   `analytics.*` SQL views count.
 - **Interactions are sent by the browser**: views, clicks, dismissals and
-  client-side timings that the backend never sees.
+  client-side timings that the backend never sees. The mobile app sends its
+  own, with the same names, once the user allows it.
 - One action has **one** event. Where two emitters describe the same action,
   the backend event survives and the other stops being sent (see
   [Removed](#removed)).
@@ -67,8 +68,8 @@ Every event must carry:
 | Property | Value |
 | --- | --- |
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
-| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `website` (the marketing site, see [Marketing site](#marketing-site)). |
-| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). |
+| `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser), `mobile` (the mobile app), `website` (the marketing site, see [Marketing site](#marketing-site)). |
+| `revision` | The deployed build's git sha, which Sentry reports as its release: `SENTRY_RELEASE` on the backend, the build's commit in the browser (`SENTRY_RELEASE`, else Vercel's `VERCEL_GIT_COMMIT_SHA`). Left out of a build that has none, such as a local one, and from `$ai_generation` (below). The mobile app sends none; it sends `app_version` instead (below). |
 
 Every backend event goes through `capture()` or `capture_anonymous()` in
 `backend/util/posthog_client.py`, which apply `environment` and `source`
@@ -84,6 +85,13 @@ browser registers all three once as PostHog super properties
 at logout; a Vercel preview reports `environment: preview`, while the dev
 deployment, which is Vercel's `staging` custom environment rather than a
 preview, reports `environment: dev`.
+
+The mobile app (`autogpt_platform/mobile-app`, `src/lib/analytics/`) registers
+`environment` (`prod`, `dev` or `local`, from the build's
+`EXPO_PUBLIC_SENTRY_ENVIRONMENT`), `source: mobile` and `app_version` (the
+app's version, as in the stores) the same way, again after `reset()` at
+sign-out. It sends no `revision`: an over-the-air update changes the code
+without a new version, and `app_version` is what the release is known by.
 
 `source` is reserved for the emitter. The events that used it for
 something else now use `hire_started.surface`,
@@ -106,6 +114,16 @@ something else now use `hire_started.surface`,
   without consent, browser events are dropped, `identify` is not called and
   the anonymous id lasts only for the page load. Backend events do not
   depend on it.
+- **The mobile app asks for consent in the app.** Home asks once after
+  sign-in ("Share usage data" or "Not now"), and Settings changes the answer.
+  Until the user allows it the app makes no PostHog client and sends nothing,
+  `identify` included; after "Not now" it sends nothing either. The answer
+  belongs to the phone, so it outlasts a sign-out. Both saved copies must
+  allow sharing before launch tracking starts. Either copy can record a
+  decline. The app sends only
+  interactions (`$screen` with the route, never an id in it, and the
+  [Engagement](#engagement) events marked as sent by the app): no lifecycle
+  events, autocapture, session replay or error tracking.
 - **No synthetic ids.** A backend event with no user is dropped
   (`posthog_client.capture` does it for every emitter), since a made-up id
   creates a person nobody can merge. The one exception is an event that must
@@ -406,17 +424,17 @@ merges the website pageviews into the new user:
 | `dictation_rerecorded` | browser | live | — | A new composer recording starts while that rejection is on screen. |
 | `visual_option_clicked` | browser | live | none | An option card in one of Otto's visual answers is clicked, which sends its title as the user's reply. |
 | `experts_section_viewed` | browser | live | — | The marketplace experts shelf renders with results. |
-| `expert_profile_opened` | browser | live | `template_id` | An expert profile page opens. |
-| `hire_started` | browser | live | `template_id`, `surface` (`expert_page`; `onboarding` was the hire step's, gone with SECRT-3201) | A hire button is clicked. The onboarding plan's hires have no click: they are `plan_experts_hired` and `expert_hired` with `via: plan`. |
+| `expert_profile_opened` | browser, mobile app | live | `template_id` | An expert profile page opens. In the mobile app, each time its expert page comes to the front. |
+| `hire_started` | browser, mobile app | live | `template_id`, `surface` (`expert_page`; `marketplace_list`, the + on a row of the mobile app's marketplace; `onboarding` was the hire step's, now gone) | A hire button is clicked. The onboarding plan's hires have no click: they are `plan_experts_hired` and `expert_hired` with `via: plan`. |
 | `hire_flow_abandoned` | browser | live | `template_id`, `stage` | The hire dialog is closed before hiring. |
 | `expert_hired` | backend | live | `expert_id`, `template_id`, `name`, `failed_preloads_count`, `surface` (`onboarding`, `expert_page`, `copilot`; unset for other API callers), `via` (`plan` for the onboarding plan's team; unset otherwise) | An expert is hired or an archived one revived, from any surface (`experts_db.hire_expert`). Sent once the hire's background setup settles (`_run_hire_setup`), so `failed_preloads_count` is known; a revival with nothing to set up sends it at once. An idempotent re-hire of an active expert does not fire. |
 | `hire_failed` | backend | live | `template_id`, `failed_preloads_count` | Hiring raised. |
-| `expert_thread_created` | browser | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. |
+| `expert_thread_created` | browser, mobile app | live | `expert_id`, `thread_source` (`suggested_task` when a suggested task started it; unset otherwise) | A new expert chat is created. The mobile app sends it when a chat with an expert starts from Home. |
 | `writing_style_added` | backend | live | `expert_id` | A writing style is saved on an expert. |
 | `workflow_installed_on_expert` | backend | live | `expert_id`, `workflow_source` (`library`, `marketplace`), `library_agent_id` or `store_listing_version_id` | A workflow is attached to an expert. |
-| `home_viewed` | browser | live | — | The home dashboard renders with data. |
+| `home_viewed` | browser, mobile app | live | — | The home dashboard renders with data. Mobile sends this when Home mounts with data and consent is already on. It can send again after signing out and back in. |
 | `home_attention_actioned` | browser | live | `kind`, `action` | A "needs you" item is approved or declined. |
-| `home_team_member_clicked` | browser | live | `expert_id` | A team member row is clicked. |
+| `home_team_member_clicked` | browser, mobile app | live | `expert_id` | A team member row is clicked. In the mobile app, an expert is picked in Home's recipient menu. |
 | `home_suggestion_clicked` | browser | live | `position` (0-based among the rows shown), `surface` (`intro`, `home`), `remaining` (open rows after this one), `owner` (`expert`, `otto`: who it was sent to), `expert_template_id` (the planned owner, or null), `rank` (0-based in the stored, ranked order) | A suggested first task is clicked, on the greeting or under the Home composer. |
 | `home_suggestion_dismissed` | browser | live | `position`, `surface`, `remaining`, `scope` (`one`; `all` was "Hide all", gone with SECRT-3201) | A suggested first task is removed with its x. An Undo sends nothing. |
 | `home_suggestions_collapsed` | browser | live | `open` (open rows) | Hide folds the suggested tasks away. Nothing is written to the tasks. |

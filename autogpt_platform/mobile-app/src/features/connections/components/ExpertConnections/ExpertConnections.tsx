@@ -10,6 +10,7 @@ import { createStyles, spacing, type } from "@/lib/theme";
 import { AddConnectionSheet } from "../AddConnectionSheet/AddConnectionSheet";
 import { ConnectionRow } from "../ConnectionRow";
 import { CredentialSheet } from "../CredentialSheet/CredentialSheet";
+import { DeviceCodeSheet } from "../DeviceCodeSheet/DeviceCodeSheet";
 import { ProviderTile } from "../ProviderTile";
 import { useExpertConnections } from "./useExpertConnections";
 
@@ -122,6 +123,12 @@ export function ExpertConnections({ sessionID, expertID, expertName, isOpen }: P
         </View>
       ) : null}
       <CredentialSheet target={connect.sheet} onClose={connect.closeSheet} onSaved={connect.handleSaved} />
+      <DeviceCodeSheet
+        target={connect.deviceLogin}
+        onClose={connect.closeDeviceLogin}
+        onSaved={connect.handleSaved}
+        onPlanRequired={connect.handleDevicePlanRequired}
+      />
       <AddConnectionSheet isOpen={tab.isAdding} onClose={tab.closeAdd} sessionID={sessionID} expertID={expertID} />
     </View>
   );

@@ -1,19 +1,23 @@
 import {
+  BrainIcon,
   Delete02Icon,
   File01Icon,
   HelpCircleIcon,
   Logout01Icon,
+  Notification03Icon,
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Button } from "@/components/Button";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { AppearancePicker } from "@/features/settings/components/AppearancePicker";
 import { DeleteAccountSheet } from "@/features/settings/components/DeleteAccountSheet/DeleteAccountSheet";
 import { SettingsGroup } from "@/features/settings/components/SettingsGroup";
 import { SettingsRow } from "@/features/settings/components/SettingsRow";
+import { SwitchRow } from "@/features/settings/components/SwitchRow";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
 import { avatarSource } from "@/features/team/helpers";
 import { createStyles, spacing, type } from "@/lib/theme";
@@ -61,7 +65,42 @@ export default function SettingsScreen() {
           </SettingsGroup>
         ) : null}
         <SettingsGroup>
+          <SettingsRow
+            icon={Notification03Icon}
+            label="Notifications"
+            trailing="page"
+            onPress={settings.openNotifications}
+          />
+          <SettingsRow
+            icon={BrainIcon}
+            label="Memory"
+            trailing="page"
+            onPress={settings.openMemory}
+          />
+        </SettingsGroup>
+        <SettingsGroup>
           <AppearancePicker />
+          {settings.canShareUsage ? (
+            <SwitchRow
+              label="Share usage data"
+              description="Which screens you open and which buttons you tap. Never what you write or what your experts do."
+              value={settings.sharesUsage}
+              onValueChange={settings.changeSharesUsage}
+            />
+          ) : null}
+          {settings.canShareUsage && settings.unsavedChoice !== null ? (
+            <View style={styles.usageError}>
+              <Text accessibilityLiveRegion="polite" style={styles.error}>
+                {"Couldn't save your choice. Usage data is off for now."}
+              </Text>
+              <Button
+                label="Try again"
+                onPress={settings.retryUsageChoice}
+                variant="secondary"
+                size="small"
+              />
+            </View>
+          ) : null}
         </SettingsGroup>
         <SettingsGroup>
           <SettingsRow icon={HelpCircleIcon} label="Help" trailing="web" onPress={settings.openHelp} />
@@ -97,5 +136,7 @@ const useStyles = createStyles((colors) => ({
   personText: { flex: 1 },
   name: { ...type.heading, color: colors.text },
   email: { ...type.small, color: colors.textSecondary },
+  usageError: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, gap: spacing.sm },
+  error: { ...type.small, color: colors.error },
   version: { ...type.small, color: colors.textTertiary, textAlign: "center" },
 }));

@@ -4,8 +4,10 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Composer } from "@/features/chat/components/Composer";
 import { HomeRows } from "@/features/home/components/HomeRows";
+import { HomeViewed } from "@/features/home/components/HomeViewed";
 import { RecipientPicker } from "@/features/home/components/RecipientPicker";
 import { useHomeScreen } from "@/features/home/useHomeScreen";
+import { UsageDataSheet } from "@/features/settings/components/UsageDataSheet";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
 export default function HomeScreen() {
@@ -71,6 +73,8 @@ export default function HomeScreen() {
           onRetryAttachment={home.files.retry}
         />
       </KeyboardAvoidingView>
+      {home.hasDashboard ? <HomeViewed /> : null}
+      {home.asksConsent ? <UsageDataSheet onAnswer={home.answerConsent} /> : null}
     </View>
   );
 }

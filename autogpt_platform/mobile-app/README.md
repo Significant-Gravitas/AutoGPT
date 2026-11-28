@@ -7,22 +7,24 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Login:** email and password, existing accounts only. There is no sign-up in the app.
 - **Plan check:** after sign-in and at every launch the app asks the server whether the account has a plan. On a server that sells plans, an account with none sees a screen it can't get past: "Get a subscription" opens the web's sign-up page in the browser, and the app checks again when you come back. Nothing in the app takes payment.
 - **Home:** laid out like the ChatGPT app. A pill at the top picks who you are talking to (Otto or one of your experts); the page stays empty, with a short list just above the composer: what needs you and what is running or next, then starters. The composer's main button dictates until there is something to send.
-- **Chats:** as in the ChatGPT app, the menu slides in over three quarters of the screen and pushes the page aside, rounded and faded; tap what is left of the page to close it. It has search, your team, the Marketplace and "All chats" (every chat grouped by expert), then one row per expert with their latest chat, with a floating "New chat" pill and your avatar (settings, sign out) at its foot. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
+- **Chats:** as in the ChatGPT app, the menu slides in over most of the screen and pushes the page aside, rounded and faded; tap what is left of the page to close it. It has search, your team, the Marketplace and "All chats" (every chat grouped by expert), then one row per expert with their latest chat, with a floating "New chat" pill and your avatar (settings, sign out) at its foot. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped. Long-press a chat in "All chats", the drawer or search to rename, pin, unpin or delete it; pinned chats sit at the top.
 - **Chat feel:** a sent message moves to the top of the screen and the reply fills in below it at an even pace, without the view chasing it; an arrow brings you back to the end. The thread moves with the keyboard frame by frame, and dragging it down closes the keyboard. Long-press a message to copy or share it. The composer is the same card as on Home.
 - **Opening fast:** the app saves the chat list, your experts and your last few chats on the phone, so they open at once and then catch up with the server. A chat also starts loading as your finger lands on its row.
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
 - **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field. While you talk the mic button is an orb that moves with your voice; tap it to use what you said.
-- **Connecting services:** when Otto or an expert needs a service, the chat shows a card with one row per service: sign in, add a key or login, reconnect, or allow an expert to use an account you already have. Once every row is connected, the chat carries on by itself after a sign-in from the card; a card whose accounts were already there, or one setting up a trigger, shows Continue instead.
+- **Connecting services:** when Otto or an expert needs a service, the chat shows a card with one row per service: sign in, add a key or login, reconnect, or allow an expert to use an account you already have. Once every row is connected, the chat carries on by itself after a sign-in from the card; a card whose accounts were already there, or one setting up a trigger, shows Continue instead. For Ayrshare, link your social accounts in the in-app browser, then tap Continue in chat. ChatGPT (Codex) shows a code to enter on ChatGPT's page and marks the row connected after sign-in.
+- **Routine notices:** when a routine is skipped or fails, its chat shows a note with its buttons: resume it, run it less often, reconnect a service, or open the page it links to (the plan screen in the app, anything else on the web).
 - **Chat panel:** tap the name at the top of a chat; the panel slides in from the right the same way, pushing the chat aside; tap the chat or the back arrow to close it. The chat's header floats over the thread, which fades out under it. In an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
 - **Connections:** the expert panel's Connections tab lists the accounts the expert can use (Remove takes away their access, not the account) and what their workflows still need; a chat with Otto lists all your connections under its files. "Add connection" allows an account you have or connects a new service, an MCP server by address included.
-- **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace.
+- **Team:** the experts you have hired; tap one to chat. Create a new expert from the header, or hire one from the Marketplace. Long-press an expert here, or tap the gear in their chat panel, to manage them: name and instructions, weekly budget, approval mode (when that is turned on for your account), Reset (back to how they were the day you hired or created them) and Fire.
 - **Marketplace:** "Hire an expert" shows your team first, with an open seat for each area nobody covers, then the experts grouped by area (uncovered areas first) and a search by job or name; hire with the + on a row or from an expert's page (their area, first skills and all skills), and the new expert says hello in their first chat.
-- **Settings:** a native screen reached from your avatar at the foot of the drawer: your account, your plan (read only), appearance, help and legal links, sign out and delete account.
+- **Settings:** a native screen reached from your avatar at the bottom of the drawer: your account, your plan (read only), appearance, help and legal links, sign out and delete account. Notifications sets the email briefing, alerts and your time zone (with an offer to use the phone's). Memory shows what Otto knows about your work and its recent memories; forget one, or erase all. "Share usage data" turns usage analytics on or off.
+- **Usage analytics:** Home asks once whether you'll share usage data, and nothing goes to PostHog until you allow it. A build without `EXPO_PUBLIC_POSTHOG_KEY` never asks.
 - **Themes:** light and dark, following the phone's setting.
 
 ## What it does not do
 
-Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or uploading files from the Files page, and CI.
+Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, and deleting or uploading files from the Files page.
 
 ## Run it
 
@@ -66,6 +68,8 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 | `EXPO_PUBLIC_SENTRY_DSN` | none | Where crash and error reports go. Without it, or while developing, nothing is sent. |
 | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | `production` | The Sentry environment on each report; `eas.json` sets it per profile. |
 | `EXPO_PUBLIC_APP_STORE_ID` | none | The app's numeric App Store ID, for the update screen's button on iOS. Without it, iOS shows the screen with no button. |
+| `EXPO_PUBLIC_POSTHOG_KEY` | none | The PostHog project key for usage analytics. Without it, the app never asks and sends nothing; while developing, it asks but sends nothing. |
+| `EXPO_PUBLIC_POSTHOG_HOST` | `https://eu.i.posthog.com` | Where usage analytics go. |
 
 ## Builds
 
@@ -90,6 +94,8 @@ Builds read the profile's `env` in `eas.json`, then the EAS environment named by
 | `EXPO_PUBLIC_SENTRY_DSN` | preview, production | Plain text | Turns crash reporting on. It ships in the app, so it isn't a secret. |
 | `SENTRY_AUTH_TOKEN` | preview, production | Secret | Lets the build upload source maps to the `autogpt-mobile` project in the `significant-gravitas` Sentry org. |
 | `EXPO_PUBLIC_APP_STORE_ID` | production | Plain text | Once the App Store record exists. |
+| `EXPO_PUBLIC_POSTHOG_KEY` | preview, production | Plain text | Turns usage analytics on, for people who allow it. The project key ships in the app, so it isn't a secret. |
+| `EXPO_PUBLIC_POSTHOG_HOST` | preview, production | Plain text | Where usage analytics go. Without it, the EU host. |
 
 ### Over-the-air updates
 
@@ -115,6 +121,8 @@ Both builds share one app ID, so a phone holds one of them at a time. On Android
 - `pnpm lint`: lint.
 - `pnpm update:dev`, `pnpm update:production`: publish an over-the-air update (see above).
 
+CI (`.github/workflows/platform-mobile-app-ci.yml`) runs lint, types and tests on every pull request that touches this folder.
+
 ## Known limits
 
 - Saved chats sit unencrypted in the app's own storage (SQLite) for up to a day, at most eight of them; signing out deletes them.
@@ -125,7 +133,7 @@ Both builds share one app ID, so a phone holds one of them at a time. On Android
 - Attaching a file with a name already used in the same chat fails; the backend refuses it.
 - File chips under a sent message are kept only until the chat reloads from the server.
 - Approval cards in a chat are not shown.
-- A connect card that also asks for details, a service that signs in with a device code (such as Codex) or through Ayrshare, and a connect that hits a paywall all send you to the web to finish.
+- A connect card that also asks for details, and a connect that hits a paywall, send you to the web to finish.
 - Images in Otto's replies show as their alt text only.
 - Only `http` and `https` links open.
 - Plain HTTP only works in development; release builds need HTTPS.

@@ -7,6 +7,7 @@ import {
   listExpertCredentials,
   listProviders,
 } from "@/lib/api/integrations";
+import { useMountEffect } from "@/lib/useMountEffect";
 
 import type { PickedCredential } from "../../connectedThisRun";
 import { allowErrorText, allowForExpert } from "../../expertAccess";
@@ -21,6 +22,10 @@ interface Args {
   sessionID: string;
   expertID: string | null;
   onDone: () => void;
+  /** Opened for one service: its step starts at once, as a press on its row would. */
+  initialService?: ConnectableService | null;
+  /** An account was added or allowed. */
+  onConnected?: () => void;
 }
 
 interface Allow {
@@ -28,17 +33,28 @@ interface Allow {
   credentialID: string;
 }
 
-export function useAddConnectionSheet({ sessionID, expertID, onDone }: Args) {
+/** The services anyone can connect; the sheet and its opener share them. */
+export function useProviders() {
+  return useQuery({
+    queryKey: integrationKeys.providers,
+    queryFn: listProviders,
+    staleTime: PROVIDERS_STALE_MS,
+  });
+}
+
+export function useAddConnectionSheet({
+  sessionID,
+  expertID,
+  onDone,
+  initialService = null,
+  onConnected,
+}: Args) {
   const [query, setQuery] = useState("");
   const [isAskingServer, setIsAskingServer] = useState(false);
   const [serverText, setServerText] = useState("");
   const isExpert = expertID !== null;
 
-  const providers = useQuery({
-    queryKey: integrationKeys.providers,
-    queryFn: listProviders,
-    staleTime: PROVIDERS_STALE_MS,
-  });
+  const providers = useProviders();
   const credentials = useQuery({
     queryKey: integrationKeys.credentials,
     queryFn: listCredentials,
@@ -51,7 +67,7 @@ export function useAddConnectionSheet({ sessionID, expertID, onDone }: Args) {
   });
   const allow = useMutation({
     mutationFn: ({ credentialID }: Allow) => allowForExpert(expertID ?? "", [credentialID]),
-    onSuccess: onDone,
+    onSuccess: finish,
     onError(error, { rowKey }) {
       connect.showError(rowKey, allowErrorText(error));
     },
@@ -70,9 +86,18 @@ export function useAddConnectionSheet({ sessionID, expertID, onDone }: Args) {
   const server = serverTarget(serverText);
   const isBusy = connect.busyKey !== null || allow.isPending;
 
+  useMountEffect(() => {
+    if (initialService) connectService(initialService);
+  });
+
+  function finish() {
+    onConnected?.();
+    onDone();
+  }
+
   function handleConnected(rowKey: string, credential: PickedCredential) {
     if (!expertID) {
-      onDone();
+      finish();
       return;
     }
     allow.mutate({ rowKey, credentialID: credential.id });

@@ -5,6 +5,7 @@ import {
   buildSelections,
   cardIntro,
   followUpMessage,
+  needsManualContinue,
   parseSetupRequirements,
   rowStatus,
   type RowContext,
@@ -130,6 +131,18 @@ describe("rowStatus", () => {
       credentialID: "cred-1",
       label: "octocat",
     });
+  });
+
+  it("offers Ayrshare linking for an existing profile and waits for Continue", () => {
+    const setup = setupFor({ social: { provider: "ayrshare", types: ["api_key"] } });
+    const [request] = setup.requests;
+    const status = rowStatus(request, {
+      ...empty,
+      credentials: [credential({ provider: "ayrshare", type: "api_key" })],
+    });
+    expect(status.kind).toBe("connected");
+    expect(actionLabel(status, request.provider)).toBe("Link accounts");
+    expect(needsManualContinue(setup)).toBe(true);
   });
 
   it("is connected by an account picked in this run", () => {

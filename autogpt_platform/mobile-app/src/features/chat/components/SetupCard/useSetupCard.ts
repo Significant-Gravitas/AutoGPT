@@ -7,6 +7,8 @@ import {
   useCardRun,
 } from "@/features/connections/connectedThisRun";
 import {
+  AYRSHARE_PROVIDER,
+  connectMethod,
   logoID,
   MCP_PROVIDER,
   requestHost,
@@ -173,6 +175,10 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
 
   function handleRow(index: number) {
     const { request, name, logoID: rowLogoID, status } = rows[index];
+    if (status.kind === "connected" && request.provider === AYRSHARE_PROVIDER) {
+      void connect.linkAyrshare(request.key, name);
+      return;
+    }
     if (status.kind === "allow" || status.kind === "choose") {
       if (status.kind === "allow" && status.accounts.length === 1) {
         markConnected(cardKey, request.key, status.accounts[0]);
@@ -188,12 +194,16 @@ export function useSetupCard({ sessionID, toolCallID, setup, replyText, isBusy, 
       return;
     }
     if (status.kind === "reconnect") {
-      signInFor(request, name, status.credentialID);
+      if (connectMethod(request) === "device_code") {
+        connect.openDeviceLogin({ rowKey: request.key, providerName: name, credentialID: status.credentialID });
+      } else signInFor(request, name, status.credentialID);
       return;
     }
     if (status.kind !== "connect") return;
     const { method } = status;
     if (method === "oauth" || method === "mcp") signInFor(request, name);
+    else if (method === "ayrshare") void connect.linkAyrshare(request.key, name);
+    else if (method === "device_code") connect.openDeviceLogin({ rowKey: request.key, providerName: name });
     else if (method === "web") connect.openOnWeb();
     else {
       connect.openSheet({

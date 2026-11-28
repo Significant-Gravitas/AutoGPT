@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { chatCountLabel, type ChatGroup } from "@/features/drawer/helpers";
+import type { SessionSummary } from "@/lib/api/chat";
 import { createStyles, radius, spacing } from "@/lib/theme";
 
 import { ChatListRow } from "./ChatListRow";
@@ -13,9 +14,15 @@ interface Props {
   group: ChatGroup;
   isTruncated: boolean;
   onOpenChat: (sessionID: string) => void;
+  onLongPressChat: (session: SessionSummary) => void;
 }
 
-export function ChatGroupSection({ group, isTruncated, onOpenChat }: Props) {
+export function ChatGroupSection({
+  group,
+  isTruncated,
+  onOpenChat,
+  onLongPressChat,
+}: Props) {
   const styles = useStyles();
   const [isExpanded, setIsExpanded] = useState(false);
   const shown = isExpanded
@@ -57,6 +64,7 @@ export function ChatGroupSection({ group, isTruncated, onOpenChat }: Props) {
             session={session}
             isFirst={index === 0}
             onOpenChat={onOpenChat}
+            onLongPress={onLongPressChat}
           />
         ))}
         {hiddenCount > 0 ? (
