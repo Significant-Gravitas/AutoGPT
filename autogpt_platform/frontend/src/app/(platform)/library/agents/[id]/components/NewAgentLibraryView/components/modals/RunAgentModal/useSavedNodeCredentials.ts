@@ -2,13 +2,13 @@ import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/grap
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import {
+  type SavedNodeCredential,
   getSavedNodeCredentials,
   getStepInputs,
 } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
-import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { retryUnlessClientError } from "../../../helpers";
 
-const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_NODE_CREDENTIALS: SavedNodeCredential[] = [];
 
 /**
  * The credentials picked on the agent's steps in the builder, its

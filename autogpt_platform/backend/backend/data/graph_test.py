@@ -4494,6 +4494,29 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
     assert next(iter(slots.values()))[2] is True
 
 
+def test_pinned_and_linked_llm_fields_keep_their_node_inputs():
+    from backend.blocks.llm import AITextGeneratorBlock
+
+    block_id = AITextGeneratorBlock().id
+    graph = _graph_with(
+        [
+            _node("pinned", block_id, {"model": "gpt-4o"}),
+            _node("linked", block_id, {"model": "gpt-4o"}),
+        ]
+    )
+    graph.links = [
+        Link(
+            source_id="source", sink_id="linked", source_name="value", sink_name="model"
+        )
+    ]
+
+    fields = graph.credentials_input_schema["properties"]
+    assert len(fields) == 2
+    for field in fields.values():
+        node = "pinned" if len(field["credentials_provider"]) == 1 else "linked"
+        assert field["credentials_node_fields"] == [(node, "credentials")]
+
+
 def _graph(name: str, graph_id: str | None = None, **kwargs) -> Graph:
     return Graph(
         id=graph_id or str(uuid4()),

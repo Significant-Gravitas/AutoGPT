@@ -1130,6 +1130,45 @@ test("after a failed read, a platform key the user picked themselves survives Tr
   );
 });
 
+test.each(["pinned", "linked"])(
+  "a mixed-model run keeps the user's key on the %s step",
+  async (ownStep) => {
+    const pinnedField = "openai_api_key_credentials";
+    const pinnedKey =
+      ownStep === "pinned" ? USER_OPENAI_KEY : OPENAI_PLATFORM_KEY;
+    const linkedKey =
+      ownStep === "linked" ? USER_OPENAI_KEY : OPENAI_PLATFORM_KEY;
+    const { executeBodies } = mockLLMWorkflow({
+      stepCredentials: savedOnStep(pinnedKey),
+      otherStepCredentials: [savedOnStep(linkedKey)],
+      credentialFields: {
+        [pinnedField]: {
+          ...LLM_FIELD_SCHEMA,
+          credentials_provider: ["openai"],
+          credentials_node_fields: [["scrape-step", "credentials"]],
+        },
+        [LLM_FIELD]: {
+          ...LLM_FIELD_SCHEMA,
+          credentials_node_fields: [["other-step-0", "credentials"]],
+        },
+      },
+      requiredFields: [pinnedField, LLM_FIELD],
+    });
+    renderAgentPage();
+
+    await openRunForm();
+    await clickWhenEnabled("Start Task");
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0].credentials_inputs, pinnedField)).toBe(
+      pinnedKey.id,
+    );
+    expect(keyIn(executeBodies[0].credentials_inputs, LLM_FIELD)).toBe(
+      linkedKey.id,
+    );
+  },
+);
+
 test("an LLM step whose model comes from a link, saved on Anthropic's platform key, runs on it, not on OpenAI's", async () => {
   const { executeBodies } = mockLLMWorkflow({
     stepCredentials: savedOnStep(ANTHROPIC_PLATFORM_KEY),

@@ -600,13 +600,14 @@ class GraphModel(Graph, GraphMeta):
 
         for agg_field_key, (
             field_info,
-            _,
+            node_fields,
             is_required,
         ) in graph_credentials_inputs.items():
             providers = list(field_info.provider)
             cred_types = list(field_info.supported_types)
 
             field_schema: dict[str, Any] = {
+                "credentials_node_fields": sorted(node_fields),
                 "credentials_provider": providers,
                 "credentials_types": cred_types,
                 "type": "object",

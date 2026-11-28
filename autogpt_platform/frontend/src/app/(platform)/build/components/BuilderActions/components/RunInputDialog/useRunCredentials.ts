@@ -1,17 +1,17 @@
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
+  type SavedNodeCredential,
   getNodeCredentialsKey,
   getSavedNodeCredentials,
   getStepInputs,
 } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useCallback, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useCallback, useMemo, useState } from "react";
 
 type CredentialValues = Record<string, CredentialsMetaInput>;
 
-const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_NODE_CREDENTIALS: SavedNodeCredential[] = [];
 
 interface Args {
   /** Whether fields start on the keys picked on the steps. */
@@ -26,13 +26,17 @@ interface Args {
 export function useRunCredentials({ startsOnStepKeys }: Args) {
   const subGraphs = useGraphStore((state) => state.loadedGraph?.sub_graphs);
   // The keys picked on the steps, the sub-workflows' steps included
-  const stepCredentials = useNodeStore(
-    useShallow((state) =>
+  const nodes = useNodeStore((state) => state.nodes);
+  const stepCredentials = useMemo(
+    () =>
       getSavedNodeCredentials([
-        ...state.nodes.map((node) => node.data.hardcodedValues),
+        ...nodes.map((node) => ({
+          id: node.id,
+          input_default: node.data.hardcodedValues,
+        })),
         ...getStepInputs(subGraphs ?? []),
       ]),
-    ),
+    [nodes, subGraphs],
   );
   const nodeCredentials = startsOnStepKeys
     ? stepCredentials
