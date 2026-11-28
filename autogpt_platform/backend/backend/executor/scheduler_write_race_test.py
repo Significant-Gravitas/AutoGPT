@@ -271,7 +271,7 @@ def test_an_edit_keeps_the_mark_of_an_archive_pause(
 @pytest.mark.parametrize(
     ("fields", "seam", "waits"),
     [
-        pytest.param({"cron": _NEW_CRON}, "read", True, id="cron"),
+        pytest.param({"cron": _NEW_CRON}, "read", False, id="cron"),
         pytest.param(
             {"cron": _NEW_CRON, "input_data": _NEW_INPUTS},
             "validation",

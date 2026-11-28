@@ -4040,23 +4040,22 @@ class Scheduler(AppService):
         """
         if input_data is not None or input_credentials is not None:
             self._validate_schedule_inputs(
-                schedule_id, user_id, input_data, input_credentials
+                schedule_id, user_id, name, cron, input_data, input_credentials
             )
         # Measured and written under the lock _persist_schedule holds, so two
         # edits or a create can't both take the last of the storage budget.
         with self._schedule_capacity_lock:
-            if input_data is not None or input_credentials is not None:
-                _, info = self._authorized_graph_job(schedule_id, user_id)
-                measured = _updated_graph_job_args(
-                    info,
-                    name=name,
-                    cron=cron,
-                    input_data=input_data,
-                    input_credentials=input_credentials,
-                )
-                self._check_schedule_storage(
-                    measured, measured.model_dump(mode="json"), replaces=[schedule_id]
-                )
+            _, info = self._authorized_graph_job(schedule_id, user_id)
+            measured = _updated_graph_job_args(
+                info,
+                name=name,
+                cron=cron,
+                input_data=input_data,
+                input_credentials=input_credentials,
+            )
+            self._check_schedule_storage(
+                measured, measured.model_dump(mode="json"), replaces=[schedule_id]
+            )
             with self._jobstore_locked():
                 job, info = self._authorized_graph_job(schedule_id, user_id)
                 job_args = _updated_graph_job_args(
@@ -4095,18 +4094,20 @@ class Scheduler(AppService):
         self,
         schedule_id: str,
         user_id: str,
+        name: str | None,
+        cron: str | None,
         input_data: GraphInput | None,
         input_credentials: dict[str, CredentialsMetaInput] | None,
     ) -> None:
-        """Check new inputs against the size limits and the schedule's graph,
-        an input left out at its stored value. Runs without the jobstore lock,
-        which would hold up every pause, resume and fire while the check reads
-        the database."""
+        """Check the edit against the size limits, a field left out at its
+        stored value, and its inputs against the schedule's graph. Runs
+        without the jobstore lock, which would hold up every pause, resume and
+        fire while the check reads the database."""
         _, info = self._authorized_graph_job(schedule_id, user_id)
         merged = _updated_graph_job_args(
             info,
-            name=None,
-            cron=None,
+            name=name,
+            cron=cron,
             input_data=input_data,
             input_credentials=input_credentials,
         )

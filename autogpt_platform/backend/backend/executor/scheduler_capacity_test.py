@@ -240,6 +240,52 @@ def test_an_edit_is_stored_only_within_the_size_limit(
     assert _stored_bytes(held.kwargs) <= limit
 
 
+def test_a_rename_is_held_to_the_storage_budget(
+    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    _store(full_scheduler, "big", "u1", "", "x" * 100_000)
+    stored = sum(
+        scheduler_module._stored_size(job.kwargs) for job in _held(full_scheduler)
+    )
+    monkeypatch.setattr(
+        scheduler_module.config, "max_schedule_storage_bytes", stored + 100
+    )
+
+    with pytest.raises(ValueError, match="bytes together"):
+        full_scheduler.update_graph_execution_schedule(
+            schedule_id="big", user_id="u1", name="n" * MAX_SCHEDULE_NAME_LENGTH
+        )
+    full_scheduler.scheduler.modify_job.assert_not_called()
+
+
+def test_an_edit_is_measured_with_the_name_it_sets(
+    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    """A shorter name makes room for longer inputs in the same edit."""
+    monkeypatch.setattr(scheduler_module, "run_async", MagicMock())
+    stored = _args("held-1", "u1", topic="x" * 3_000).model_dump(mode="json") | {
+        "agent_name": "n" * MAX_SCHEDULE_NAME_LENGTH
+    }
+    held = full_scheduler.scheduler.get_job("held-1")
+    held.kwargs = stored
+    monkeypatch.setattr(
+        scheduler_module.config,
+        "max_schedule_payload_bytes",
+        _stored_bytes(stored) + 50,
+    )
+    full_scheduler.scheduler.modify_job.side_effect = (
+        lambda job_id, jobstore, **changes: _rewritten(held, changes["kwargs"])
+    )
+
+    full_scheduler.update_graph_execution_schedule(
+        schedule_id="held-1",
+        user_id="u1",
+        name="Daily",
+        input_data={"topic": "x" * 3_150},
+    )
+    assert held.kwargs["agent_name"] == "Daily"
+
+
 def test_a_job_name_is_stored_no_longer_than_a_schedule_name(
     full_scheduler: Scheduler,
 ):
