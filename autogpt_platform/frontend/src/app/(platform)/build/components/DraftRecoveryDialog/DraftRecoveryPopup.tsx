@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { cn } from "@/lib/utils";
-import { formatTimeAgo } from "@/lib/utils/time";
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DraftDiff } from "@/lib/dexie/draft-utils";
 import { Cancel01Icon, HistoryIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration } from "@/components/styles/motion";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -72,7 +73,7 @@ export function DraftRecoveryPopup({
       {isOpen && (
         <motion.div
           ref={popupRef}
-          className={cn("absolute top-4 left-1/2 z-50")}
+          className={cn("absolute top-4 left-1/2 z-overlay")}
           initial={{
             opacity: 0,
             x: "-50%",
@@ -92,9 +93,13 @@ export function DraftRecoveryPopup({
             y: "-150%",
             scale: 0.5,
             filter: "blur(20px)",
-            transition: { duration: 0.4, type: "spring", bounce: 0.2 },
+            transition: {
+              duration: duration.slower,
+              type: "spring",
+              bounce: 0.2,
+            },
           }}
-          transition={{ duration: 0.2, type: "spring", bounce: 0.2 }}
+          transition={{ duration: duration.base, type: "spring", bounce: 0.2 }}
         >
           <div
             className={cn(
@@ -106,13 +111,13 @@ export function DraftRecoveryPopup({
             </div>
 
             <div className="flex flex-col">
-              <Text variant="small-medium" tone="warning">
+              <Text variant="small" weight="medium" tone="warning">
                 Unsaved changes found
               </Text>
               <Text variant="small" tone="warning">
                 {diffSummary ||
                   `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
-                • {formatTimeAgo(new Date(savedAt).toISOString())}
+                • <RelativeTime date={savedAt} variant="short" />
               </Text>
             </div>
 

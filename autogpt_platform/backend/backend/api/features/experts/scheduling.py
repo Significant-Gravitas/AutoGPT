@@ -287,6 +287,10 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     through the scheduling UI or chat. Deleting used to lose the latter set
     permanently, because only template-seeded cadences are recoverable from
     ``ExpertWorkflow.scheduleCron``.
+
+    Each pause marks its job as the archive's (``paused_by_expert_archive``),
+    so re-hire resumes exactly these. Only running schedules are listed, so
+    one the user had paused is never marked and stays paused.
     """
     # Only presets this flow turns off are marked, so re-hire restores
     # exactly them — one the user had deliberately disabled before archiving
@@ -308,7 +312,9 @@ async def detach_expert_triggers(user_id: str, expert_id: str) -> None:
     scheduler = get_scheduler_client()
     for schedule in await _get_expert_schedules(user_id, expert_id):
         try:
-            await scheduler.pause_schedule(schedule.id, user_id=user_id)
+            await scheduler.pause_schedule(
+                schedule.id, user_id=user_id, for_expert_archive=True
+            )
         except Exception as e:
             # A schedule that refuses to pause keeps firing, so the run-time
             # gate is what actually stops it. Log by id so the survivor is
@@ -391,10 +397,10 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
     reactivate the presets archiving deactivated (never ones the user had
     turned off themselves) and resume the schedules archiving paused.
 
-    Resume is by expert attribution, the same key the pause used, so every
-    schedule comes back regardless of who created it. APScheduler recomputes
-    the next fire from the trigger, so a long-archived expert resumes at her
-    next cadence rather than replaying every run she missed.
+    Only schedules marked ``paused_by_expert_archive`` resume, whoever
+    created them; an unmarked paused schedule stays paused. APScheduler
+    recomputes the next fire from the trigger, so a long-archived expert
+    resumes at her next cadence rather than replaying every run she missed.
     """
     # Local import avoids the experts_db -> scheduling module cycle. Re-hire
     # may happen after a personal-org conversion, so restoring a trigger also
@@ -425,7 +431,9 @@ async def reattach_expert_triggers(user_id: str, expert_id: str) -> None:
         user_id, expert_id, include_paused=True
     ):
         try:
-            await scheduler.resume_schedule(schedule.id, user_id=user_id)
+            await scheduler.resume_schedule(
+                schedule.id, user_id=user_id, only_if_paused_by_expert_archive=True
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to resume schedule #{schedule.id} while reviving "

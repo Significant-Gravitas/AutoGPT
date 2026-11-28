@@ -1,5 +1,11 @@
+import math
+
+import pytest
+
 from backend.data.skill_package import (
+    MAX_MERGE_COMPARISONS,
     MAX_MERGE_LINES,
+    MergedText,
     PackageFile,
     merge_packages,
     merge_text,
@@ -147,8 +153,8 @@ def test_merge_packages_executable_bit_follows_the_changed_side():
 
 
 def test_merge_text_over_the_line_cap_keeps_ours_as_a_conflict():
-    """The alignment is quadratic at worst and runs on a shared event loop,
-    so a huge file is not merged at all: the user's copy stays, flagged."""
+    """The alignment is CPU work on a shared process, so a huge file is not
+    merged at all: the user's copy stays, flagged."""
     base = "\n".join(str(i) for i in range(MAX_MERGE_LINES + 1))
     ours = base + "\nmine"
     theirs = "changed" + base[1:]
@@ -157,3 +163,65 @@ def test_merge_text_over_the_line_cap_keeps_ours_as_a_conflict():
 
     assert merged.text == ours
     assert merged.conflicted
+
+
+def test_merge_text_keeps_ours_when_the_alignment_is_over_budget():
+    """Under the line cap but over the comparison budget: the merge would have
+    been clean, and the budget is what keeps ours."""
+    base = ",,,\n" * 400
+    ours = "".join(f",,,\n{row},1,2,3\n" for row in range(400))
+    theirs = "header,,,\n" + base
+
+    merged = merge_text(base, ours, theirs)
+
+    assert merged.text == ours
+    assert merged.conflicted
+
+
+def test_merge_text_of_a_repetitive_file_still_merges_an_ordinary_edit():
+    base = ",,,\n" * (MAX_MERGE_LINES - 10)
+
+    merged = merge_text(base, "north,1,2,3\n" + base, base + "total,,,\n")
+
+    assert merged.text == "north,1,2,3\n" + base + "total,,,\n"
+    assert not merged.conflicted
+
+
+@pytest.mark.parametrize(
+    "base, ours, theirs, merged",
+    [
+        pytest.param("a\nb", "a\nB", "a\nc\na\nb", "a\nc\na\nB", id="prepended"),
+        pytest.param(
+            "a {\n  one();\n}\n\nb {\n  two();\n}\n",
+            "a {\n  one();\n}\n\nb {\n  TWO();\n}\n",
+            "a {\n  ONE();\n}\n\nb {\n  two();\n}\n\nc {\n  three();\n}\n",
+            "a {\n  ONE();\n}\n\nb {\n  TWO();\n}\n\nc {\n  three();\n}\n",
+            id="appended",
+        ),
+    ],
+)
+def test_merge_text_keeps_an_update_that_repeats_the_first_or_last_line(
+    base: str, ours: str, theirs: str, merged: str
+):
+    assert merge_text(base, ours, theirs) == MergedText(text=merged, conflicted=False)
+
+
+def test_merge_packages_files_share_one_budget():
+    """Each file costs 60% of the budget to align, so a package of many cannot
+    multiply what one merge spends: the first merges, the rest keep ours."""
+    rows = math.isqrt(MAX_MERGE_COMPARISONS * 6 // 10)
+
+    def text(first: str, middle: str, last: str) -> PackageFile:
+        lines = [first, *["x"] * (rows // 2), middle, *["x"] * (rows // 2), last]
+        return PackageFile(content="\n".join(lines).encode())
+
+    paths = ["a.md", "b.md", "c.md"]
+    base = {path: text("h", "x", "t") for path in paths}
+    ours = {path: text("H", "x", "T") for path in paths}
+    theirs = {path: text("h", "Y", "t") for path in paths}
+
+    merged = merge_packages(base, ours, theirs)
+
+    assert merged.conflicts == ["b.md", "c.md"]
+    assert merged.files["a.md"] == text("H", "Y", "T")
+    assert merged.files["b.md"] == ours["b.md"]

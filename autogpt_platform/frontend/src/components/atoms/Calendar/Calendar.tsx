@@ -103,7 +103,7 @@ function Calendar({
           "text-foreground-tertiary rounded-md w-8 font-normal text-body-sm leading-inherit",
         week: "flex w-full mt-2",
         day: cn(
-          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-surface-hover [&:has([aria-selected].day-outside)]:bg-surface-hover/50 [&:has([aria-selected].day-range-end)]:rounded-r-md",
+          "relative p-0 text-center text-body leading-5 focus-within:relative focus-within:z-sticky [&:has([aria-selected])]:bg-surface-hover [&:has([aria-selected].day-outside)]:bg-surface-hover/50 [&:has([aria-selected].day-range-end)]:rounded-r-md",
           props.mode === "range"
             ? "[&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-start)]:rounded-l-md first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md"
             : "[&:has([aria-selected])]:rounded-md",

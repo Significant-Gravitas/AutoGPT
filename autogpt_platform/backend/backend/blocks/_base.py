@@ -206,6 +206,9 @@ class BlockCost(BaseModel):
     # entries whose model isn't in TOKEN_COST yet (those render
     # "Pay-as-you-go" / flat-tier).
     token_rate: Optional[TokenRateDisplay] = None
+    # SECOND / ITEMS / COST_USD: credits held before a run whose inputs don't bound
+    # its usage (``Block.max_usage``), settled against the real cost afterwards.
+    max_cost: Optional[int] = None
 
     def __init__(
         self,
@@ -813,6 +816,21 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     def merge_stats(self, stats: NodeExecutionStats) -> NodeExecutionStats:
         self.execution_stats += stats
         return self.execution_stats
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        """The most usage one run with *input_data* can report, for a block priced
+        on its usage (SECOND, ITEMS, COST_USD); None when its inputs don't bound it."""
+        return None
+
+    def walltime_bound(self, seconds: float | None) -> NodeExecutionStats | None:
+        """A ``max_usage`` for a block priced per second: *seconds* when positive,
+        never past the executor's wall-clock cap, which bounds the run otherwise."""
+        cap = self.execution_timeout_seconds
+        if seconds is None or seconds <= 0:
+            return None if cap is None else NodeExecutionStats(walltime=float(cap))
+        return NodeExecutionStats(
+            walltime=float(seconds if cap is None else min(seconds, cap))
+        )
 
     @property
     def name(self):

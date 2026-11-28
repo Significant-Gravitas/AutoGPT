@@ -76,7 +76,7 @@ export function RateLimitDisplay({ data, onReset, className }: Props) {
           )}
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-caption font-medium ${TIER_COLORS[currentTier] ?? "bg-surface-hover text-foreground-body"}`}
+          className={`rounded-pill px-3 py-1 text-caption font-medium ${TIER_COLORS[currentTier] ?? "bg-surface-hover text-foreground-body"}`}
         >
           {currentTier}
         </span>

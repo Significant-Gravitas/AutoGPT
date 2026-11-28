@@ -68,7 +68,8 @@ function OutputKeySection({
       </div>
       {hasMoreItems && (
         <Button
-          variant="ghost-muted"
+          variant="ghost"
+          tone="quiet"
           size="small"
           className="mt-1 h-auto px-0 py-0.5 text-caption-sm leading-inherit"
           onClick={() => setExpanded((prev) => !prev)}

@@ -6,7 +6,7 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import React from "react";
 
 const secondaryMenuContentClassName =
-  "z-10 rounded-xl border bg-surface p-1 shadow-md";
+  "z-raised rounded-xl border bg-surface p-1 shadow-md";
 
 const secondaryMenuItemClassName =
   "flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-surface-hover";

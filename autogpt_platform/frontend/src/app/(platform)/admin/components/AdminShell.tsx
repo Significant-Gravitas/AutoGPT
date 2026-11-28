@@ -7,6 +7,7 @@ import { ReactNode } from "react";
 
 import { AdminMobileNav } from "./AdminMobileNav/AdminMobileNav";
 import { AdminSidebar } from "./AdminSidebar/AdminSidebar";
+import { duration, ease } from "@/components/styles/motion";
 
 // Mirrors the /settings shell: own sidebar with a Back link, no app sidebar
 // (PlatformChrome renders the bare frame for /admin).
@@ -25,7 +26,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
               key={pathname}
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
+              transition={{ duration: duration.slow, ease: ease.out }}
               className="mx-auto w-full max-w-[1360px] px-4 pt-2 pb-8 md:px-6 md:pt-6"
             >
               {children}

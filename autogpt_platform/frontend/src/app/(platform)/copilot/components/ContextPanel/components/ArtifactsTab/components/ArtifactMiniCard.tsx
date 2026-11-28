@@ -28,7 +28,9 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
         <Icon icon={fileIcon} size={18} tone="muted" className="shrink-0" />
         <span className="flex min-w-0 flex-col">
           <Text
-            variant="body-medium-tight"
+            variant="body"
+            weight="medium"
+            leading="5"
             as="span"
             tone="emphasis"
             className="truncate"
@@ -36,7 +38,8 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
             {item.name}
           </Text>
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="subtle"
             className="truncate"
@@ -50,7 +53,7 @@ export function ArtifactMiniCard({ file, onOpen, onDownload }: Props) {
         type="button"
         onClick={() => onDownload(file)}
         aria-label={`Download ${item.name}`}
-        className="shrink-0 rounded-full p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-foreground-secondary focus-visible:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
+        className="shrink-0 rounded-pill p-1 text-foreground-disabled opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 hover:text-foreground-secondary focus-visible:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100"
       >
         <Icon icon={Download04Icon} size={16} />
       </button>

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import sys
 import time
 from collections.abc import Callable
+from unittest.mock import AsyncMock
 
 import pytest
 import sentry_sdk
@@ -33,6 +35,7 @@ from backend.util.metrics import (
     _FALKORDB_TEARDOWN_SIGNATURES,
     _PIKA_RECONNECT_LOGGERS,
     _PIKA_RECONNECT_SIGNATURES,
+    DiscordChannel,
     _before_send,
 )
 from backend.util.request import http_status_error
@@ -1326,3 +1329,61 @@ def test_before_send_transaction_drops_the_visitors_ip_and_location_headers() ->
     event = metrics._before_send_transaction(_event_with_ip_headers(), hint={})
 
     assert event["request"]["headers"] == _KEPT_HEADERS
+
+
+@pytest.mark.parametrize(
+    "configured, sent_to",
+    [("security", "security"), ("", "platform-alerts")],
+    ids=["set", "empty"],
+)
+async def test_a_security_alert_goes_to_its_channel_or_else_the_platform_one(
+    mocker, monkeypatch, configured, sent_to
+):
+    from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+
+    config = metrics.settings.config
+    monkeypatch.setattr(config, "platform_alert_discord_channel", "platform-alerts")
+    monkeypatch.setattr(config, "security_alert_discord_channel", configured)
+    send = mocker.patch.object(
+        SendDiscordMessageBlock, "run_once", new_callable=AsyncMock
+    )
+
+    await metrics.discord_send_alert("alert", DiscordChannel.SECURITY)
+
+    assert send.await_args.args[0].channel_name == sent_to
+
+
+@pytest.mark.parametrize(
+    "status, logged",
+    [
+        ("Message sent", None),
+        ("Channel not found: platform-alerts", "channel not found"),
+        (
+            "Error: bot lacks permission to send to platform-alerts: 403",
+            "the bot lacks permission",
+        ),
+    ],
+    ids=["sent", "not-found", "no-permission"],
+)
+async def test_an_alert_the_block_did_not_send_is_logged_as_an_error(
+    mocker, monkeypatch, caplog, status, logged
+):
+    from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+
+    monkeypatch.setattr(
+        metrics.settings.config, "platform_alert_discord_channel", "platform-alerts"
+    )
+    mocker.patch.object(
+        SendDiscordMessageBlock, "run_once", new_callable=AsyncMock, return_value=status
+    )
+
+    with caplog.at_level(logging.WARNING, logger=metrics.logger.name):
+        assert await metrics.discord_send_alert("alert") == status
+
+    records = [
+        (r.levelname, r.getMessage())
+        for r in caplog.records
+        if r.name == metrics.logger.name
+    ]
+    expected = f"Discord alert to 'platform-alerts' was not sent: {logged}"
+    assert records == ([("ERROR", expected)] if logged else [])

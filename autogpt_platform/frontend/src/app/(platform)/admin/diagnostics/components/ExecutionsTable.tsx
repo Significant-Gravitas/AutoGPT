@@ -575,7 +575,7 @@ export function ExecutionsTable({
                       <Icon icon={StopCircleIcon} className="mr-2 h-4 w-4" />
                       Stop Selected ({selectedIds.size})
                       {hasOrphanedSelected && (
-                        <span className="ml-1 text-caption leading-4 font-medium text-action-foreground/80">
+                        <span className="ml-1 text-caption leading-4 font-medium text-foreground-on-color/80">
                           ({selectedOrphanedIds.length} orphaned)
                         </span>
                       )}
@@ -595,7 +595,8 @@ export function ExecutionsTable({
                 )}
                 {activeTab === "failed" && selectedIds.size === 0 && (
                   <Text
-                    variant="body-tight"
+                    variant="body"
+                    leading="5"
                     as="div"
                     tone="muted"
                     className="mx-3"
@@ -751,7 +752,9 @@ export function ExecutionsTable({
                                 title="Click to copy full execution ID"
                               >
                                 <Text
-                                  variant="small-mono-tight"
+                                  variant="small"
+                                  mono
+                                  leading="4"
                                   as="span"
                                   tone="inherit"
                                 >
@@ -786,7 +789,9 @@ export function ExecutionsTable({
                                 title="Click to copy full user ID"
                               >
                                 <Text
-                                  variant="small-mono-tight"
+                                  variant="small"
+                                  mono
+                                  leading="4"
                                   as="span"
                                   tone="inherit"
                                 >
@@ -800,7 +805,7 @@ export function ExecutionsTable({
                             <TableCell>
                               <span
                                 className={cn(
-                                  "inline-flex rounded-full px-2 py-1 text-caption leading-4 font-semibold",
+                                  "inline-flex rounded-pill px-2 py-1 text-caption leading-4 font-semibold",
                                   execution.status === "RUNNING"
                                     ? "bg-success/30 text-success-foreground"
                                     : "bg-yellow/30 text-yellow-foreground",
@@ -856,7 +861,8 @@ export function ExecutionsTable({
                               // oxlint-disable-next-line design-system/no-restyle -- the cell itself must truncate; TableCell has no truncate variant (src/components is P9's)
                               <TableCell className="max-w-xs truncate">
                                 <Text
-                                  variant="small-tight"
+                                  variant="small"
+                                  leading="4"
                                   as="span"
                                   tone="danger"
                                   title={execution.error_message || ""}
@@ -947,7 +953,12 @@ export function ExecutionsTable({
 
                   {totalPages > 1 && (
                     <div className="mt-4 flex items-center justify-between">
-                      <Text variant="body-tight" as="div" tone="secondary">
+                      <Text
+                        variant="body"
+                        leading="5"
+                        as="div"
+                        tone="secondary"
+                      >
                         Showing {(currentPage - 1) * pageSize + 1} to{" "}
                         {Math.min(currentPage * pageSize, total)} of {total}{" "}
                         executions

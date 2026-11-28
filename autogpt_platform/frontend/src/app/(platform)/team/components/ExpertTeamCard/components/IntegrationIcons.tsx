@@ -49,7 +49,8 @@ export function IntegrationIcons({ expertName, providers }: Props) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Text
-                variant="body-medium"
+                variant="body"
+                weight="medium"
                 as="span"
                 tone="emphasis"
                 className="cursor-default whitespace-nowrap"

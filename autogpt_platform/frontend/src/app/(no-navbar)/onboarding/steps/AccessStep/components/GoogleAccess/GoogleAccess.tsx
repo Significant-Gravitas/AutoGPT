@@ -30,7 +30,7 @@ export function GoogleAccess({ onDone, onSkip }: AccessConnectProps) {
   return (
     <div className="flex flex-col gap-4">
       {credential && (
-        <Text variant="body-medium">
+        <Text variant="body" weight="medium">
           {credential.username || credential.title || "Google account"}
         </Text>
       )}

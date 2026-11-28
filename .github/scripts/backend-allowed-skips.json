@@ -159,6 +159,7 @@
   },
   "secret_gated": {
     "OPENAI_API_KEY": [
+      "backend.api.features.schedules.expert_grants_test.test_the_platforms_own_key_needs_no_grant",
       "backend.copilot.tools.run_agent_test.test_run_agent_with_llm_credentials"
     ]
   }

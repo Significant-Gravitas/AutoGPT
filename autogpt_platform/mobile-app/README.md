@@ -22,7 +22,7 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 
 ## What it does not do
 
-Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or downloading files, store builds, and CI.
+Sign-up, onboarding, buying or changing a plan, adding credits, social login, push notifications, choosing a model, pausing a single routine, uploading or generating an expert's picture, deleting or uploading files from the Files page, and CI.
 
 ## Run it
 
@@ -51,7 +51,7 @@ A web app from before that contract answers a sign-in with a cookie only, and th
 
 ### Connecting services
 
-Sign-ins open in the phone's own browser sheet (never a WebView, which Google refuses) and come back to the app's own link: `autogpt-app-dev://integrations/oauth` in AutoGPT Dev, `autogpt-app://integrations/oauth` in the store app (see [Builds](#builds)). The web app answers with the link for its own environment, so a build only finishes a sign-in against the environment it was built for. That needs a web app whose `/auth/integrations/oauth_callback` and `/auth/integrations/mcp_callback` routes send sign-ins started from the app back to it; with an older web app the sheet stays on its own page until you close it. Keys, logins and MCP tokens need no web change.
+Sign-ins open in the phone's own browser sheet (never a WebView, which Google refuses) and come back to `autogpt-app://integrations/oauth`. That needs a web app whose `/auth/integrations/oauth_callback` and `/auth/integrations/mcp_callback` routes send sign-ins started from the app back to it; with an older web app the sheet stays on its own page until you close it. Keys, logins and MCP tokens need no web change.
 
 On iOS the system asks before every sign-in whether the app may use the web app's domain; that prompt can't be changed. On Android, Expo Go can't receive these links, so test sign-ins in a development build (`npx expo run:android`). A sign-in on a physical phone comes back to the web app's address, so `localhost` only works on a simulator.
 
@@ -63,26 +63,49 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 | --- | --- | --- |
 | `EXPO_PUBLIC_FRONTEND_URL` | `http://localhost:3000` | The web app: sign-in (`/api/auth`) and the sign-up page the no-plan screen opens. |
 | `EXPO_PUBLIC_API_URL` | `http://localhost:8006` | The backend: chats and experts. |
+| `EXPO_PUBLIC_SENTRY_DSN` | none | Where crash and error reports go. Without it, or while developing, nothing is sent. |
+| `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | `production` | The Sentry environment on each report; `eas.json` sets it per profile. |
+| `EXPO_PUBLIC_APP_STORE_ID` | none | The app's numeric App Store ID, for the update screen's button on iOS. Without it, iOS shows the screen with no button. |
 
 ## Builds
 
-One codebase builds two apps (`app.config.ts`). They have different IDs and link schemes, so both fit on one phone.
+There is one app, AutoGPT (`co.agpt.autogpt.app`, link scheme `autogpt-app://`). The two EAS profiles build it against different servers. The server addresses come from the profile's `env` in `eas.json` and are fixed when the app is built.
 
-| | AutoGPT Dev | AutoGPT |
-| --- | --- | --- |
-| Built when | `APP_VARIANT` is anything but `production`: local runs and the `dev` EAS profile | `APP_VARIANT=production`: the `production` EAS profile |
-| App ID | `co.agpt.autogpt.app.dev` | `co.agpt.autogpt.app` |
-| Link scheme | `autogpt-app-dev://` | `autogpt-app://` |
-| Web app | `https://dev-builder.agpt.co` (`dev` profile) | `https://platform.agpt.co` |
-| Backend | `https://dev-server.agpt.co` (`dev` profile) | `https://backend.agpt.co` |
-| Goes to | The team, as an internal build | TestFlight and Play internal testing, then the stores |
+| Profile | Web app | Backend | Goes to |
+| --- | --- | --- | --- |
+| `dev` | `https://dev-builder.agpt.co` | `https://dev-server.agpt.co` | The team: an APK link on Android, an internal build on iOS |
+| `production` | `https://platform.agpt.co` | `https://backend.agpt.co` | TestFlight and Play internal testing, then the same build to the stores |
 
 ```sh
-eas build --profile dev --platform all
+eas build --profile dev --platform android
 eas build --profile production --platform all
 ```
 
-`app.json` holds the store app's name, ID and scheme; `app.config.ts` adds the Dev suffixes. The server addresses come from the profile's `env` in `eas.json` and are fixed when the app is built.
+### Variables in EAS
+
+Builds read the profile's `env` in `eas.json`, then the EAS environment named by the profile's `environment` (`dev` reads `preview`, `production` reads `production`). Set these in the Expo dashboard, under the project's environment variables:
+
+| Variable | Environments | Visibility | Why |
+| --- | --- | --- | --- |
+| `EXPO_PUBLIC_SENTRY_DSN` | preview, production | Plain text | Turns crash reporting on. It ships in the app, so it isn't a secret. |
+| `SENTRY_AUTH_TOKEN` | preview, production | Secret | Lets the build upload source maps to the `autogpt-mobile` project in the `significant-gravitas` Sentry org. |
+| `EXPO_PUBLIC_APP_STORE_ID` | production | Plain text | Once the App Store record exists. |
+
+### Over-the-air updates
+
+A JavaScript-only fix can reach phones without a store release. Each profile builds on its own channel (`dev`, `production`), and an update only reaches builds of the same `version` (the `appVersion` runtime policy), so any native change needs a new version and a store build.
+
+```sh
+pnpm update:production   # or pnpm update:dev
+```
+
+The scripts set the channel's server addresses themselves, because `eas update` doesn't read a build profile's `env`, then upload the update's source maps to Sentry (needs `SENTRY_AUTH_TOKEN` in your shell). A phone downloads an update at launch and runs it from the next launch.
+
+### Minimum version
+
+The backend's `MOBILE_MIN_APP_VERSION` setting (for example `0.2.0`) is the oldest app version it still lets in. The app reads it from the public `/api/platform-config` at launch and whenever it comes back to the front, before sign-in. An older app shows "Update AutoGPT" with a button to its store page and goes no further. An empty setting, the default, lets every version in. If the initial check fails or the server does not answer within four seconds, the app lets you in. A failed check on return to the foreground keeps the last answer, so an app already blocked stays blocked.
+
+Both builds share one app ID, so a phone holds one of them at a time. On Android, moving between a `dev` APK and the Play build means uninstalling first, because the two are signed with different keys. Only submit builds from the `production` profile to the stores.
 
 ## Scripts
 
@@ -90,6 +113,7 @@ eas build --profile production --platform all
 - `pnpm test`: unit tests (jest-expo).
 - `pnpm types`: type check.
 - `pnpm lint`: lint.
+- `pnpm update:dev`, `pnpm update:production`: publish an over-the-air update (see above).
 
 ## Known limits
 

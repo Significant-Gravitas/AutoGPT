@@ -8,7 +8,11 @@ import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUna
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
-import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
+import {
+  formatInTimezone,
+  getTimezoneDisplayName,
+  getViewerTimezone,
+} from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
@@ -37,7 +41,8 @@ export function SelectedScheduleView({
     scheduleId,
   );
 
-  const userTimezone = useUserTimezone();
+  const viewerTimezone = getViewerTimezone(useUserTimezone());
+  const scheduleTimezone = schedule?.timezone || "UTC";
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -91,7 +96,7 @@ export function SelectedScheduleView({
                 run={undefined}
                 scheduleRecurrence={
                   schedule
-                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTimezone || "UTC")}`
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(scheduleTimezone)}`
                     : undefined
                 }
               />
@@ -118,11 +123,15 @@ export function SelectedScheduleView({
                 ) : (
                   <div className="relative flex flex-col gap-8">
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Name</Text>
+                      <Text variant="large" weight="medium">
+                        Name
+                      </Text>
                       <Text variant="body">{schedule.name}</Text>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Recurrence</Text>
+                      <Text variant="large" weight="medium">
+                        Recurrence
+                      </Text>
                       <div className="flex items-center gap-3">
                         <Text variant="body" as="span">
                           {humanizeCronExpression(schedule.cron)}
@@ -131,19 +140,19 @@ export function SelectedScheduleView({
                           •
                         </Text>{" "}
                         <Text variant="body" as="span" tone="muted">
-                          {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
-                          )}
+                          {getTimezoneDisplayName(scheduleTimezone)}
                         </Text>
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Text variant="large-medium">Next run</Text>
+                      <Text variant="large" weight="medium">
+                        Next run
+                      </Text>
                       <div className="flex items-center gap-3">
                         <Text variant="body" as="span">
                           {formatInTimezone(
                             schedule.next_run_time,
-                            userTimezone || "UTC",
+                            viewerTimezone,
                             {
                               year: "numeric",
                               month: "long",
@@ -158,9 +167,7 @@ export function SelectedScheduleView({
                           •
                         </Text>{" "}
                         <Text variant="body" as="span" tone="muted">
-                          {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
-                          )}
+                          {getTimezoneDisplayName(viewerTimezone)}
                         </Text>
                       </div>
                     </div>

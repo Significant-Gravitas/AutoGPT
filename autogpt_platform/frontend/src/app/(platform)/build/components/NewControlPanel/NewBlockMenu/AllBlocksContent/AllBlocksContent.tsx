@@ -53,17 +53,15 @@ export const AllBlocksContent = () => {
     <div className={blockMenuContainerStyle}>
       {categories?.map((category, index) => (
         <Fragment key={category.name}>
-          {index > 0 && (
-            <Separator className="h-[1px] w-full text-foreground-disabled" />
-          )}
+          {index > 0 && <Separator className="h-[1px] w-full" />}
 
           {/* Category Section */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <Text variant="body-medium" tone="emphasis">
+              <Text variant="body" weight="medium" tone="emphasis">
                 {category.name && beautifyString(category.name)}
               </Text>
-              <span className="rounded-full bg-surface-hover px-1.5">
+              <span className="rounded-pill bg-surface-hover px-1.5">
                 <Text
                   variant="body"
                   as="span"
@@ -115,7 +113,8 @@ export const AllBlocksContent = () => {
                   onClick={() => handleRefetchBlocks(category.name)}
                 >
                   <Text
-                    variant="body-medium"
+                    variant="body"
+                    weight="medium"
                     as="span"
                     tone="inherit"
                     decoration="underline"

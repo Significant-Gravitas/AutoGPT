@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { motion, useReducedMotion } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   text: string;
@@ -26,7 +27,7 @@ export function MorphingTextAnimation({
       aria-label={text}
       initial={shouldAnimate ? { opacity: 0 } : false}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: duration.slower, ease: ease.out }}
     >
       {text}
     </motion.div>

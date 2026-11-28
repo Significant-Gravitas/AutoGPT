@@ -101,6 +101,7 @@ export function SitrepItem({ item }: Props) {
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {showImage && item.agentImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- a workflow image URL from any host, which next/image would need configured
           <img
             src={item.agentImageUrl}
             alt={item.agentName}
@@ -127,7 +128,7 @@ export function SitrepItem({ item }: Props) {
         )}
 
         <div className="min-w-0 flex-1">
-          <Text variant="body-medium-lh-snug" tone="primary">
+          <Text variant="body" weight="medium" leading="snug" tone="primary">
             {item.agentName}
           </Text>
           {item.runningSince ? (
@@ -135,7 +136,8 @@ export function SitrepItem({ item }: Props) {
           ) : (
             <OverflowText
               value={item.message}
-              variant="small-lh-tight"
+              variant="small"
+              leading="tight"
               tone="muted"
             />
           )}

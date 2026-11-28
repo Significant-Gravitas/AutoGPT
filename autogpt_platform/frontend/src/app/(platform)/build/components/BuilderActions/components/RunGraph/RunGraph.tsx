@@ -57,7 +57,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           <TooltipTrigger asChild>
             <Button
               size="icon"
-              variant="ghost-warning"
+              variant="ghost"
+              tone="quiet-warning"
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}

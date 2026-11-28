@@ -1,5 +1,6 @@
 import functools
 import itertools
+import json
 import logging
 import math
 import re
@@ -18,6 +19,7 @@ import orjson
 from fastapi.encoders import jsonable_encoder
 from jsonschema.protocols import Validator
 from prisma import Json
+from pydantic import BaseModel
 from referencing import Registry
 
 from .truncate import truncate
@@ -28,6 +30,12 @@ logger = logging.getLogger(__name__)
 # Precompiled regex to remove PostgreSQL-incompatible control characters
 # Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
 POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
+# The same characters as `json.dumps(..., ensure_ascii=False)` writes them, plus
+# an escaped backslash (group 1), matched first so it is kept whole.
+_ESCAPED_CONTROL_CHARS = re.compile(
+    r"\\(?:u00(?:0[0-8bcef]|1[0-9a-f])|[bf])|\x7f|(\\\\)"
+)
+_PASSTHROUGH = orjson.OPT_PASSTHROUGH_DATACLASS | orjson.OPT_PASSTHROUGH_DATETIME
 
 
 def dumps(
@@ -66,11 +74,21 @@ def dumps(
     >>> dumps(pydantic_model_instance, indent=2)
     '{\n  "field1": "value1",\n  "field2": "value2"\n}'
     """
-    serializable_data = to_dict(data)
-
     # Handle indent parameter
     if indent is not None or kwargs.get("indent") is not None:
         option |= orjson.OPT_INDENT_2
+
+    # Only what orjson cannot write itself goes through `to_dict`. Non-string
+    # keys are left to the full conversion, which encodes them differently.
+    if not option & orjson.OPT_NON_STR_KEYS:
+        try:
+            return orjson.dumps(
+                data, default=_to_jsonable, option=option | _PASSTHROUGH
+            ).decode("utf-8")
+        except TypeError:
+            pass
+
+    serializable_data = to_dict(data)
 
     # orjson only accepts specific parameters, filter out stdlib json params
     # ensure_ascii: orjson always produces UTF-8 (better than ASCII)
@@ -92,6 +110,13 @@ def to_dict(data: Any, **kwargs: Any) -> Any:
             numpy.generic: numpy.generic.item,
         }
     return jsonable_encoder(data, **kwargs)
+
+
+def _to_jsonable(obj: Any) -> Any:
+    """`to_dict` for one value a JSON encoder could not write itself."""
+    if isinstance(obj, BaseModel):
+        return obj.model_dump(mode="json", by_alias=True)
+    return to_dict(obj)
 
 
 def same_json(left: Any, right: Any) -> bool:
@@ -624,11 +649,13 @@ def nesting_depth(data: Any) -> int:
 
 def sanitize_json(data: Any) -> Any:
     try:
-        # Use two-pass approach for consistent string sanitization:
-        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
-        # 2. Then sanitize strings in the result
-        basic_result = to_dict(data)
-        return to_dict(basic_result, custom_encoder={str: sanitize_string})
+        try:
+            text = json.dumps(data, default=_to_jsonable, ensure_ascii=False)
+        except (TypeError, ValueError, RecursionError):
+            # A dict key json cannot write, or data `to_dict` would fail on too.
+            basic_result = to_dict(data)
+            return to_dict(basic_result, custom_encoder={str: sanitize_string})
+        return json.loads(_ESCAPED_CONTROL_CHARS.sub(r"\1", text))
     except Exception as e:
         # Log the failure and fall back to string representation
         logger.error(
@@ -649,12 +676,9 @@ class SafeJson(Json):
     Sanitizes control characters to prevent PostgreSQL 22P05 errors.
 
     This function:
-    1. Converts Pydantic models to dicts (recursively using to_dict)
-    2. Recursively removes PostgreSQL-incompatible control characters from strings
+    1. Converts Pydantic models and other non-JSON values as `to_dict` does
+    2. Removes PostgreSQL-incompatible control characters from strings and keys
     3. Returns a Prisma Json object safe for database storage
-
-    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
-    conversion and control character sanitization in a two-pass approach.
 
     Args:
         data: Input data to sanitize and convert to Json

@@ -27,6 +27,12 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
+
 beforeEach(() => {
   isDevelopmentBuild.mockReturnValue(false);
   createUsageCapturingFetch.mockClear();
@@ -107,6 +113,44 @@ describe("copilotStreamTransport refusals", () => {
         message:
           "A subscription is required to use this feature. Upgrade to continue.",
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("checks the session with the auth backend when the one behind the token has ended", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail: { code: "session_revoked", message: "Session ended" },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-ended",
+        ...makeRefs(),
+      });
+      await transport
+        .sendMessages({
+          trigger: "submit-message",
+          chatId: "sess-ended",
+          messageId: undefined,
+          messages: lastMessage("hello"),
+          abortSignal: undefined,
+        })
+        .catch(() => undefined);
+
+      await vi.waitFor(() =>
+        expect(validateSession).toHaveBeenCalledWith({ force: true }),
+      );
+      expect(replace).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }

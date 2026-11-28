@@ -13,7 +13,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { formatTimeAgo } from "@/lib/utils/time";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import type { User } from "@/lib/auth/types";
 import Link from "next/link";
 import { InstallOnExpertButton } from "../InstallOnExpertButton/InstallOnExpertButton";
@@ -103,7 +103,7 @@ export const AgentInfo = ({
         {/* Version Header */}
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Text variant="body-semibold" tone="primary">
+            <Text variant="body" weight="semibold" tone="primary">
               Version {versionInfo.version}.0
             </Text>
             {versionInfo.isCurrentVersion && (
@@ -180,9 +180,7 @@ export const AgentInfo = ({
               <Button
                 variant="primary"
                 /* oxlint-disable design-system/no-restyle -- the purple add button; no Button variant is brand */
-                /* oxlint-disable design-system/no-arbitrary-values -- the hover glow has no shadow token */
-                className="group/add min-w-36 border-brand bg-brand transition-shadow duration-300 hover:border-brand/90 hover:bg-brand/90 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
-                /* oxlint-enable design-system/no-arbitrary-values */
+                className="group/add min-w-36 border-brand bg-brand transition-shadow duration-300 hover:border-brand/90 hover:bg-brand/90 hover:shadow-glow hover:shadow-brand/40"
                 /* oxlint-enable design-system/no-restyle */
                 data-testid="agent-add-library-button"
                 disabled={isAddingAgentToLibrary}
@@ -229,7 +227,9 @@ export const AgentInfo = ({
                 data-testid="agent-download-button"
               >
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   tone="inherit"
                   decoration="underline"
@@ -328,7 +328,7 @@ export const AgentInfo = ({
                 {version}.0
               </Text>
               <Text variant="body" tone="secondary">
-                Last updated {formatTimeAgo(lastUpdated)}
+                Last updated <RelativeTime date={lastUpdated} variant="short" />
               </Text>
             </div>
           </div>

@@ -113,12 +113,12 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Text variant="large-medium" tone="primary">
+              <Text variant="large" weight="medium" tone="primary">
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <div className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5">
-              <Text variant="small-medium-tight" as="div">
+            <div className="rounded-pill border border-border-strong bg-surface-hover px-3 py-1.5">
+              <Text variant="small" weight="medium" leading="4" as="div">
                 {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
                 item
                 {shouldGroupExecutions
@@ -132,11 +132,17 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
               </Text>
             </div>
           </div>
-          <Text variant="body-tight" tone="secondary" as="div">
+          <Text variant="body" leading="5" tone="secondary" as="div">
             {shouldGroupExecutions ? (
               <div>
                 Pin:{" "}
-                <Text variant="body-semibold-tight" as="span" tone="inherit">
+                <Text
+                  variant="body"
+                  weight="semibold"
+                  leading="5"
+                  as="span"
+                  tone="inherit"
+                >
                   {beautifyString(pinName)}
                 </Text>
               </div>
@@ -146,8 +152,14 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                   <Text variant="body" tone="secondary">
                     Execution ID:
                   </Text>
-                  <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
-                    <Text variant="small-medium-mono-tight" as="p">
+                  <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
+                    <Text
+                      variant="small"
+                      weight="medium"
+                      mono
+                      leading="4"
+                      as="p"
+                    >
                       {execId}
                     </Text>
                   </div>
@@ -162,7 +174,13 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 </div>
                 <div className="mt-2">
                   Pin:{" "}
-                  <Text variant="body-semibold-tight" as="span" tone="inherit">
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    leading="5"
+                    as="span"
+                    tone="inherit"
+                  >
                     {beautifyString(pinName)}
                   </Text>
                 </div>
@@ -184,8 +202,14 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                       <Text variant="body" tone="secondary">
                         Execution ID:
                       </Text>
-                      <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
-                        <Text variant="small-medium-mono-tight" as="p">
+                      <div className="rounded-pill border border-border-strong bg-surface-muted px-2 py-1">
+                        <Text
+                          variant="small"
+                          weight="medium"
+                          mono
+                          leading="4"
+                          as="p"
+                        >
                           {execution.execId}
                         </Text>
                       </div>

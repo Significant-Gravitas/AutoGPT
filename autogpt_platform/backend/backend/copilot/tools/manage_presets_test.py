@@ -232,6 +232,28 @@ async def test_update_rename_validates_preset_scope(session):
 
 
 @pytest.mark.asyncio
+async def test_update_rename_with_an_empty_description_keeps_it(session):
+    """A model that fills every field sends description="" on a rename; that
+    must not clear the preset's description now that update_preset can."""
+    tdb = MagicMock()
+    tdb.update_triggered_preset = AsyncMock(return_value=_preset(name="Renamed"))
+    ldb = MagicMock()
+    ldb.get_preset = AsyncMock(return_value=_preset())
+    with (
+        patch(f"{_PATH}.triggers_db", return_value=tdb),
+        patch(f"{_PATH}.library_db", return_value=ldb),
+    ):
+        await UpdatePresetTool()._execute(
+            user_id=_USER,
+            session=session,
+            preset_id="preset-1",
+            name="Renamed",
+            description="",
+        )
+    assert tdb.update_triggered_preset.await_args.kwargs["description"] is None
+
+
+@pytest.mark.asyncio
 async def test_update_pause(session):
     tdb = MagicMock()
     tdb.update_triggered_preset = AsyncMock(return_value=_preset(is_active=False))

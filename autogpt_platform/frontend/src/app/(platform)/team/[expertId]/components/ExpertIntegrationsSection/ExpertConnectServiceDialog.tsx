@@ -20,9 +20,10 @@ import {
   SERVICE_FILTERS,
   useExpertConnectServiceDialog,
 } from "./useExpertConnectServiceDialog";
+import { duration, ease } from "@/components/styles/motion";
 
-const STEP_TRANSITION = { duration: 0.15, ease: [0, 0, 0.2, 1] as const };
-const HEIGHT_TRANSITION = { duration: 0.2, ease: [0, 0, 0.2, 1] as const };
+const STEP_TRANSITION = { duration: duration.fast, ease: ease.out };
+const HEIGHT_TRANSITION = { duration: duration.base, ease: ease.out };
 
 const stepVariants = {
   initial: (direction: number) => ({ x: 16 * direction, opacity: 0 }),
@@ -144,7 +145,12 @@ export function ExpertConnectServiceDialog({
                     className="flex flex-col gap-4"
                   >
                     <div className="flex flex-col gap-1">
-                      <Text variant="lead-medium" as="h3" tone="primary">
+                      <Text
+                        variant="lead"
+                        weight="medium"
+                        as="h3"
+                        tone="primary"
+                      >
                         Connect a service for {expertName}
                       </Text>
                       <Text variant="small" tone="muted">

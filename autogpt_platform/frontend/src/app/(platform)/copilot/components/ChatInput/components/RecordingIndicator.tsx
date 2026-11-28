@@ -20,7 +20,9 @@ export function RecordingIndicator({ elapsedTime, audioStream }: Props) {
         maxBarHeight={24}
       />
       <Text
-        variant="body-medium-tight"
+        variant="body"
+        weight="medium"
+        leading="5"
         as="span"
         tone="error"
         className="min-w-[3ch]"

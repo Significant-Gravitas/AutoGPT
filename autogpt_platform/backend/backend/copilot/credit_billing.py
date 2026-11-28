@@ -11,15 +11,18 @@ refused as before.
 
 A credit-billed turn:
 
-- may spend what the balance covered when it started, and never more than the
-  per-turn ceiling (``claude_agent_max_budget_usd``). Its budget is a hard cap,
-  so its CLI backstop sits exactly on it;
+- holds a dollar of the balance to start, and another each time its spend
+  nears what it holds, up to what the balance covered when it started within
+  the per-turn ceiling (``claude_agent_max_budget_usd``). Turns running at once
+  on one balance never hold more than it has together (``credit_turn_holds``),
+  and a turn that can't hold more lands as a turn out of budget does. The CLI
+  backstop sits on the most it may hold;
 - runs on the SDK engine, the one that enforces a budget;
 - records its cost here rather than in the plan's daily and weekly windows;
 - is charged as its cost lands: each whole credit as soon as the cost it
   recorded reaches it, and the rest, rounded up to a whole credit, when the
-  turn ends. In all it pays the cost it recorded, rounded up, never past its
-  cap, and a process that dies mid-turn leaves under a credit of what it
+  turn ends. In all it pays the cost it recorded, rounded up, never past what
+  it holds, and a process that dies mid-turn leaves under a credit of what it
   recorded unpaid. A turn that ended without a result is charged what it
   recorded too, through the same accounting as any other turn;
 - counts a debit that failed for a reason other than the balance as charged,
@@ -33,16 +36,20 @@ A credit-billed turn:
 import asyncio
 import logging
 import math
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 
+from backend.copilot.active_turns import MAX_TURN_LIFETIME_SECONDS
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import (
     AUTOPILOT_BLOCK_ID,
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
+from backend.copilot.credit_turn_holds import LedgerHolds
+from backend.copilot.deferred_cancel import DeferredCancel
 from backend.copilot.limit_tracking import turn_surface
 from backend.copilot.rate_limit import RateLimitUnavailable, platform_spend_refusal
 from backend.copilot.tree import MICRODOLLARS_PER_CREDIT
@@ -50,6 +57,7 @@ from backend.copilot.turn_budget import BudgetWindow, TurnBudget
 from backend.copilot.turn_pause import PauseReason, TurnPause
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db
+from backend.data.platform_cost import MICRODOLLARS_PER_USD
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.settings import Settings
 
@@ -62,6 +70,8 @@ CREDITS_PER_USD = 100
 # stream ends (see ``sdk.openrouter_cost``). The charge waits that long for it;
 # a cost recorded later still is charged when it lands.
 _COST_SETTLE_TIMEOUT_SECONDS = 45.0
+# What a credit-billed turn holds to start, and adds each time it runs short.
+_HOLD_STEP_CREDITS = CREDITS_PER_USD
 _BUDGET_WINDOW: dict[PauseReason, BudgetWindow] = {
     "daily": "daily",
     "weekly": "weekly",
@@ -87,6 +97,9 @@ class CreditBilledTurn:
         refusal: TurnPause,
         organization_id: str | None = None,
         team_id: str | None = None,
+        holds: LedgerHolds | None = None,
+        turn_id: str = "",
+        held_credits: int | None = None,
     ) -> None:
         self.user_id = user_id
         self.session_id = session_id
@@ -94,8 +107,11 @@ class CreditBilledTurn:
         # other blocks.
         self.organization_id = organization_id
         self.team_id = team_id
-        # What the balance covered when the turn started, within the ceiling.
+        # What the balance covered when the turn started, within the ceiling:
+        # the most it may hold.
         self.cap_credits = cap_credits
+        # What it holds of the balance so far; all of the cap without a ledger.
+        self.held_credits = cap_credits if held_credits is None else held_credits
         # The refusal this turn runs instead of: the limit that's used up.
         self.refusal = refusal
         self.spent_microdollars = 0
@@ -103,12 +119,19 @@ class CreditBilledTurn:
         self._ended = False
         self._recordings: set[asyncio.Task] = set()
         self._charging = asyncio.Lock()
+        # Its ledger's holds (``credit_turn_holds``). Top-ups and lowerings run
+        # under ``_charging``, so a lowering never undoes a top-up.
+        self._holds = holds
+        self._turn_id = turn_id
+        self._released = False
 
     @property
     def budget(self) -> TurnBudget:
-        """A hard cap at what the balance covers: the turn mustn't overdraw."""
+        """A hard cap at what the turn holds, which grows (``grow``) up to what
+        the balance covered: the turn mustn't overdraw."""
         return TurnBudget(
-            usd=self.cap_credits / CREDITS_PER_USD,
+            usd=self.held_credits / CREDITS_PER_USD,
+            grows_to_usd=self.cap_credits / CREDITS_PER_USD,
             limiting=_BUDGET_WINDOW[self.refusal.reason],
             resets_at=self.refusal.resets_at,
             hard_cap=True,
@@ -142,21 +165,110 @@ class CreditBilledTurn:
         finally:
             self._ended = True
             await asyncio.shield(self._charge_due())
+            await self.release()
+
+    async def release(self) -> None:
+        """Give back what the turn still holds of the balance; it also lapses
+        on its own, so a failure here only delays other turns."""
+        if self._holds is None or self._released:
+            return
+        # Not behind ``_charging``, which a hung debit can hold past the turn's
+        # give-up: a write still in flight deletes itself (``_released_meanwhile``).
+        self._released = True
+        try:
+            await self._holds.release(self._turn_id)
+        except Exception:
+            logger.warning(
+                f"Credit hold of session {self.session_id[:12]} not released",
+                exc_info=True,
+            )
+
+    async def grow(self, model_usd: float) -> float:
+        """Hold enough for the model to spend ``model_usd`` beside the cost
+        already recorded, and a step more, within the cap; returns what the
+        turn holds for the model now, under ``model_usd`` when it can't hold
+        that much."""
+        async with self._charging:
+            need = self.spent_microdollars + round(model_usd * MICRODOLLARS_PER_USD)
+            await self._hold_for(credits_for(need), step=_HOLD_STEP_CREDITS)
+            return self.model_room_usd()
+
+    def model_room_usd(self) -> float:
+        """What the turn holds for the model beside the cost it recorded."""
+        held = self.held_credits * MICRODOLLARS_PER_CREDIT
+        return (held - self.spent_microdollars) / MICRODOLLARS_PER_USD
+
+    async def can_spend(self) -> bool:
+        """Whether the cost the turn recorded is still under what it holds,
+        holding a step more once it isn't."""
+        async with self._charging:
+            whole = self.spent_microdollars // MICRODOLLARS_PER_CREDIT
+            await self._hold_for(whole + 1, step=_HOLD_STEP_CREDITS)
+            held = self.held_credits * MICRODOLLARS_PER_CREDIT
+            return self.spent_microdollars < held
 
     async def _charge_due(self) -> None:
         async with self._charging:
-            final = self._ended
-            due = self._owed_credits(final) - self.charged_credits
+            owed = self._owed_credits(self._ended)
+            await self._hold_for(owed, step=0)
+            due = min(owed, self.held_credits) - self.charged_credits
             if due <= 0:
                 return
             self.charged_credits += await self._spend(due)
+            await self._lower_hold()
+
+    async def _hold_for(self, credits: int, *, step: int) -> None:
+        """Hold at least ``credits``, and ``step`` more, within the cap: less
+        when the balance has no more free. Runs under ``_charging``."""
+        want = min(credits + step, self.cap_credits) - self.held_credits
+        if credits <= self.held_credits or want <= 0:
+            return
+        if self._holds is None or self._released:
+            return
+        try:
+            added = await self._holds.hold(
+                self._turn_id,
+                read_balance=lambda: _balance(self.user_id, self.organization_id),
+                credits=want,
+            )
+            if not await self._released_meanwhile():
+                self.held_credits += added
+        except Exception:
+            # Holding nothing more lands the turn: it fails closed.
+            logger.warning(
+                f"Credit hold of session {self.session_id[:12]} not raised",
+                exc_info=True,
+            )
+
+    async def _lower_hold(self) -> None:
+        # Debited credits have left the balance; holding them too would
+        # count them twice against the turns that start next.
+        if self._holds is None or self._released:
+            return
+        try:
+            await self._holds.lower(
+                self._turn_id, self.held_credits - self.charged_credits
+            )
+            await self._released_meanwhile()
+        except Exception:
+            logger.warning(
+                f"Credit hold of session {self.session_id[:12]} not lowered",
+                exc_info=True,
+            )
+
+    async def _released_meanwhile(self) -> bool:
+        """Whether the turn was released while its last ledger write was in
+        flight; that write then rewrote its field, so it is deleted again."""
+        if not self._released or self._holds is None:
+            return False
+        await self._holds.release(self._turn_id)
+        return True
 
     def _owed_credits(self, final: bool) -> int:
         """Whole credits while the turn runs, the part credit too once it has
-        ended; never past the cap."""
+        ended."""
         spent = self.spent_microdollars
-        owed = credits_for(spent) if final else spent // MICRODOLLARS_PER_CREDIT
-        return min(owed, self.cap_credits)
+        return credits_for(spent) if final else spent // MICRODOLLARS_PER_CREDIT
 
     async def _spend(self, credits: int) -> int:
         """Debit up to ``credits``, never below zero; returns what the turn
@@ -251,19 +363,38 @@ async def bill_to_credits(
                 organization_id = team_id = None
             elif owner is not None:
                 return None  # another user's personal org bills nobody
-        balance = await _balance(user_id, organization_id)
+        ceiling = int(config.claude_agent_max_budget_usd * CREDITS_PER_USD)
+        balances: list[int] = []
+
+        async def read_balance() -> int:
+            balances.append(await _balance(user_id, organization_id))
+            return balances[-1]
+
+        # A turn holds part of what the turns already running on this ledger
+        # don't, so turns started together can't each be offered it all.
+        holds = LedgerHolds(organization_id or user_id, MAX_TURN_LIFETIME_SECONDS)
+        turn_id = str(uuid.uuid4())
+        held = await holds.hold(
+            turn_id,
+            read_balance=read_balance,
+            credits=min(_HOLD_STEP_CREDITS, ceiling),
+            at_least=math.ceil(PER_TURN_SPEND_FLOOR_USD * CREDITS_PER_USD),
+        )
     except Exception as exc:
         raise RateLimitUnavailable("Credit balance unavailable") from exc
-    if balance < math.ceil(PER_TURN_SPEND_FLOOR_USD * CREDITS_PER_USD):
+    if not held:
         return None
-    ceiling = int(config.claude_agent_max_budget_usd * CREDITS_PER_USD)
     return CreditBilledTurn(
         user_id=user_id,
         session_id=session_id,
-        cap_credits=min(balance, ceiling),
+        # What the balance covered as the hold was taken, within the ceiling.
+        cap_credits=min(balances[-1], ceiling),
         refusal=refusal,
         organization_id=organization_id,
         team_id=team_id,
+        holds=holds,
+        turn_id=turn_id,
+        held_credits=held,
     )
 
 
@@ -287,19 +418,27 @@ async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
         yield
     finally:
         _credit_billed_turn.reset(token)
-        await turn.end()
+        # On a task of its own: a cancel that lands while the turn is charged
+        # (a Stop's second one, #17286) waits for the charge, then goes on,
+        # past an error from the charge too, which it keeps as its context.
+        deferred = DeferredCancel()
+        try:
+            await deferred.finish(turn.end())
+        finally:
+            if deferred.held is not None:
+                raise deferred.held
 
 
 async def tool_spend_refusal(user_id: str | None) -> str | None:
     """Why a tool may not pay a provider on the platform's key now; None when it may.
 
     In a credit-billed turn the tool's cost lands on the turn's credits, so it
-    may spend until the turn's recorded cost reaches its cap.
+    may spend until the turn's recorded cost reaches what it can hold.
     """
     turn = credit_billed_turn(user_id)
     if turn is None:
         return await platform_spend_refusal(user_id, surface=turn_surface())
-    if turn.spent_microdollars < turn.cap_credits * MICRODOLLARS_PER_CREDIT:
+    if await turn.can_spend():
         return None
     return "This run has used all the credits it can spend."
 

@@ -260,6 +260,62 @@ def test_supabase_effect_map_names_exactly_the_published_tools():
     assert sorted(effects.irreversible) == SUPABASE_IRREVERSIBLE_TOOLS
 
 
+# Every tool HubSpot's MCP docs listed on 2026-11-28. manage_aeo_prompts both
+# views and creates, so it asks; manage_onboarding is left out, as its effect is not stated.
+HUBSPOT_READ_TOOLS = [
+    "discover_hubspot_schema",
+    "get_aeo_metrics",
+    "get_campaign_attribution_reports",
+    "get_content_analytics_report",
+    "get_conversation_channel_metadata",
+    "get_crm_objects",
+    "get_marketing_email_analytics",
+    "get_organization_details",
+    "get_properties",
+    "get_social_channels",
+    "get_social_post_analytics",
+    "get_user_details",
+    "query_crm_data",
+    "read_campaign_data",
+    "read_social_posts",
+    "render_asset",
+    "search_communications",
+    "search_conversations",
+    "search_crm_objects",
+    "search_intent_signals",
+    "search_owners",
+    "search_properties",
+    "tool_guidance",
+]
+HUBSPOT_CHANGE_TOOLS = [
+    "manage_aeo_prompts",
+    "manage_aeo_recommendations",
+    "manage_association_labels",
+    "manage_blog_post",
+    "manage_campaign_objects",
+    "manage_crm_objects",
+    "manage_custom_object_types",
+    "manage_custom_pipelines",
+    "manage_custom_properties",
+    "manage_landing_page",
+    "manage_marketing_email",
+    "manage_object_type_activations",
+    "manage_object_type_renames",
+    "manage_segment",
+    "manage_website_page",
+    "submit_feedback",
+]
+
+
+def test_hubspot_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_hubspot"]
+    assert sorted(effects.read) == HUBSPOT_READ_TOOLS
+    assert sorted(effects.external) == HUBSPOT_CHANGE_TOOLS
+    # A published social post cannot be taken back.
+    assert effects.irreversible == ["manage_social_posts"]
+    assert mcp_tool_effect("https://mcp.hubspot.com", "manage_onboarding") is None
+
+
 def test_no_catalogued_server_is_limited_to_read_access():
     for entry in get_mcp_catalog():
         server = entry.mcp_server

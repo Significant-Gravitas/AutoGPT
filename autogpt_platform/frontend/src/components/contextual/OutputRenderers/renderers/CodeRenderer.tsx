@@ -170,12 +170,12 @@ function HighlightedCodeBlock({
   }, [code, supportedLanguage]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-action-hover bg-foreground-base shadow-sm">
-      <div className="flex items-center justify-between border-b border-action bg-action-hover px-3 py-2">
+    <div className="overflow-hidden rounded-lg border border-surface-inverse-hover bg-fill-strong shadow-sm">
+      <div className="flex items-center justify-between border-b border-surface-inverse bg-surface-inverse-hover px-3 py-2">
         <span className="truncate font-mono text-caption text-foreground-subtle">
           {filename || "code"}
         </span>
-        <span className="rounded bg-action px-2 py-0.5 font-mono text-caption-sm leading-inherit tracking-wide text-foreground-disabled uppercase">
+        <span className="rounded bg-surface-inverse px-2 py-0.5 font-mono text-caption-sm leading-inherit tracking-wide text-foreground-disabled uppercase">
           {supportedLanguage}
         </span>
       </div>

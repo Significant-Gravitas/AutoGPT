@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from e2b import SandboxState
@@ -12,10 +13,12 @@ from backend.blocks.desktop._api import DesktopStream
 from backend.blocks.desktop._common import SHARED_PATH, WORKSPACE_PATH
 from backend.copilot.computer import (
     ComputerInfo,
+    DesktopRefused,
     computer_owner,
     describe_computer,
     mounts_for,
     open_desktop,
+    open_desktop_from_ui,
     screen_is_on,
 )
 from backend.copilot.tools.e2b_sandbox import (
@@ -23,6 +26,8 @@ from backend.copilot.tools.e2b_sandbox import (
     SandboxLookupError,
     SandboxOwner,
 )
+from backend.data.redis_client import get_redis_async
+from backend.util.sandbox_limits import SandboxLimitError
 
 _C = "backend.copilot.computer"
 _USER, _EXPERT, _SESSION = "user-1", "exp-1", "sess-1"
@@ -166,6 +171,123 @@ class TestDescribeComputer:
         assert info.e2b_active is False and info.box is None
         assert info.screen_on is False
         list_mock.assert_not_awaited()
+
+
+class TestOpenDesktopFromUI:
+    """An open from the Computer tab or side panel, which no turn stands behind."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, monkeypatch: pytest.MonkeyPatch):
+        self.prefix = f"test:{uuid4().hex}:desktop-charged-until:"
+        monkeypatch.setattr(f"{_C}._CHARGED_UNTIL_KEY_PREFIX", self.prefix)
+        with patch(
+            "backend.copilot.trial_cost_context.get_ready_usage_state",
+            AsyncMock(return_value=SimpleNamespace(trial_id=None, generation=None)),
+        ):
+            yield
+
+    async def test_a_spent_allowance_refuses_before_the_box_is_touched_or_charged(
+        self,
+    ):
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        with (
+            patch(
+                f"{_C}.platform_spend_refusal",
+                AsyncMock(return_value="You've reached your daily usage limit."),
+            ) as allowance,
+            patch(f"{_C}.open_desktop", AsyncMock()) as opened,
+            patch(f"{_C}.persist_and_record_usage", AsyncMock()) as charged,
+        ):
+            with pytest.raises(DesktopRefused, match="daily usage limit"):
+                await open_desktop_from_ui(
+                    owner, {}, "e2b-key", user_id=_USER, session_id=_SESSION
+                )
+        allowance.assert_awaited_once_with(_USER, surface="chat")
+        opened.assert_not_awaited()
+        charged.assert_not_awaited()
+
+    async def test_each_open_is_charged_only_for_the_running_time_it_adds(self):
+        """Against the stack's Redis, which runs the charge script."""
+        owner = SandboxOwner(kind="expert", id=f"exp-{uuid4().hex}")
+        clock = MagicMock()
+        cfg = MagicMock(
+            e2b_sandbox_timeout=420,
+            e2b_desktop_usd_per_hour=0.36,
+            e2b_sandbox_template="tpl",
+        )
+        try:
+            with (
+                patch(f"{_C}.platform_spend_refusal", AsyncMock(return_value=None)),
+                patch(f"{_C}.open_desktop", AsyncMock(return_value="stream")) as opened,
+                patch(f"{_C}.persist_and_record_usage", AsyncMock()) as charged,
+                patch(f"{_C}.chat_config", cfg),
+                patch(f"{_C}.time", clock),
+            ):
+                # The first open arms 420 s; 60 s on, a re-open moves the end out
+                # by 60 s; the same second again adds nothing; once the armed
+                # time has run out, an open arms a whole 420 s again.
+                for now in (1_000, 1_060, 1_060, 2_000):
+                    clock.time.return_value = now
+                    result = await open_desktop_from_ui(
+                        owner, {"/w": "vol"}, "e2b-key", user_id=_USER
+                    )
+                    assert result == "stream"
+        finally:
+            await (await get_redis_async()).delete(
+                f"{self.prefix}{owner.kind}:{owner.id}"
+            )
+        assert opened.await_count == 4
+        opened.assert_awaited_with(
+            owner, {"/w": "vol"}, "e2b-key", user_id=_USER, session_id=None
+        )
+        charges = [c.kwargs for c in charged.await_args_list]
+        assert [c["extra_metadata"]["seconds"] for c in charges] == [420, 60, 420]
+        assert [c["cost_usd"] for c in charges] == pytest.approx([0.042, 0.006, 0.042])
+        assert {(c["user_id"], c["provider"], c["expert_id"]) for c in charges} == {
+            (_USER, "e2b", owner.id)
+        }
+
+    async def test_an_open_that_fails_after_arming_the_box_is_still_charged(self):
+        """The connect re-arms the box before the display can fail, so the time
+        it armed is charged whether or not the open then succeeds."""
+        owner = SandboxOwner(kind="session", id=f"sess-{uuid4().hex}")
+        try:
+            with (
+                patch(f"{_C}.platform_spend_refusal", AsyncMock(return_value=None)),
+                patch(
+                    f"{_C}.open_desktop",
+                    AsyncMock(side_effect=RuntimeError("display did not start")),
+                ),
+                patch(f"{_C}.persist_and_record_usage", AsyncMock()) as charged,
+            ):
+                with pytest.raises(RuntimeError):
+                    await open_desktop_from_ui(
+                        owner, {}, "e2b-key", user_id=_USER, session_id=owner.id
+                    )
+        finally:
+            await (await get_redis_async()).delete(
+                f"{self.prefix}{owner.kind}:{owner.id}"
+            )
+        charged.assert_awaited_once()
+        assert charged.await_args.kwargs["chat_session_id_override"] == owner.id
+
+    async def test_a_start_the_sandbox_limits_refuse_is_not_charged(self):
+        """The limits refuse before any box is started or woken, so nothing ran."""
+        owner = SandboxOwner(kind="session", id=f"sess-{uuid4().hex}")
+        key = f"{self.prefix}{owner.kind}:{owner.id}"
+        with (
+            patch(f"{_C}.platform_spend_refusal", AsyncMock(return_value=None)),
+            patch(
+                f"{_C}.open_desktop",
+                AsyncMock(side_effect=SandboxLimitError("Too many sandboxes.")),
+            ),
+            patch(f"{_C}.persist_and_record_usage", AsyncMock()) as charged,
+        ):
+            with pytest.raises(SandboxLimitError):
+                await open_desktop_from_ui(owner, {}, "e2b-key", user_id=_USER)
+        charged.assert_not_awaited()
+        # Nothing is recorded as paid for, so the next open is charged in full.
+        assert await (await get_redis_async()).get(key) is None
 
 
 class TestOpenDesktop:

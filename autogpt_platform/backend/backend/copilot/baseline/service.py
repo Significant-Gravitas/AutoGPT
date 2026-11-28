@@ -51,6 +51,7 @@ from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.constants import BUDGET_EXHAUSTED_NOTICE, EMPTY_COMPLETION_NOTICE
 from backend.copilot.context import (
+    get_current_turn_id,
     get_workspace_manager,
     is_unattended_turn,
     set_execution_context,
@@ -171,6 +172,7 @@ from backend.copilot.tools import (
     tool_names_in_groups,
 )
 from backend.copilot.tools.e2b_sandbox import (
+    SandboxUnavailableError,
     count_expert_turn,
     forget_turn_ceiling,
     get_or_create_sandbox,
@@ -2125,8 +2127,17 @@ async def stream_chat_completion_baseline(
     # inserting a new row, because routes.py has already saved the user message
     # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
+    # A redelivered turn reruns under the same turn id, possibly here after
+    # an SDK attempt closed the queue at its last look and died, so this
+    # first look reopens it for the turn (#17247).
     async with recover_pending_on_failure(
-        session_id, drain_pending_safe(session_id, "[Baseline]", drain_backlog=True)
+        session_id,
+        drain_pending_safe(
+            session_id,
+            "[Baseline]",
+            drain_backlog=True,
+            open_for_turn=get_current_turn_id(),
+        ),
     ) as drained_at_start_pending:
         drained_at_start_pending, recovered_in_history = partition_pending_by_history(
             session, drained_at_start_pending
@@ -2195,6 +2206,7 @@ async def stream_chat_completion_baseline(
         e2b_sandbox = None
         e2b_api_key = config.active_e2b_api_key
         if e2b_api_key:
+            refusal: SandboxLimitError | SandboxUnavailableError | None = None
             try:
                 # An expert session runs on the expert's own persistent box;
                 # everything else gets a per-session sandbox.
@@ -2214,9 +2226,14 @@ async def stream_chat_completion_baseline(
                     # unpaused at every later turn end.
                     count_turn=False,
                 )
-            except SandboxLimitError as refusal:
-                # Refused under a running-box limit: the turn ends here rather
-                # than running its commands on the local fallback.
+            except SandboxLimitError as limit:
+                refusal = limit
+            except Exception:
+                logger.exception("[Baseline] E2B sandbox setup failed")
+                refusal = SandboxUnavailableError()
+            if refusal is not None:
+                # E2B is configured but the box did not start: the turn ends
+                # here rather than running its commands on the local fallback.
                 await forget_turn_ceiling(session_id, session.expert_id)
                 await _requeue_pending(session_id, drained_at_start_pending)
                 # Saved before the yield, as on the outer error path, so a
@@ -2231,9 +2248,6 @@ async def stream_chat_completion_baseline(
                         )
                 yield StreamError(errorText=str(refusal), code=refusal.code)
                 return
-            except Exception:
-                logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
-                await forget_turn_ceiling(session_id, session.expert_id)
 
         # --- Transcript support (feature parity with SDK path) ---
         transcript_builder = TranscriptBuilder()

@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface ScrollAreaProps
   extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
@@ -97,7 +98,7 @@ const ScrollBar = React.forwardRef<
   >
     <ScrollAreaPrimitive.ScrollAreaThumb
       data-slot="scroll-area-thumb"
-      className="relative flex-1 rounded-full bg-surface-active"
+      className="relative flex-1 rounded-pill bg-surface-active"
     />
   </ScrollAreaPrimitive.ScrollAreaScrollbar>
 ));
@@ -144,7 +145,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           type="button"
           onClick={onClick}
           aria-label="Scroll to top"
-          className="absolute bottom-6 left-1/2 z-30 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-action text-action-foreground shadow-md transition-colors hover:bg-action/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+          className="absolute bottom-6 left-1/2 z-floating flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-pill bg-action text-action-foreground shadow-md transition-colors hover:bg-action/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           initial={
             reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
           }
@@ -154,7 +155,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           exit={
             reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
           }
-          transition={{ duration: 0.15, ease: [0, 0, 0.2, 1] }}
+          transition={{ duration: duration.fast, ease: ease.out }}
         >
           <Icon icon={ArrowUp02Icon} size={20} />
         </motion.button>

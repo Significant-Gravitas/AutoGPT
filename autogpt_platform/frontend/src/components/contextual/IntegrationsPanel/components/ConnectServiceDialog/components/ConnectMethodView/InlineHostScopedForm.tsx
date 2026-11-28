@@ -94,7 +94,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
   }
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={handleSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="host"
@@ -107,7 +107,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
                 autoComplete="off"
                 spellCheck={false}
                 label="Host"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 readOnly={Boolean(host)}
                 placeholder="api.example.com"
@@ -125,7 +125,7 @@ export function InlineHostScopedForm({ provider, host, onSuccess }: Props) {
       />
 
       <div className="space-y-2">
-        <Text variant="small-medium" tone="primary">
+        <Text variant="small" weight="medium" tone="primary">
           Headers
         </Text>
         <Text variant="small" tone="muted">
