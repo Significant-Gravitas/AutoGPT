@@ -1,6 +1,9 @@
 """Keeping a closed account: the status the sign-in screen reads, and the
 reopen. routes_test.py runs both against the real database."""
 
+import asyncio
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +17,7 @@ from backend.api.features.account_deletion.restore import (
     restore_account,
 )
 from backend.data.account_deletion import ReopenOutcome
+from backend.util import cache_invalidation
 from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.restore"
@@ -77,7 +81,12 @@ def edges(mocker: MockerFixture) -> MagicMock:
         ("forget_store_listings", MagicMock),
         ("capture_anonymous", MagicMock),
     ):
-        parent.attach_mock(mocker.patch(f"{MODULE}.{name}", new_callable=kind), name)
+        module = (
+            "backend.api.features.account_deletion.cache"
+            if name in {"forget_refusal", "forget_store_listings"}
+            else MODULE
+        )
+        parent.attach_mock(mocker.patch(f"{module}.{name}", new_callable=kind), name)
     mocker.patch(
         f"{MODULE}.get_deletion_request",
         AsyncMock(return_value=MagicMock(eraseAfter=ERASE_AFTER)),
@@ -113,6 +122,42 @@ async def test_keeping_the_account_lets_the_owner_and_its_work_back_at_once(
 
 
 @pytest.mark.asyncio
+async def test_cancelled_restore_still_invalidates_refusal_and_listings(
+    mocker: MockerFixture, edges: MagicMock
+):
+    _reopen(mocker, ReopenOutcome.REOPENED)
+    queued: asyncio.Future[Future[object]] = asyncio.get_running_loop().create_future()
+    release = threading.Event()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(release.wait)
+        submit = pool.submit
+
+        def record_submission(*args, **kwargs):
+            worker = submit(*args, **kwargs)
+            queued.set_result(worker)
+            return worker
+
+        mocker.patch.object(cache_invalidation, "_cache_executor", pool)
+        mocker.patch.object(pool, "submit", side_effect=record_submission)
+        request = asyncio.create_task(restore_account(USER_ID))
+        try:
+            worker = await asyncio.wait_for(queued, timeout=5)
+            assert not worker.running()
+            request.cancel()
+            done, _ = await asyncio.wait([request], timeout=5)
+            assert request in done
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        finally:
+            release.set()
+            await asyncio.gather(request, return_exceptions=True)
+        await asyncio.wrap_future(worker)
+
+    edges.forget_refusal.assert_called_once_with(USER_ID)
+    edges.forget_store_listings.assert_called_once_with()
+
+
+@pytest.mark.asyncio
 async def test_an_open_account_is_let_in_but_not_counted(
     mocker: MockerFixture, edges: MagicMock
 ):
@@ -122,6 +167,7 @@ async def test_an_open_account_is_let_in_but_not_counted(
 
     edges.forget_account_state.assert_called_once_with(USER_ID)
     edges.capture_anonymous.assert_not_called()
+    edges.forget_store_listings.assert_not_called()
 
 
 @pytest.mark.asyncio

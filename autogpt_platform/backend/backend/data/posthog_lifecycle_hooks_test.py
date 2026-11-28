@@ -228,12 +228,11 @@ async def test_an_admin_tier_override_schedules_a_sync():
             return_value=MagicMock(update=AsyncMock()),
         ),
         patch("backend.copilot.rate_limit._drift_check_background", new=AsyncMock()),
-        patch("backend.copilot.rate_limit.get_user_tier", new=MagicMock()),
-        patch("backend.copilot.rate_limit.get_user_by_id", new=MagicMock()),
-        patch("backend.data.credit.get_pending_subscription_change", new=MagicMock()),
+        patch("backend.data.credit.invalidate_subscription_caches") as invalidate,
         patch("backend.copilot.rate_limit.schedule_posthog_lifecycle_sync") as schedule,
     ):
         await set_user_tier("user-1", SubscriptionTier.ENTERPRISE)
+    invalidate.assert_called_once_with("user-1")
     schedule.assert_called_once_with("user-1")
 
 

@@ -4,6 +4,7 @@ from redis.exceptions import RedisClusterException, RedisError
 
 from backend.api.features.search.embeddings import refused_public_queries
 from backend.util.cache import cached
+from backend.util.cache_invalidation import run_cache_invalidation
 
 from . import db as store_db
 from . import model as store_model
@@ -53,7 +54,8 @@ async def get_public_store_agents(
     if refused:
         # The cache read and write already degrade on Redis trouble; this must too.
         try:
-            get_cached_store_agents.cache_delete(
+            await run_cache_invalidation(
+                get_cached_store_agents.cache_delete,
                 featured=featured,
                 creator=creator,
                 sorted_by=sorted_by,

@@ -92,6 +92,7 @@ from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
+from backend.util.cache_invalidation import run_cache_invalidation
 from backend.util.exceptions import UserPaywalledError
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.platform_payment import is_platform_payment_enabled
@@ -1367,8 +1368,9 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         where={"id": user_id},
         data={"subscriptionTier": tier.value},
     )
-    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
+    from backend.data.credit import invalidate_subscription_caches
+
+    await run_cache_invalidation(invalidate_subscription_caches, user_id)
     schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
