@@ -230,10 +230,12 @@ class ReadSpreadsheetBlock(Block):
                 extra_names[i] = _claim_name(f"column_{i + 1}", header_names, {})
             return extra_names[i]
 
+        skip_columns = set(input_data.skip_columns)
+
         def process_row(row):
             data = {}
             for i, value in enumerate(row):
-                if str(i) not in input_data.skip_columns:
+                if str(i) not in skip_columns:
                     data[column_key(i)] = value.strip() if input_data.strip else value
             return data
 

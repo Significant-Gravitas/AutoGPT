@@ -265,3 +265,26 @@ async def test_skip_columns_without_header_uses_the_same_indices():
     rows = await read_rows(contents="1,2,3", has_header=False, skip_columns=["0", "2"])
 
     assert rows == [{"1": "2"}]
+
+
+@pytest.mark.asyncio
+async def test_skip_columns_is_read_once_not_per_cell():
+    lookups = 0
+
+    class CountedList(list):
+        def __contains__(self, item):
+            nonlocal lookups
+            lookups += 1
+            return super().__contains__(item)
+
+    block = ReadSpreadsheetBlock()
+    input_data = block.input_schema(contents="a,b,c\n1,2,3\n4,5,6")
+    object.__setattr__(input_data, "skip_columns", CountedList(["0"]))
+    context = ExecutionContext(user_id="test-user", graph_exec_id=GRAPH_EXEC_ID)
+    outputs = {
+        name: value
+        async for name, value in block.run(input_data, execution_context=context)
+    }
+
+    assert outputs["rows"] == [{"b": "2", "c": "3"}, {"b": "5", "c": "6"}]
+    assert lookups == 0
