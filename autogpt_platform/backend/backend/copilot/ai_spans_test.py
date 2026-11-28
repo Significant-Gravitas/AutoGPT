@@ -179,15 +179,17 @@ def test_a_tool_that_answers_with_an_error_is_marked_failed(capture: MagicMock):
         tool_span("run_capability", user_id=USER_ID, session_id=SESSION_ID),
         tool_span("run_block", user_id=USER_ID, session_id=SESSION_ID),
     ):
-        mark_tool_failed()
+        mark_tool_failed("feature_disabled")
 
     (_, inner), (_, outer) = _sent(capture)
     assert inner["$ai_is_error"] is True
+    assert inner["$ai_error"] == "feature_disabled"
     assert outer["$ai_is_error"] is False
+    assert "$ai_error" not in outer
 
 
 def test_marking_a_failure_outside_a_tool_does_nothing(capture: MagicMock):
-    mark_tool_failed()
+    mark_tool_failed("feature_disabled")
 
     capture.assert_not_called()
 
