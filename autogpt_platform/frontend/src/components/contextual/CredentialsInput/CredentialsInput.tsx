@@ -155,6 +155,7 @@ export function CredentialsInput({
         showTitle={showTitle}
         readOnly={readOnly}
         variant={variant}
+        listsSingleKey={!autoSelect}
       />
 
       {!readOnly && (

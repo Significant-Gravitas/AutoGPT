@@ -32,6 +32,9 @@ export interface RunAgentModalContextValue {
     value: CredentialsMetaInput,
   ) => void;
   clearedCredentialFields: string[];
+  // Fields left for the user to pick a key for, e.g. one whose key was
+  // deleted, each with the provider of the key it had
+  credentialFieldsToPick: Record<string, string>;
   agentCredentialsInputFields: Record<string, any>;
   // The keys picked on the workflow's steps, whether the form waits for them,
   // and whether reading them failed

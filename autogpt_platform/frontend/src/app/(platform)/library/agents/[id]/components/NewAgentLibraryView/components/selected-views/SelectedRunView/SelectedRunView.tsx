@@ -1,6 +1,7 @@
 "use client";
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
@@ -32,6 +33,7 @@ interface Props {
   agent: LibraryAgent;
   runId: string;
   onSelectRun?: (id: string) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
   onClearSelectedRun?: () => void;
   banner?: React.ReactNode;
 }
@@ -40,6 +42,7 @@ export function SelectedRunView({
   agent,
   runId,
   onSelectRun,
+  onScheduleCreated,
   onClearSelectedRun,
   banner,
 }: Props) {
@@ -90,6 +93,7 @@ export function SelectedRunView({
                 agent={agent}
                 run={run}
                 onSelectRun={onSelectRun}
+                onScheduleCreated={onScheduleCreated}
                 onClearSelectedRun={onClearSelectedRun}
               />
             ) : null}
@@ -235,6 +239,7 @@ export function SelectedRunView({
             agent={agent}
             run={run}
             onSelectRun={onSelectRun}
+            onScheduleCreated={onScheduleCreated}
             onClearSelectedRun={onClearSelectedRun}
           />
         </div>
