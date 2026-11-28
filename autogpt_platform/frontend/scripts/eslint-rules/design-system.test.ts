@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -206,6 +207,62 @@ tester.run("no-hex-colours", rule("no-hex-colours"), {
   ],
 });
 
+tester.run("no-colour-functions", rule("no-colour-functions"), {
+  valid: [
+    // A role read, with or without an alpha, and words that end in "rgb".
+    {
+      code: 'const a = "rgb(var(--color-edge))"; const b = `box-shadow:0 1px 2px rgb(var(--shadow-color) / 0.1)`; const c = "hsl(var(--x))"; const d = "brgb(1 2 3)";',
+      filename: FILE,
+    },
+    jsx(
+      "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-brand)/0.10),transparent_70%)]",
+    ),
+    // A class whose whole arbitrary value is the colour is
+    // no-arbitrary-colour's.
+    jsx("hover:text-[rgb(131,131,140)] ring-[oklch(0.7_0.1_200)]"),
+    // ds-colour-exempt.json: a whole file, or one value a file may keep.
+    {
+      code: "const glass = `rgba(255,255,255,${tint})`;",
+      filename: "src/components/molecules/GlassOrb/GlassSurface.tsx",
+    },
+    {
+      code: `const grid = "<rect stroke='rgba(0,0,0,0.08)' />";`,
+      filename: "src/app/(public)/tour/components/TourHero/TourBackground.tsx",
+    },
+  ],
+  invalid: [
+    {
+      code: 'const a = { backgroundColor: "rgb(248 250 252)" }; const b = `border:1px solid hsla(0, 0%, 50%, 0.4)`;',
+      filename: FILE,
+      errors: [
+        { message: /^"rgb\(248 250 252\)" hardcodes a colour\. Read a role/ },
+        { message: /^"hsla\(0, 0%, 50%, 0\.4\)" hardcodes a colour/ },
+      ],
+    },
+    {
+      // Inside a gradient or a shadow, and a template literal's partial
+      // colour.
+      code: 'const wash = "bg-[linear-gradient(180deg,rgba(14,165,233,0.10),transparent)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"; const rim = `1px solid rgba(255,255,255,${edge})`;',
+      filename: FILE,
+      errors: [
+        { message: /^"rgba\(14,165,233,0\.10\)"/ },
+        { message: /^"rgba\(0,0,0,0\.05\)"/ },
+        { message: /^"rgba\(255,255,255,"/ },
+      ],
+    },
+    {
+      // A signed first argument: CSS wraps a negative hue into range.
+      code: 'const a = "hsl(-30 100% 50%)"; const b = "oklch( +0.7 0.1 200)"; const c = "rgb(-.5 0 0)";',
+      filename: FILE,
+      errors: [
+        { message: /^"hsl\(-30 100% 50%\)" hardcodes a colour/ },
+        { message: /^"oklch\( \+0\.7 0\.1 200\)" hardcodes a colour/ },
+        { message: /^"rgb\(-\.5 0 0\)" hardcodes a colour/ },
+      ],
+    },
+  ],
+});
+
 tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
   valid: [
     jsx("bg-surface text-[13px] border-[1.5px] bg-[url(/a.png)]"),
@@ -243,6 +300,152 @@ tester.run("no-arbitrary-colour", rule("no-arbitrary-colour"), {
         { message: /^"border-\[color:hsl\(0_0%_50%\)\]\/40" hardcodes/ },
         { message: /^"ring-\[oklch\(0\.7_0\.1_200\)\]" hardcodes/ },
         { message: /^"\[color:#fff\]" hardcodes a colour/ },
+      ],
+    },
+  ],
+});
+
+tester.run("no-misused-role", rule("no-misused-role"), {
+  valid: [
+    jsx(
+      "bg-fill-subtle bg-scrim/20 text-foreground-inverse bg-surface-inverse text-foreground-on-color border-foreground-subtle ring-foreground-subtle/40",
+    ),
+    // A background clipped to its text, gradient or solid, is that text's
+    // colour.
+    jsx(
+      "bg-gradient-to-r from-foreground-subtle via-foreground-secondary to-foreground-subtle bg-clip-text text-transparent",
+    ),
+    jsx("bg-foreground-body bg-clip-text text-transparent"),
+    // The clip may sit in another static part of the same class list.
+    {
+      code: 'const a = <div className={`bg-clip-text text-transparent ${"from-foreground-body"} bg-gradient-to-r to-foreground-secondary`} />;',
+      filename: FILE,
+    },
+    {
+      code: 'const a = cn("bg-clip-text text-transparent", on && "from-foreground-body");',
+      filename: FILE,
+    },
+    {
+      code: 'const a = cva("bg-clip-text text-transparent", { variants: { tone: { soft: "from-foreground-subtle" } } });',
+      filename: FILE,
+    },
+    // A clip under a variant covers a fill under the same variant or more.
+    jsx("hover:bg-foreground-body hover:bg-clip-text text-transparent"),
+    jsx("md:bg-clip-text md:hover:from-foreground-body text-transparent"),
+    // Other words that start the same.
+    jsx("text-surface-ish bg-foreground-ish"),
+    {
+      code: `// oxlint-disable-next-line design-system/no-misused-role -- waits for a design call\nconst a = "text-surface-muted";`,
+      filename: FILE,
+    },
+  ],
+  invalid: [
+    {
+      ...jsx(
+        "bg-foreground-subtle hover:bg-foreground-base/20 from-foreground-tertiary to-foreground-emphasis",
+      ),
+      errors: [
+        {
+          message:
+            /^"bg-foreground-subtle" paints a fill with a text role.*Use "bg-fill-subtle", the fill role with the same colour/,
+        },
+        {
+          message:
+            /^"hover:bg-foreground-base\/20" .*Use "bg-fill-strong".*A backdrop is "scrim"/,
+        },
+        { message: /^"from-foreground-tertiary" .*Use "from-fill-soft"/ },
+        { message: /^"to-foreground-emphasis" .*Use a fill role/ },
+      ],
+    },
+    {
+      // The same background, not clipped to text, is a fill.
+      ...jsx("bg-foreground-body text-transparent"),
+      errors: [{ message: /^"bg-foreground-body" .*Use "bg-fill-bold"/ }],
+    },
+    {
+      // Clipped only on hover: by default the text role is a fill.
+      ...jsx("bg-foreground-body hover:bg-clip-text text-transparent"),
+      errors: [{ message: /^"bg-foreground-body" paints a fill/ }],
+    },
+    {
+      ...jsx("md:bg-clip-text from-foreground-body text-transparent"),
+      errors: [{ message: /^"from-foreground-body" paints a fill/ }],
+    },
+    {
+      code: 'const a = <div className={`text-transparent ${"from-foreground-body"} bg-gradient-to-r`} />;',
+      filename: FILE,
+      errors: [{ message: /^"from-foreground-body" paints a fill/ }],
+    },
+    {
+      // A clip that applies only sometimes doesn't cover the fill.
+      code: 'const a = cn("from-foreground-body", on && "bg-clip-text");',
+      filename: FILE,
+      errors: [{ message: /^"from-foreground-body" paints a fill/ }],
+    },
+    {
+      code: 'const tip = cn("text-surface-muted", isOff && "disabled:text-canvas");',
+      filename: FILE,
+      errors: [
+        {
+          message:
+            /^"text-surface-muted" colours text with a surface role.*"foreground-inverse" on the inverse surface/,
+        },
+        { message: /^"disabled:text-canvas" colours text with a surface role/ },
+      ],
+    },
+  ],
+});
+
+tester.run("no-raw-z-index", rule("no-raw-z-index"), {
+  valid: [
+    jsx("relative z-raised hover:z-overlay focus-visible:z-sticky z-auto"),
+    // Words and other utilities that end in a z and a number.
+    jsx("size-10 translate-z-10 blur-10 [--z-10:1]"),
+    // A named layer read through its variable, in either spelling.
+    jsx("z-(--z-overlay) hover:z-[var(--z-overlay)] md:z-[var(--z-tour)]"),
+    {
+      code: 'const a = { zIndex: "var(--z-overlay)" }; const b = { zIndex: layer };',
+      filename: FILE,
+    },
+  ],
+  invalid: [
+    {
+      code: '<div className="z-10 -z-10 hover:z-[21]" />',
+      filename: FILE,
+      errors: [
+        { message: /^"z-10" sets a layer by number\. Use "z-raised"/ },
+        { message: /^"-z-10" sets a layer by number\. Use "z-behind"/ },
+        {
+          message:
+            /^"hover:z-\[21\]" sets a layer by number\. Use "z-search-bar"/,
+        },
+      ],
+    },
+    {
+      // Two layers at one height: the message names both.
+      code: 'const corner = cn("fixed z-40", isOpen && "z-[42]");',
+      filename: FILE,
+      errors: [
+        {
+          message:
+            /Use the layer with that number that names what sits there: "z-header" or "z-prompt"/,
+        },
+        {
+          message:
+            /^"z-\[42\]" sets a layer by number\. No layer has this number/,
+        },
+      ],
+    },
+    {
+      code: 'const a = { zIndex: 50 }; const b = { zIndex: -1 }; const c = { "z-index": "10" };',
+      filename: FILE,
+      errors: [
+        { message: /^"zIndex: 50" sets a layer by number\. Use "z-overlay"/ },
+        {
+          message:
+            /^"zIndex: -1" sets a layer by number\. No layer has this number/,
+        },
+        { message: /^"zIndex: 10" sets a layer by number\. Use "z-raised"/ },
       ],
     },
   ],
@@ -510,7 +713,11 @@ describe("the ratchet, end to end", () => {
   }
 
   beforeAll(() => {
-    root = mkdtempSync(path.join(tmpdir(), "design-system-lint-"));
+    // oxlint reports real paths; macOS's tmpdir is under the /var symlink, so
+    // the baseline keys must be written from the real path too.
+    root = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "design-system-lint-")),
+    );
     write(
       ".oxlintrc.json",
       JSON.stringify({

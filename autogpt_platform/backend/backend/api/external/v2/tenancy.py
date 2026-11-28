@@ -317,7 +317,11 @@ async def _assert_active_team_member(
         where={"teamId_userId": {"teamId": team_id, "userId": user_id}},
         include={"Team": True},
     )
-    if member is None or member.status != "ACTIVE":
+    if (
+        member is None
+        or member.status != "ACTIVE"
+        or (member.Team is not None and member.Team.archivedAt is not None)
+    ):
         raise NotAuthorizedError(f"You are not an active member of team {team_id}")
     if member.Team is None or member.Team.orgId != organization_id:
         raise NotAuthorizedError(

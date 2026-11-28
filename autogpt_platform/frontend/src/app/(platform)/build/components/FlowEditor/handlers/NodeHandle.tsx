@@ -33,8 +33,7 @@ const InputNodeHandle = ({
           icon={CircleIcon}
           size={16}
           fill={isInputConnected ? "currentColor" : "none"}
-          tone={isInputBroken ? "error" : undefined}
-          className={isInputBroken ? undefined : "text-handle"}
+          tone={isInputBroken ? "error" : "handle"}
         />
       </div>
     </Handle>
@@ -62,8 +61,7 @@ const OutputNodeHandle = ({
         <Icon
           icon={CircleIcon}
           size={16}
-          tone={isBroken ? "error" : undefined}
-          className={isBroken ? undefined : "text-handle"}
+          tone={isBroken ? "error" : "handle"}
         />
       </div>
     </Handle>

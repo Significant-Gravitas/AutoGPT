@@ -113,7 +113,7 @@ export function ClarificationQuestionsCard({
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success">
               <Icon
                 icon={CheckmarkCircle02Icon}
-                tone="inverse"
+                tone="on-color"
                 className="h-4 w-4"
               />
             </div>

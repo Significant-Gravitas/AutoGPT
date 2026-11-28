@@ -70,7 +70,7 @@ export const AgentTableCard = ({
         </div>
         <button
           onClick={onView}
-          className="h-fit rounded-full p-1 text-foreground-emphasis hover:bg-surface-hover"
+          className="h-fit rounded-pill p-1 text-foreground-emphasis hover:bg-surface-hover"
         >
           <Icon
             icon={MoreVerticalGlyph}

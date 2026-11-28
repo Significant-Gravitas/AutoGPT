@@ -2,6 +2,7 @@
 that are immutable and content-addressed so re-publishing is a no-op and
 rolling back is publishing an older commit."""
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import prisma.enums
 import prisma.models
 import pytest
 
-from backend.api.features.store import skill_catalog, skill_model
+from backend.api.features.store import skill_catalog, skill_model, skill_submission_db
 from backend.api.features.store.skill_catalog import (
     CatalogConflictError,
     publish_catalog,
@@ -22,6 +23,8 @@ from backend.api.features.store.skill_catalog_fixture import (
 from backend.api.features.store.skill_catalog_release import load_release
 from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.features.store.skill_submission_db import snapshot_version_files
+from backend.copilot.tools.skills import ParsedSkill
+from backend.data import db as database
 from backend.util.test import SpinTestServer
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -194,7 +197,8 @@ async def test_a_retirement_delists_without_deleting_and_can_be_undone(
     assert len(await _versions("cold-email")) == 1
 
 
-async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
+@pytest.fixture
+async def listing_owner():
     user = await prisma.models.User.prisma().create(
         data={"id": str(uuid.uuid4()), "email": f"{uuid.uuid4().hex}@example.com"}
     )
@@ -207,8 +211,23 @@ async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
             "links": [],
         }
     )
+    yield user.id
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"owningUserId": user.id}
+    )
+    await prisma.models.Profile.prisma().delete_many(where={"userId": user.id})
+    await prisma.models.User.prisma().delete(where={"id": user.id})
+
+
+async def test_a_slug_a_user_had_approved_aborts_the_whole_publish(
+    tmp_path: Path, listing_owner: str
+):
     await prisma.models.SkillListing.prisma().create(
-        data={"slug": "cold-email", "owningUserId": user.id}
+        data={
+            "slug": "cold-email",
+            "owningUserId": listing_owner,
+            "hasApprovedVersion": True,
+        }
     )
     write_catalog(tmp_path, {"cold-email": {}, "warm-intro": {}})
 
@@ -222,9 +241,141 @@ async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
         is None
     )
     assert await prisma.models.SkillCatalogRelease.prisma().count() == 0
-    await prisma.models.SkillListing.prisma().delete_many(where={"slug": "cold-email"})
-    await prisma.models.Profile.prisma().delete_many(where={"userId": user.id})
-    await prisma.models.User.prisma().delete(where={"id": user.id})
+
+
+async def test_a_slug_nobody_approved_goes_to_the_catalog(
+    tmp_path: Path, listing_owner: str
+):
+    """The catalog takes the slug of a listing nobody approved, and the listing
+    keeps its owner under a slug of its own."""
+    held, pending = await _unapproved_listing(listing_owner)
+    write_catalog(tmp_path, {"cold-email": {}, "warm-intro": {}})
+
+    planned = await _publish(tmp_path, dry_run=True)
+    after_dry_run = await prisma.models.SkillListing.prisma().find_unique(
+        where={"id": held.id}
+    )
+    summary = await _publish(tmp_path)
+
+    assert sorted(planned.created) == ["cold-email", "warm-intro"]
+    assert after_dry_run is not None and after_dry_run.slug == "cold-email"
+    assert sorted(summary.created) == ["cold-email", "warm-intro"]
+    assert (await _listing("cold-email")).owningUserId is None
+    moved = await prisma.models.SkillListing.prisma().find_unique(where={"id": held.id})
+    assert moved is not None and moved.owningUserId == listing_owner
+    assert moved.slug.startswith("cold-email-")
+    answered = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": pending.id}
+    )
+    assert answered is not None
+    assert answered.submissionStatus == prisma.enums.SubmissionStatus.REJECTED
+    assert "cold-email" in (answered.reviewComments or "")
+
+
+async def test_an_approval_landing_before_the_move_keeps_the_listing(
+    tmp_path: Path, listing_owner: str, monkeypatch
+):
+    """The publisher read the listing as never approved, and a reviewer
+    approves it before the move: the publish stops as for any approved one."""
+    held, pending = await _unapproved_listing(listing_owner)
+    write_catalog(tmp_path, {"cold-email": {}})
+    move = skill_catalog._move_unapproved_listing
+
+    async def approved_first(tx, listing, *, dry_run):
+        await skill_submission_db.review_skill_submission(
+            pending.id, is_approved=True, reviewer_id=listing_owner, comments=""
+        )
+        await move(tx, listing, dry_run=dry_run)
+
+    monkeypatch.setattr(skill_catalog, "_move_unapproved_listing", approved_first)
+
+    with pytest.raises(CatalogConflictError, match="cold-email"):
+        await _publish(tmp_path)
+
+    kept = await prisma.models.SkillListing.prisma().find_unique(where={"id": held.id})
+    assert kept is not None
+    assert (kept.slug, kept.activeVersionId) == ("cold-email", pending.id)
+    assert await prisma.models.SkillCatalogRelease.prisma().count() == 0
+
+
+async def test_a_publish_the_creator_has_begun_finishes_before_the_move(
+    tmp_path: Path, listing_owner: str, monkeypatch
+):
+    """The creator's publish has read its listing when the catalog comes to
+    move it: the move waits for it, then answers the version it left."""
+    held, _ = await _unapproved_listing(listing_owner)
+    write_catalog(tmp_path, {"cold-email": {}})
+    catalog: list[asyncio.Task] = []
+    pending_version = skill_submission_db._pending_version
+
+    async def catalog_publishes_meanwhile(tx, listing_id):
+        catalog.append(asyncio.create_task(_publish(tmp_path)))
+        await _done_or_waiting_on_creator(catalog[0], listing_owner)
+        return await pending_version(tx, listing_id)
+
+    monkeypatch.setattr(
+        skill_submission_db, "_pending_version", catalog_publishes_meanwhile
+    )
+
+    try:
+        await skill_submission_db.submit_skill_package(
+            listing_owner,
+            skill_model.SkillSubmissionRequest(
+                skill_name="cold-email", categories=["content"]
+            ),
+            ParsedSkill(name="cold-email", description="mine", body="# mine, again\n"),
+            [],
+        )
+        await catalog[0]
+    finally:
+        for task in catalog:
+            task.cancel()
+        await asyncio.gather(*catalog, return_exceptions=True)
+
+    versions = await prisma.models.SkillListingVersion.prisma().find_many(
+        where={"skillListingId": held.id}
+    )
+    assert [v.submissionStatus for v in versions] == [
+        prisma.enums.SubmissionStatus.REJECTED
+    ]
+    assert (await _listing("cold-email")).owningUserId is None
+
+
+async def _done_or_waiting_on_creator(task: asyncio.Task, owner: str) -> None:
+    """Return once *task* has finished, or is waiting on *owner*'s submission
+    lock; a stalled test fails after 30 s."""
+    key = f"skill-submissions:{owner}"
+    async with asyncio.timeout(30):
+        while not task.done():
+            [row] = await database.prisma.query_raw(
+                "SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'"
+                " AND NOT granted AND objsubid = 1"
+                " AND classid::bigint = (hashtextextended($1, 0) >> 32) & 4294967295"
+                " AND objid::bigint = hashtextextended($1, 0) & 4294967295",
+                key,
+            )
+            if row["n"]:
+                return
+            await asyncio.sleep(0.05)
+
+
+async def _unapproved_listing(
+    owner: str,
+) -> tuple[prisma.models.SkillListing, prisma.models.SkillListingVersion]:
+    listing = await prisma.models.SkillListing.prisma().create(
+        data={"slug": "cold-email", "owningUserId": owner}
+    )
+    pending = await prisma.models.SkillListingVersion.prisma().create(
+        data={
+            "skillListingId": listing.id,
+            "name": "cold-email",
+            "description": "cold-email description",
+            "body": "# mine\n",
+            "categories": ["content"],
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+        }
+    )
+    return listing, pending
 
 
 async def test_a_dry_run_reports_the_plan_and_writes_nothing(tmp_path: Path):

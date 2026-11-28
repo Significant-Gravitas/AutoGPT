@@ -60,7 +60,7 @@ export function ExpertWorkflowsSection({
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {expertName}&apos;s Workflows
         </Text>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">

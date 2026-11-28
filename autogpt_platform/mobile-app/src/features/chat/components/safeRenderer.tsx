@@ -5,10 +5,13 @@ import {
   Text,
   type ImageStyle,
   type TextStyle,
+  type ViewStyle,
 } from "react-native";
 import { Renderer } from "react-native-marked";
 
 import { palettes, type, type Colors, type Scheme } from "@/lib/theme";
+
+import { MarkdownTable } from "./MarkdownTable";
 
 const WEB_URL_RE = /^https?:\/\//i;
 
@@ -58,6 +61,25 @@ class SafeRenderer extends Renderer {
     title?: string,
   ): ReactNode {
     return this.safeLink(alt || title || href, href, this.safeStyles.link, title);
+  }
+
+  override table(
+    header: ReactNode[][],
+    rows: ReactNode[][][],
+    tableStyle?: ViewStyle,
+    rowStyle?: ViewStyle,
+    cellStyle?: ViewStyle,
+  ): ReactNode {
+    return (
+      <MarkdownTable
+        key={this.getKey()}
+        header={header}
+        rows={rows}
+        tableStyle={tableStyle}
+        rowStyle={rowStyle}
+        cellStyle={cellStyle}
+      />
+    );
   }
 
   private safeLink(

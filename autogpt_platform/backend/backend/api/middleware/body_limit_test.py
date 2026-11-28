@@ -3,9 +3,9 @@ mounted apps' routes included."""
 
 import json
 import re
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import Request
@@ -47,6 +47,21 @@ async def test_a_signed_in_body_over_the_limit_is_refused_unparsed():
     assert sent.status == 413
     assert not sent.parsed
     assert sent.received <= limit + 1
+
+
+async def test_the_refusal_names_the_limit_as_a_size_a_person_reads():
+    """The upload toast shows this detail."""
+    sent = await _post(
+        "/external-api/v1/blocks/0/execute",
+        [b"{}"],
+        {"content-type": JSON, "content-length": str(_default_limit() + 1)},
+    )
+
+    assert sent.status == 413
+    assert json.loads(sent.content) == {
+        "detail": "The request is too large. The limit is "
+        f"{settings.config.max_request_body_mb} MB."
+    }
 
 
 async def test_a_declared_length_over_the_limit_is_refused_before_any_byte_is_read():
@@ -217,11 +232,18 @@ def _spy(name: str, parsed: list[str]):
     return parse
 
 
+@contextmanager
 def _signed_in():
-    return patch(
-        "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
-        AsyncMock(return_value={"sub": "user-1", "role": "authenticated"}),
-    )
+    payload = {"sub": "user-1", "sid": "session-1", "role": "authenticated"}
+    sessions = Mock(is_auth_session_active=AsyncMock(return_value=True))
+    with (
+        patch(
+            "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
+            AsyncMock(return_value=payload),
+        ),
+        patch("backend.api.session_auth.auth_session_db", return_value=sessions),
+    ):
+        yield
 
 
 def _default_limit() -> int:

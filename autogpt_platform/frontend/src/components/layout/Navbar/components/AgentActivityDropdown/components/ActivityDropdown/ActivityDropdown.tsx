@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -74,7 +75,7 @@ export function ActivityDropdown({
   return (
     <div className="overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4">
+      <div className="sticky top-0 z-raised px-4">
         <div className="flex items-center justify-between pt-3 pb-1">
           {isSearchVisible && withSearch ? (
             <div
@@ -143,7 +144,8 @@ export function ActivityDropdown({
             rowHeight={itemHeight}
             rowProps={{ executions: filteredExecutions }}
             rowComponent={VirtualizedActivityItem}
-            style={{ width: "100%", height: listHeight }}
+            className="h-(--list-height) w-full"
+            style={{ "--list-height": `${listHeight}px` } as CSSProperties}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
@@ -151,7 +153,7 @@ export function ActivityDropdown({
               <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium">
+              <Text variant="body" weight="medium">
                 {searchQuery
                   ? "No matching workflows found"
                   : "No recent runs to show yet"}

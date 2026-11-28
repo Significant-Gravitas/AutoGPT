@@ -1,7 +1,5 @@
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
-
 export type BriefingFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "OFF";
 
 /**

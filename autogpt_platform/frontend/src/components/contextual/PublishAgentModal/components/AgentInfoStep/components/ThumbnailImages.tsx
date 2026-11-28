@@ -51,7 +51,7 @@ export function ThumbnailImages({
     <div className="space-y-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <Text variant="body-medium" as="h3">
+          <Text variant="body" weight="medium" as="h3">
             Media
           </Text>
           <Text variant="small" as="span" tone="muted">
@@ -63,7 +63,7 @@ export function ThumbnailImages({
           thumbnail.
         </Text>
         {errorMessage && (
-          <Text variant="body-tight" tone="error">
+          <Text variant="body" leading="5" tone="error">
             {errorMessage}
           </Text>
         )}
@@ -71,7 +71,7 @@ export function ThumbnailImages({
 
       <div
         ref={thumbnailsContainerRef}
-        className="relative z-10 flex flex-col gap-3"
+        className="relative z-raised flex flex-col gap-3"
       >
         {images.length === 0 ? (
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -80,7 +80,7 @@ export function ThumbnailImages({
               aria-disabled={isUploading}
               data-testid="thumbnail-add-image-empty"
               className={cn(
-                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-foreground-body bg-transparent px-3 py-2 font-sans text-body leading-snug font-medium whitespace-nowrap text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
+                "inline-flex h-[2.25rem] min-w-[5.5rem] cursor-pointer items-center justify-center gap-1.5 rounded-pill border border-foreground-body bg-transparent px-3 py-2 font-sans text-body leading-snug font-medium whitespace-nowrap text-foreground-base transition-colors hover:border-foreground-body hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none",
                 isUploading && "pointer-events-none opacity-60",
               )}
             >
@@ -143,7 +143,7 @@ export function ThumbnailImages({
                       e.stopPropagation();
                       handleRemoveImage(index);
                     }}
-                    className="absolute top-1.5 right-1.5 z-30 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
+                    className="absolute top-1.5 right-1.5 z-floating inline-flex size-7 cursor-pointer items-center justify-center rounded-pill bg-action-hover/85 text-action-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-action-hover"
                     aria-label={`Remove image ${index + 1}`}
                     data-testid={`thumbnail-remove-${index}`}
                   >

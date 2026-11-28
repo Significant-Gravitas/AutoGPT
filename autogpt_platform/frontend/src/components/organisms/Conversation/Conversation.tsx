@@ -67,11 +67,17 @@ export const ConversationEmptyState = ({
       <>
         {icon && <div className="text-foreground-tertiary">{icon}</div>}
         <div className="space-y-1">
-          <Text variant="body-medium-tight" tone="inherit" as="h3">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            tone="inherit"
+            as="h3"
+          >
             {title}
           </Text>
           {description && (
-            <Text variant="body-tight" as="p" tone="muted">
+            <Text variant="body" leading="5" as="p" tone="muted">
               {description}
             </Text>
           )}
@@ -98,7 +104,7 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full [@media(pointer:coarse)]:size-10",
+          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-pill [@media(pointer:coarse)]:size-10",
           className,
         )}
         onClick={handleScrollToBottom}

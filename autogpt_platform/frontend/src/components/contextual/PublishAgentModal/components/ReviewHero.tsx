@@ -6,6 +6,10 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Confetti } from "@/components/molecules/Confetti/Confetti";
 import { cn } from "@/lib/utils";
 import type { IconSvgElement } from "@hugeicons/react";
+import { duration, ease, spring } from "@/components/styles/motion";
+
+// The rings that pulse out from the icon: an effect, not a UI transition.
+const RING_PULSE_DURATION = 1.6;
 
 interface Hero {
   title: string;
@@ -50,7 +54,7 @@ export function ReviewHero({
               initial={{ opacity: 0.5, scale: 0.6 }}
               animate={{ opacity: 0, scale: 1.6 }}
               transition={{
-                duration: 1.6,
+                duration: RING_PULSE_DURATION,
                 ease: "easeOut",
                 repeat: 3,
                 repeatDelay: 0.4,
@@ -65,7 +69,7 @@ export function ReviewHero({
               initial={{ opacity: 0.4, scale: 0.7 }}
               animate={{ opacity: 0, scale: 1.4 }}
               transition={{
-                duration: 1.6,
+                duration: RING_PULSE_DURATION,
                 ease: "easeOut",
                 repeat: 3,
                 repeatDelay: 0.4,
@@ -86,11 +90,10 @@ export function ReviewHero({
           transition={
             shouldReduceMotion
               ? { duration: 0 }
-              : { type: "spring", stiffness: 280, damping: 20, delay: 0.05 }
+              : { type: "spring", ...spring.gentle, delay: 0.05 }
           }
           className={cn(
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- brand-tinted glow, no shadow token for it
-            "relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br shadow-[0_8px_24px_-8px_rgba(119,51,245,0.45)]",
+            "relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br shadow-drop shadow-brand/45",
             hero.gradient,
           )}
         >
@@ -108,12 +111,11 @@ export function ReviewHero({
                 ? { duration: 0 }
                 : {
                     type: "spring",
-                    stiffness: 360,
-                    damping: 18,
+                    ...spring.gentle,
                     delay: 0.18,
                   }
             }
-            className="text-action-foreground"
+            className="text-foreground-on-color"
           >
             <Icon icon={hero.Icon} size={36} />
           </motion.span>
@@ -123,10 +125,15 @@ export function ReviewHero({
       <motion.div
         initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.24, ease: "easeOut", delay: 0.12 }}
+        transition={{ duration: duration.base, ease: ease.out, delay: 0.12 }}
         className="mt-5 flex max-w-md flex-col items-center gap-2 px-2 text-center"
       >
-        <Text variant="lead-medium" as="h2" data-testid="view-agent-name">
+        <Text
+          variant="lead"
+          weight="medium"
+          as="h2"
+          data-testid="view-agent-name"
+        >
           {hero.title}
         </Text>
         <Text variant="body" tone="secondary">

@@ -42,7 +42,8 @@ export function WorkspaceFileRow({
         <span className="flex min-w-0 flex-col">
           <Text
             tone="primary"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             className="truncate"
           >

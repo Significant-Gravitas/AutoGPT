@@ -155,7 +155,10 @@ class _ScriptedAnthropic:
     """Fake Messages API: a main model that delegates once, and a sub-agent
     that takes a while to report."""
 
-    def __init__(self) -> None:
+    def __init__(self, agent_args: dict[str, Any] | None = None) -> None:
+        self.agent_args = agent_args or {}
+        self.main_model: str | None = None
+        self.subagent_model: str | None = None
         self.agent_tool_name: str | None = None
         self.subagent_started = asyncio.Event()
         self.subagent_report_sent = False
@@ -178,10 +181,12 @@ class _ScriptedAnthropic:
 
         if _SUBAGENT_PROMPT in first_user:
             self.subagent_started.set()
+            self.subagent_model = body.get("model")
             await asyncio.sleep(_SUBAGENT_WORK_SECONDS)
             await response.write(_text_stream(self._next_id(), _SUBAGENT_REPORT))
             self.subagent_report_sent = True
         elif _MAIN_USER_MARKER in first_user:
+            self.main_model = body.get("model")
             await response.write(self._main_turn(body, messages))
         else:
             # Side calls the CLI makes on its own (titles, summaries).
@@ -206,6 +211,7 @@ class _ScriptedAnthropic:
                     "description": "Find the magic word",
                     "prompt": _SUBAGENT_PROMPT,
                     "subagent_type": "general-purpose",
+                    **self.agent_args,
                 },
             )
         self.main_saw_tool_result = results[-1]
@@ -249,11 +255,15 @@ def _direct_anthropic_config() -> ChatConfig:
 
 
 async def run_copilot_style_turn(
-    cli_path: Path, workdir: Path
+    cli_path: Path,
+    workdir: Path,
+    model: str | None = None,
+    agent_args: dict[str, Any] | None = None,
 ) -> tuple[_ScriptedAnthropic, list[Any], list[str]]:
     """One turn with the copilot's client lifecycle; returns what the fake
-    API saw, the SDK messages up to the ``ResultMessage``, and CLI stderr."""
-    server = _ScriptedAnthropic()
+    API saw, the SDK messages up to the ``ResultMessage``, and CLI stderr.
+    *agent_args* are merged into the main model's Agent call."""
+    server = _ScriptedAnthropic(agent_args)
     runner, port = await _start(server)
     stderr_lines: list[str] = []
     received: list[Any] = []
@@ -273,6 +283,7 @@ async def run_copilot_style_turn(
             setting_sources=[],
             allowed_tools=["Task", "Agent"],
             cwd=str(workdir),
+            model=model,
             max_turns=5,
             env=env,
             stderr=stderr_lines.append,
@@ -335,3 +346,33 @@ async def test_subagent_report_reaches_the_turn_that_started_it(tmp_path):
     )
     assert server.subagent_report_sent
     assert _REPLY_WITH_REPORT in _reply_text(received)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "agent_args",
+    [
+        pytest.param({"model": "opus"}, id="tool-argument"),
+        pytest.param({"subagent_type": "statusline-setup"}, id="agent-type-default"),
+    ],
+)
+async def test_subagent_runs_on_the_turns_model(tmp_path, agent_args):
+    """A sub-agent requests the turn's model, whatever model its Agent call or
+    its agent type (``statusline-setup`` names ``sonnet``) asks for."""
+    cli_path = _resolve_cli_path()
+    if cli_path is None or not cli_path.is_file():
+        pytest.skip("No Claude Code CLI binary available")
+
+    server, _, stderr = await run_copilot_style_turn(
+        cli_path, tmp_path, model="claude-haiku-4-5", agent_args=agent_args
+    )
+
+    assert (
+        server.subagent_started.is_set()
+    ), f"The sub-agent never made a call; stderr tail: {stderr[-20:]!r}"
+    assert server.main_model == "claude-haiku-4-5"
+    assert server.subagent_model == server.main_model, (
+        f"The sub-agent ran on {server.subagent_model!r}, not the turn's model; "
+        "build_sdk_env() must set CLAUDE_CODE_SUBAGENT_MODEL=inherit and "
+        "CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1."
+    )

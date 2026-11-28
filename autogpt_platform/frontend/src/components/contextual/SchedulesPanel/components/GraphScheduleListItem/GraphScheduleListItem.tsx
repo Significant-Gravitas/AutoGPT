@@ -86,7 +86,8 @@ export function GraphScheduleListItem({
         </div>
         <div className="flex min-w-0 flex-col gap-1">
           <Text
-            variant={textSize === "body-md" ? "body-md-medium" : "body-medium"}
+            variant={textSize === "body-md" ? "body-md" : "body"}
+            weight="medium"
             className="block w-full truncate text-ellipsis"
           >
             {agentLabel}
@@ -104,7 +105,7 @@ export function GraphScheduleListItem({
               className="flex rounded-md bg-success-surface px-2 py-0.5"
               data-testid="schedule-kind-badge"
             >
-              <Text variant="small-tight" as="span" tone="success-strong">
+              <Text variant="small" leading="4" as="span" tone="success-strong">
                 Workflow run
               </Text>
             </span>
@@ -150,7 +151,7 @@ export function GraphScheduleListItem({
                 <Icon icon={Calendar03Icon} size={20} tone="success-strong" />
               </div>
               <div className="min-w-0">
-                <Text variant="body-medium" className="truncate">
+                <Text variant="body" weight="medium" className="truncate">
                   {agentLabel}
                 </Text>
                 <Text variant="small" tone="muted">
@@ -230,7 +231,11 @@ function ScheduleMetaRow({
       </dt>
       <Text
         as="dd"
-        variant={mono ? "small-mono-tight-tracking" : "body-sm-medium-inherit"}
+        variant={mono ? "small" : "body-sm"}
+        mono={mono}
+        weight={mono ? undefined : "medium"}
+        leading={mono ? "4" : "inherit"}
+        tracking={mono ? "tight" : undefined}
         tone={mono ? "secondary" : "emphasis"}
         className="min-w-0 truncate text-right"
         title={title ?? value}

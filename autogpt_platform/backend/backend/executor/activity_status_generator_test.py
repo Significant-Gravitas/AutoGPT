@@ -3,7 +3,7 @@ Tests for activity status generator functionality.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +16,9 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
+    _MAX_EXECUTION_DATA_CHARS,
+    _MAX_GRAPH_NAME_CHARS,
+    DEFAULT_USER_PROMPT,
     _build_execution_summary,
     _get_deterministic_failure_response,
     generate_activity_status_for_execution,
@@ -943,6 +946,94 @@ class TestGenerateActivityStatusForExecution:
             assert result["activity_status"] == "Agent completed execution."
             assert result["correctness_score"] == 0.8
             create_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_prompt_stays_bounded_whatever_the_run_holds(mock_blocks):
+    def node_exec(index: int, block_id: str, **data: Any) -> NodeExecutionResult:
+        return NodeExecutionResult(
+            user_id="test_user",
+            graph_id="test_graph",
+            graph_version=1,
+            graph_exec_id="test_exec",
+            node_exec_id=f"exec-{index:04d}",
+            node_id=f"node-{index:04d}",
+            block_id=block_id,
+            add_time=datetime.now(UTC),
+            queue_time=None,
+            start_time=None,
+            end_time=None,
+            **data,
+        )
+
+    note = "x" * 100_000
+    input_block, process_block, output_block = list(mock_blocks)[:3]
+    node_executions = [
+        node_exec(
+            0,
+            input_block,
+            status=ExecutionStatus.COMPLETED,
+            input_data={"value": note},
+            output_data={"result": [note]},
+        ),
+        *(
+            node_exec(
+                i,
+                process_block,
+                status=ExecutionStatus.FAILED,
+                input_data={},
+                output_data={"error": ["e" * 50_000]},
+            )
+            for i in range(1, 61)
+        ),
+        node_exec(
+            61,
+            output_block,
+            status=ExecutionStatus.COMPLETED,
+            input_data={"value": note},
+            output_data={"output": [note]},
+        ),
+    ]
+    db_client = AsyncMock()
+    db_client.get_node_executions.return_value = node_executions
+    metadata = MagicMock()
+    metadata.name = "{{EXECUTION_DATA}}" * 600
+    metadata.description = "d" * 50_000
+    db_client.get_graph_metadata.return_value = metadata
+    db_client.get_graph.return_value = None
+    client, create_mock = _make_client(
+        _make_completion(
+            content=json.dumps({"activity_status": "Done.", "correctness_score": 0.5}),
+            usage=_make_usage(),
+        )
+    )
+
+    with (
+        patch(
+            "backend.executor.activity_status_generator.get_block",
+            side_effect=mock_blocks.get,
+        ),
+        patch(
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=client,
+        ),
+    ):
+        await generate_activity_status_for_execution(
+            graph_exec_id="test_exec",
+            graph_id="test_graph",
+            graph_version=1,
+            execution_stats=GraphExecutionStats(error="g" * 50_000),
+            db_client=db_client,
+            user_id="test_user",
+        )
+
+    prompt = create_mock.await_args.kwargs["messages"][1]["content"]
+    assert len(prompt) <= (
+        len(DEFAULT_USER_PROMPT) + _MAX_GRAPH_NAME_CHARS + _MAX_EXECUTION_DATA_CHARS
+    )
+    assert prompt.count('"graph_execution_status"') == 1
+    for long_run in ("x" * 2_001, "e" * 1_001, "d" * 2_001, "g" * 1_001):
+        assert long_run not in prompt
 
 
 class TestIntegration:

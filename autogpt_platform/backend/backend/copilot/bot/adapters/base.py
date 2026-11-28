@@ -565,6 +565,12 @@ class WebhookAdapter(PlatformAdapter):
         """
         ...
 
+    async def on_startup(self) -> None:
+        """One-off work once the main backend API has started, such as
+        publishing a command menu. Runs off the boot path and best-effort: a
+        raise is logged, never fatal. Default: nothing.
+        """
+
 
 async def read_verified_webhook_body(
     request: Request, verify: Callable[[Request, bytes], bool]

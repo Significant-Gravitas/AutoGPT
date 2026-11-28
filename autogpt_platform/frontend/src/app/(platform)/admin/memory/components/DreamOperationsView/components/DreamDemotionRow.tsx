@@ -11,7 +11,7 @@ export function DreamDemotionRow({ item }: Props) {
   return (
     <li className="border-l-2 border-warning-border py-1.5 pl-3">
       <div className="flex items-start justify-between gap-2">
-        <Text variant="small-medium" className="break-words">
+        <Text variant="small" weight="medium" className="break-words">
           {item.reason}
         </Text>
         <Badge

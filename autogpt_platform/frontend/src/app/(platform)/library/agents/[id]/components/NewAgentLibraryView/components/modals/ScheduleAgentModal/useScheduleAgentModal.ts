@@ -11,6 +11,7 @@ import {
 } from "@/services/schedules/schedule-create-key";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
+import { defaultScheduleNameFor } from "./components/ModalScheduleSection/helpers";
 
 interface UseScheduleAgentModalCallbacks {
   onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
@@ -27,7 +28,10 @@ export function useScheduleAgentModal(
   const queryClient = useQueryClient();
   const userId = useAuthStore((state) => state.user?.id);
 
-  const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
+  const defaultScheduleName = useMemo(
+    () => defaultScheduleNameFor(agent.name),
+    [agent.name],
+  );
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",

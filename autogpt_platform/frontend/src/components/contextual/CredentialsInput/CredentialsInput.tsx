@@ -39,6 +39,8 @@ type Props = {
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
   isOptional?: boolean;
+  /** Whether an empty field picks its only saved key itself. */
+  autoSelect?: boolean;
   showTitle?: boolean;
   variant?: "default" | "node";
 };
@@ -52,6 +54,7 @@ export function CredentialsInput({
   onLoaded,
   readOnly = false,
   isOptional = false,
+  autoSelect = true,
   showTitle = true,
   variant = "default",
 }: Props) {
@@ -63,6 +66,7 @@ export function CredentialsInput({
     onLoaded,
     readOnly,
     isOptional,
+    autoSelect,
   });
   const [isConnectDialogOpen, setConnectDialogOpen] = useState(false);
   // The builder node keeps its per-type action flow; everywhere else goes
@@ -111,6 +115,7 @@ export function CredentialsInput({
     setCredentialToDelete,
     isDeletingCredential,
     handleCredentialChange,
+    handleClearCredential,
   } = hookData;
 
   const displayName = toDisplayName(provider);
@@ -130,9 +135,10 @@ export function CredentialsInput({
         provider={provider}
         displayName={displayName}
         credentials={allCredentials}
+        allProviderCredentials={hookData.allProviderCredentials}
         selectedCredential={selectedCredential}
         onSelectCredential={handleCredentialSelect}
-        onClearCredential={() => handleCredentialChange(undefined)}
+        onClearCredential={handleClearCredential}
         onAddCredential={
           usesConnectDialog
             ? () => setConnectDialogOpen(true)

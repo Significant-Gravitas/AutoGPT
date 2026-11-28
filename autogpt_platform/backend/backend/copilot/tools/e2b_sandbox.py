@@ -357,6 +357,15 @@ class SandboxNotOwnedError(Exception):
     """A sandbox id resolved to a box that is not the owner's."""
 
 
+class SandboxUnavailableError(Exception):
+    """A turn's sandbox could not be set up.  The message is written for the user."""
+
+    code = "sandbox_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__("Your sandbox could not be started. Please try again.")
+
+
 async def connect_owned(
     sandbox_id: str,
     owner: SandboxOwner,

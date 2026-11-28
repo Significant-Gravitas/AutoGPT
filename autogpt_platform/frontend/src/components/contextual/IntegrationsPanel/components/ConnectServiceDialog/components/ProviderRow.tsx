@@ -35,7 +35,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
       </span>
       <span
         aria-hidden
-        className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-foreground-body text-action-foreground transition-transform group-hover:bg-action group-active:scale-[0.96]"
+        className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-fill-bold text-foreground-inverse transition-transform group-hover:bg-action group-active:scale-[0.96]"
       >
         <Icon icon={PlusSignIcon} size={18} />
       </span>

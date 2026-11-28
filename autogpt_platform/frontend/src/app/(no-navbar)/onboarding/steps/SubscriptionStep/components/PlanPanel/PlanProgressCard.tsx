@@ -19,7 +19,8 @@ export function PlanProgressCard({ progress }: Props) {
         <li key={step.label} className="flex items-center gap-2.5">
           <ChecklistMark key={step.state} state={step.state} />
           <Text
-            variant={step.state === "active" ? "body-medium" : "body"}
+            variant="body"
+            weight={step.state === "active" ? "medium" : undefined}
             as="span"
             tone={step.state === "pending" ? "muted" : undefined}
           >

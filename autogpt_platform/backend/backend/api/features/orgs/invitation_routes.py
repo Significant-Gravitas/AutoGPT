@@ -6,9 +6,10 @@ from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
 from autogpt_libs.auth.models import RequestContext
-from autogpt_libs.auth.permissions import OrgAction
+from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 from prisma.errors import UniqueViolationError
+from prisma.models import OrgInvitation
 
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
@@ -21,6 +22,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 INVITATION_TTL_DAYS = 7
+
+# A personal organization bills only its owner, so a member could join one but
+# never run anything there.
+PERSONAL_ORG_INVITE_REFUSED = (
+    "A personal organization has a single member. Create a team "
+    "organization, or convert this one, to invite people."
+)
+PERSONAL_ORG_JOIN_REFUSED = (
+    "This invitation is to a personal organization, which has a single "
+    "member. Ask the sender to invite you to a team organization."
+)
+BILLING_INVITE_LAPSED = (
+    "The sender of this invitation can no longer make you a billing manager. "
+    "Ask an owner to invite you again."
+)
 
 
 def _verify_org_path(ctx: RequestContext, org_id: str) -> None:
@@ -48,6 +64,16 @@ async def create_invitation(
     ],
 ) -> InvitationCreateResponse:
     _verify_org_path(ctx, org_id)
+    if request.is_billing_manager and not check_org_permission(
+        ctx, OrgAction.MANAGE_BILLING
+    ):
+        raise HTTPException(
+            403, detail=f"Missing org permission: {OrgAction.MANAGE_BILLING.value}"
+        )
+
+    org = await prisma.organization.find_unique(where={"id": org_id})
+    if org is not None and org.isPersonal:
+        raise HTTPException(409, detail=PERSONAL_ORG_INVITE_REFUSED)
 
     # Reject team IDs outside this org at create time. The accept path's
     # add_team_member re-validates (and silently skips failures), so
@@ -172,6 +198,13 @@ async def accept_invitation(
             detail="This invitation was sent to a different email address",
         )
 
+    # Left pending, not revoked: it can be accepted if the owner converts the
+    # org to a team.
+    if invitation.Org.isPersonal:
+        raise HTTPException(409, detail=PERSONAL_ORG_JOIN_REFUSED)
+    if invitation.isBillingManager and not await _inviter_may_grant_billing(invitation):
+        raise HTTPException(409, detail=BILLING_INVITE_LAPSED)
+
     # Add user to org (idempotent — handles race condition from concurrent accepts)
     try:
         await org_db.add_org_member(
@@ -230,6 +263,18 @@ async def accept_invitation(
     )
 
     return {"orgId": invitation.orgId, "message": "Invitation accepted"}
+
+
+async def _inviter_may_grant_billing(invitation: OrgInvitation) -> bool:
+    """Whether the invitation's sender holds MANAGE_BILLING in its org right now."""
+    inviter = await prisma.orgmember.find_first(
+        where={
+            "orgId": invitation.orgId,
+            "userId": invitation.invitedByUserId,
+            "status": "ACTIVE",
+        }
+    )
+    return inviter is not None and (inviter.isOwner or inviter.isBillingManager)
 
 
 @router.post(

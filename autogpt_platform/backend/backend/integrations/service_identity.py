@@ -33,6 +33,9 @@ class ServiceIdentity(BaseModel):
     service: str
     name: str | None = None
     icon: str | None = None
+    # A skill names an MCP service by its catalog entry ("mcp_amplitude"),
+    # which a stored sign-in's provider ("mcp") never equals.
+    catalog_entry: str | None = None
 
 
 def catalog_slug(entry: MCPCatalogEntry) -> str:
@@ -54,6 +57,7 @@ def service_for_catalog_entry(entry: MCPCatalogEntry) -> ServiceIdentity:
         service=server.provider or catalog_slug(entry),
         name=entry.display_name,
         icon=server.icon_id,
+        catalog_entry=entry.name,
     )
 
 

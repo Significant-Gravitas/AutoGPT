@@ -1,0 +1,51 @@
+{
+  "description": "Asked to pause one of its schedules, an expert lists its schedules and pauses the one named \"Paused before letting go\", reading its id from the list. experts-journey.spec.ts follows it.",
+  "title": "Pause a schedule",
+  "turns": [
+    {
+      "text": "Let me find that schedule.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": { "id": "tool:list_schedules", "input": {} }
+        }
+      ],
+      "usage": {
+        "input_tokens": 3400,
+        "output_tokens": 30,
+        "cache_read_input_tokens": 22000,
+        "cache_creation_input_tokens": 1200
+      }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "Paused before letting go" }
+      ],
+      "text": "Found it. Pausing it now.",
+      "tool_calls": [
+        {
+          "name": "run_capability",
+          "input": {
+            "id": "tool:pause_schedule",
+            "input": {
+              "schedule_id": {
+                "$from_tool_result": {
+                  "tool": "run_capability",
+                  "pattern": "schedule_id\\W+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\W+kind\\W+graph\\W+name\\W+Paused before letting go"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "usage": { "input_tokens": 3700, "output_tokens": 40 }
+    },
+    {
+      "expect_tool_results": [
+        { "tool": "run_capability", "contains": "paused" }
+      ],
+      "text": "Done. That schedule is paused, and the other one keeps running.",
+      "usage": { "input_tokens": 3900, "output_tokens": 14 }
+    }
+  ]
+}

@@ -230,6 +230,31 @@ describe("getServerAuthToken", () => {
     expect(token).toBeNull();
   });
 
+  it("mints once more when the connection it reused had been dropped", async () => {
+    // What Node's fetch throws for a pooled connection that was reset; the
+    // proxy route's tests get the same error from a real server.
+    const reset = Object.assign(new Error("read ECONNRESET"), {
+      code: "ECONNRESET",
+    });
+    const jwt = makeJwt(3600);
+    getAllCookiesMock.mockReturnValue([
+      { name: "better-auth.session_token", value: "session-fresh" },
+    ]);
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("fetch failed", { cause: reset }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ token: jwt }), { status: 200 }),
+      );
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const getServerAuthToken = await importGetServerAuthToken();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBe(jwt);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
   it("throws a retryable 503 when the token fetch fails", async () => {
     getAllCookiesMock.mockReturnValue([
       { name: "better-auth.session_token", value: "session-network-error" },
@@ -241,6 +266,8 @@ describe("getServerAuthToken", () => {
       name: "AuthTokenUnavailableError",
       status: 503,
     });
+    // A failure with no dropped-connection cause isn't sent again.
+    expect(fetchMock).toHaveBeenCalledOnce();
     expect(captureExceptionMock).toHaveBeenCalledWith(expect.any(TypeError));
   });
 

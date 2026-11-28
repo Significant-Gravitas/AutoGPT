@@ -182,7 +182,7 @@ When blocks need to work with files (images, videos, documents), use `store_medi
 
 | Format | Use When | Returns |
 |--------|----------|---------|
-| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path (e.g., `"image.png"`) |
+| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path, in a folder of its own (e.g., `"3f2a…/image.png"`) |
 | `"for_external_api"` | Sending content to external APIs (Replicate, OpenAI) | Data URI (e.g., `"data:image/png;base64,..."`) |
 | `"for_block_output"` | Returning output from your block | Smart: `workspace://` in CoPilot, data URI in graphs |
 
@@ -195,7 +195,7 @@ local_path = await store_media_file(
     execution_context=execution_context,
     return_format="for_local_processing",
 )
-# local_path = "video.mp4" - use with Path/ffmpeg/etc
+# local_path = "3f2a…/video.mp4" - resolve it with get_exec_file_path; the file keeps its own name
 
 # INPUT: Need to send to external API like Replicate
 image_b64 = await store_media_file(

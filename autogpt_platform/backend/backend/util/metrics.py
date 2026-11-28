@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -37,12 +38,14 @@ from backend.util.url_redaction import (
     request_credentials,
 )
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 
 class DiscordChannel(str, Enum):
     PLATFORM = "platform"  # For platform/system alerts
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
+    SECURITY = "security"  # For security alerts
 
 
 _USER_AUTH_KEYWORDS = [
@@ -68,6 +71,11 @@ _AMQP_KEYWORDS = [
 ]
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
+
+# ``InternalKeyMiddleware`` logs a refused internal call under this name. Its
+# message holds the request path, which the caller picks, so the message
+# filters below skip it: a path like "/unauthorized" must not hide a refusal.
+_SERVICE_AUTH_LOGGER = "backend.util.service_auth"
 
 # Pika reconnect noise: `conn_retry` already handles these. Drop only the
 # four known signatures so genuine pika ERRORs (auth, declare failures) still
@@ -559,10 +567,30 @@ def _raised_from_graphiti_falkordb(exc_tb: TracebackType | None) -> bool:
     return False
 
 
+def _is_internal_service_auth_error(exc_value: BaseException | None) -> bool:
+    """True for the 401 our own RPC client raises when another backend service
+    refuses its internal key: a misconfigured deployment, not a user's bad
+    credentials, though its message says "Unauthorized".
+
+    Only ``backend.util.service.HTTPClientError`` carries it, and a service
+    answers 401 only from ``InternalKeyMiddleware``. Looked up in
+    ``sys.modules`` because that module imports this one; a process that never
+    loaded it cannot have raised one.
+    """
+    service = sys.modules.get("backend.util.service")
+    return (
+        service is not None
+        and isinstance(exc_value, service.HTTPClientError)
+        and getattr(exc_value, "status_code", None) == 401
+    )
+
+
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
+    internal_auth_error = False
     if "exc_info" in hint:
         exc_type, exc_value, exc_tb = hint["exc_info"]
+        internal_auth_error = _is_internal_service_auth_error(exc_value)
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
@@ -588,7 +616,7 @@ def _before_send(event, hint):
             return None
 
         # User-caused credential/auth/integration errors — not platform bugs
-        if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
+        if not internal_auth_error and any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
         # Expected business logic — exhausted wallet, or a plan that does
@@ -634,7 +662,7 @@ def _before_send(event, hint):
     if logger_name == _FALKORDB_DRIVER_LOGGER and log_msg:
         if any(sig in log_msg.lower() for sig in _FALKORDB_TEARDOWN_SIGNATURES):
             return None
-    if logger_name and log_msg:
+    if logger_name and log_msg and logger_name != _SERVICE_AUTH_LOGGER:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
@@ -647,7 +675,7 @@ def _before_send(event, hint):
         if "connection refused" in msg and any(ind in msg for ind in _AMQP_INDICATORS):
             return None
         # Same auth keywords — errors logged via logger.error() bypass exc_info
-        if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
+        if not internal_auth_error and any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
     _strip_user_pii(event)
@@ -834,10 +862,15 @@ async def discord_send_alert(
         channel_name = settings.config.platform_alert_discord_channel
     elif channel == DiscordChannel.PRODUCT:
         channel_name = settings.config.product_alert_discord_channel
+    elif channel == DiscordChannel.SECURITY:
+        channel_name = (
+            settings.config.security_alert_discord_channel
+            or settings.config.platform_alert_discord_channel
+        )
     else:
         channel_name = settings.config.platform_alert_discord_channel
 
-    return await SendDiscordMessageBlock().run_once(
+    status = await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
             credentials=CredentialsMetaInput(
                 id=creds.id,
@@ -851,3 +884,20 @@ async def discord_send_alert(
         "status",
         credentials=creds,
     )
+    # The block reports a failed send in its status rather than raising.
+    if status != "Message sent":
+        logger.error(
+            f"Discord alert to {channel_name!r} was not sent: {_unsent_reason(status)}"
+        )
+    return status
+
+
+def _unsent_reason(status: str) -> str:
+    """Fixed wording, not the block's status, which code scanning treats as secret."""
+    if status.startswith("Channel not found"):
+        return "channel not found"
+    if "cannot receive messages" in status:
+        return "not a text channel"
+    if "lacks permission" in status:
+        return "the bot lacks permission"
+    return "the send failed"

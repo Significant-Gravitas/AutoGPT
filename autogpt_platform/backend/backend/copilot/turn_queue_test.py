@@ -20,7 +20,7 @@ from backend.copilot import turn_queue
 from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.copilot.service import EmptyUserMessage
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext
@@ -1098,6 +1098,56 @@ async def test_unparseable_stored_permissions_read_the_sessions_current_ones() -
         assert await turn_queue.dispatch_next_for_user("u1") is True
 
     assert dispatched.await_args.kwargs["permissions"] == today
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "today, tools_left, web_requests_allowed",
+    [
+        (CopilotPermissions(tools=["web_search"], tools_exclude=False), set(), True),
+        (CopilotPermissions(blocks=["SendWebRequestBlock"]), {"web_fetch"}, False),
+    ],
+    ids=["no-shared-tool", "todays-block-filter"],
+)
+async def test_a_promoted_turn_runs_under_its_stored_and_current_filters(
+    today: CopilotPermissions,
+    tools_left: set[str],
+    web_requests_allowed: bool,
+) -> None:
+    """Both hold in the permissions the queue entry carries."""
+    head = _queued_row()
+    head.metadata.llm_auth_provider = "codex"
+    stored = {"tools": ["web_fetch"], "tools_exclude": False}
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={"permissions": stored})
+    )
+    dispatched = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "resolve_session_permissions", return_value=today),
+        patch("backend.copilot.executor.utils.dispatch_turn", new=dispatched),
+    ):
+        assert await turn_queue.dispatch_next_for_user("u1") is True
+
+    sent = CopilotPermissions.model_validate_json(
+        dispatched.await_args.kwargs["permissions"].model_dump_json()
+    )
+    assert sent.effective_allowed_tools(ALL_TOOL_NAMES) == tools_left
+    assert (
+        sent.is_block_allowed(
+            "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+        )
+        is web_requests_allowed
+    )
 
 
 @pytest.mark.asyncio

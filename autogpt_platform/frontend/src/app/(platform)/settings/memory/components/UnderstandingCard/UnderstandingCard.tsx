@@ -38,7 +38,7 @@ export function UnderstandingCard() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col">
-          <Text variant="body-medium" as="h2" id="understanding-title">
+          <Text variant="body" weight="medium" as="h2" id="understanding-title">
             What Otto knows about your work
           </Text>
           <Text variant="small" as="span" tone="muted">
@@ -87,7 +87,7 @@ export function UnderstandingCard() {
       <dl className="mt-2 flex flex-col divide-y divide-separator">
         {rows.map((row) => (
           <div key={row.label} className="flex flex-col gap-0.5 py-2">
-            <Text variant="small-medium" as="dt" tone="muted">
+            <Text variant="small" weight="medium" as="dt" tone="muted">
               {row.label}
             </Text>
             {row.values.map((value) => (

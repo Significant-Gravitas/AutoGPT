@@ -321,7 +321,9 @@ export function SchedulesTable({
                             <TableCell>
                               <div>{schedule.graph_name || "Unknown"}</div>
                               <Text
-                                variant="small-mono-tight"
+                                variant="small"
+                                mono
+                                leading="4"
                                 as="div"
                                 tone="muted"
                               >
@@ -350,7 +352,9 @@ export function SchedulesTable({
                                 title="Click to copy user ID"
                               >
                                 <Text
-                                  variant="small-mono-tight"
+                                  variant="small"
+                                  mono
+                                  leading="4"
                                   as="span"
                                   tone="inherit"
                                 >
@@ -368,7 +372,8 @@ export function SchedulesTable({
                                     {schedule.cron}
                                   </code>
                                   <Text
-                                    variant="small-tight"
+                                    variant="small"
+                                    leading="4"
                                     as="div"
                                     tone="muted"
                                   >
@@ -408,7 +413,7 @@ export function SchedulesTable({
 
               {totalPages > 1 && activeTab === "all" && (
                 <div className="mt-4 flex items-center justify-between">
-                  <Text variant="body-tight" as="div" tone="secondary">
+                  <Text variant="body" leading="5" as="div" tone="secondary">
                     Showing {(currentPage - 1) * pageSize + 1} to{" "}
                     {Math.min(currentPage * pageSize, total)} of {total}{" "}
                     schedules

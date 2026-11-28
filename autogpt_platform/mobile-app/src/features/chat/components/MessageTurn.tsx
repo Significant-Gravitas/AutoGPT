@@ -45,6 +45,7 @@ export function MessageTurn({ turn, sessionID, isLast, status, onSend, onLayout 
             <Pressable delayLongPress={350} onLongPress={handleLongPress}>
               <MessageBubble
                 message={message}
+                sessionID={sessionID}
                 isLive={isBusy && isFinal && message.role === "assistant"}
                 replyText={replyText}
                 isBusy={isBusy}

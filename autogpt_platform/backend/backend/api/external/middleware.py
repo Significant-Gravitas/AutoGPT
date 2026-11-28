@@ -14,7 +14,8 @@ from backend.api.external.auth_rate_limit import (
     enforce_api_key_validate_rate_limit,
     refund_api_key_validate_rate_limit,
 )
-from backend.api.features.orgs.db import is_active_member
+from backend.api.features.orgs.db import get_user_default_team, is_active_member
+from backend.data.api_activity import record_api_request
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -31,10 +32,15 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 _REQUEST_AUTH = "external_api_auth"
+_REQUEST_COUNTED = "external_api_request_counted"
 
 FORMER_MEMBER_DETAIL = (
     "These credentials belong to an organization or team you are not an active "
     "member of"
+)
+NO_ORGANIZATION_DETAIL = (
+    "No organization context available. Your account may be in an inconsistent "
+    "state — please contact support."
 )
 
 # How long a membership answer is reused. Nearly every key names an
@@ -139,6 +145,8 @@ async def resolve_request_auth(
             detail=verified.rejection.detail,
             headers=verified.rejection.headers,
         )
+    if verified.auth is not None:
+        _count_request(scope, verified.auth)
     return verified.auth
 
 
@@ -211,6 +219,15 @@ async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
     return await is_user_banned(auth.user_id)
 
 
+def _count_request(scope: Scope, auth: APIAuthorizationInfo) -> None:
+    """Counts toward the daily report of what accounts without a plan did, once
+    per request: the rate limiter and the route each ask for the caller."""
+    state = scope.setdefault("state", {})
+    if not state.get(_REQUEST_COUNTED):
+        state[_REQUEST_COUNTED] = True
+        record_api_request(auth.user_id, "external")
+
+
 async def _refuse_former_member(auth: APIAuthorizationInfo) -> None:
     """Refuse a credential issued in an organization or team its owner has left.
 
@@ -270,22 +287,33 @@ def require_resource_permission(*permissions: APIKeyPermission):
     The web app holds these to the caller's role there: a membership whose only
     role is billing manager covers spend, not workflows and runs. A credential
     that names no organization acts in its owner's personal organization, which
-    its owner owns.
+    its owner owns, so the route gets it bound to that organization's home.
     """
     check_permissions = require_permission(*permissions)
 
     async def check_resource_role(
         auth: APIAuthorizationInfo = Security(check_permissions),
     ) -> APIAuthorizationInfo:
-        if auth.organization_id and (
-            reason := await resource_role_refusal(
-                auth.user_id, auth.organization_id, auth.team_id_restriction
-            )
+        if not auth.organization_id:
+            return await _in_personal_organization(auth)
+        if reason := await resource_role_refusal(
+            auth.user_id, auth.organization_id, auth.team_id_restriction
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
         return auth
 
     return check_resource_role
+
+
+async def _in_personal_organization(
+    auth: APIAuthorizationInfo,
+) -> APIAuthorizationInfo:
+    organization_id, _ = await get_user_default_team(auth.user_id)
+    if organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=NO_ORGANIZATION_DETAIL
+        )
+    return auth.model_copy(update={"organization_id": organization_id})
 
 
 def add_auth_responses_to_openapi(app: FastAPI) -> None:

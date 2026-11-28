@@ -35,7 +35,7 @@ export function TransactionReceipt({
       aria-label={`${activityName(transaction)} credit receipt`}
       className="mx-2 mb-3 rounded-medium border border-separator bg-surface-muted p-3 sm:mx-4 sm:p-5"
     >
-      <Text variant="body-medium" as="h3">
+      <Text variant="body" weight="medium" as="h3">
         {heading}
       </Text>
       <ReceiptBreakdown transaction={transaction} />
