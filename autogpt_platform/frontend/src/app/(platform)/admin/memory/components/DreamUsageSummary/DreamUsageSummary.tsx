@@ -39,7 +39,7 @@ export function DreamUsageSummary({ usage }: Props) {
           <span className="flex text-foreground-tertiary">
             <Icon icon={Coins01Icon} size={14} />
           </span>
-          <Text variant="small-medium" as="span">
+          <Text variant="small" weight="medium" as="span">
             total: {formatCost(usage.total_cost_usd)}
           </Text>
           {discount > 0 ? (

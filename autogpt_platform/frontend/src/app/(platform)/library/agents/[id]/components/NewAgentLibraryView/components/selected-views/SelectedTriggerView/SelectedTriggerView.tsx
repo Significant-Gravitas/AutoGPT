@@ -24,7 +24,6 @@ interface Props {
   agent: LibraryAgent;
   triggerId: string;
   onClearSelectedRun?: () => void;
-  onSwitchToRunsTab?: () => void;
   banner?: React.ReactNode;
 }
 
@@ -32,7 +31,6 @@ export function SelectedTriggerView({
   agent,
   triggerId,
   onClearSelectedRun,
-  onSwitchToRunsTab,
   banner,
 }: Props) {
   const {
@@ -54,6 +52,8 @@ export function SelectedTriggerView({
   } = useSelectedTriggerView({
     triggerId,
     graphId: agent.graph_id,
+    inputSchema: agent.input_schema,
+    triggerConfigSchema: agent.trigger_setup_info?.config_schema,
   });
 
   const agentInputFields = getAgentInputFields(agent);
@@ -208,7 +208,6 @@ export function SelectedTriggerView({
             onDeleted={onClearSelectedRun}
             onSaveChanges={handleSaveChanges}
             isSaving={isSaving}
-            onSwitchToRunsTab={onSwitchToRunsTab}
           />
         </div>
       ) : null}

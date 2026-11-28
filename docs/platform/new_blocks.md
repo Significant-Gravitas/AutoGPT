@@ -138,7 +138,7 @@ from backend.util.type import MediaFileType
 
 | Format | Use When | Returns |
 |--------|----------|---------|
-| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path (e.g., `"image.png"`) |
+| `"for_local_processing"` | Processing with local tools (ffmpeg, MoviePy, PIL) | Local file path, in a folder of its own (e.g., `"3f2a…/image.png"`) |
 | `"for_external_api"` | Sending content to external APIs (Replicate, OpenAI) | Data URI (e.g., `"data:image/png;base64,..."`) |
 | `"for_block_output"` | Returning output from your block | Smart: `workspace://` in CoPilot, data URI in graphs |
 
@@ -158,7 +158,7 @@ async def run(
         execution_context=execution_context,
         return_format="for_local_processing",
     )
-    # local_path = "video.mp4" - use with Path, ffmpeg, subprocess, etc.
+    # local_path = "3f2a…/video.mp4" - the file keeps its own name; use with Path, ffmpeg, subprocess, etc.
     full_path = get_exec_file_path(execution_context.graph_exec_id, local_path)
 
     # EXTERNAL API: Need to send content to an API like Replicate

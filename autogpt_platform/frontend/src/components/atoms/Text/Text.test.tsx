@@ -52,7 +52,7 @@ describe("Text tone and eyebrow", () => {
 describe("Text modifier props", () => {
   it("replaces the variant's weight", () => {
     render(
-      <Text variant="body-medium" weight="semibold">
+      <Text variant="h4" weight="semibold">
         Weighted
       </Text>,
     );
@@ -82,6 +82,9 @@ describe("Text modifier props", () => {
     [{ transform: "none" as const }, "normal-case"],
     [{ align: "center" as const }, "text-center"],
     [{ tracking: "caps" as const }, "tracking-caps"],
+    [{ leading: "5" as const }, "leading-5"],
+    [{ leading: "inherit" as const }, "leading-inherit"],
+    [{ leading: "snug" as const }, "leading-snug"],
     [{ motion: "colors" as const }, "transition-colors"],
   ])("renders %o as %s", (props, expected) => {
     render(
@@ -91,6 +94,34 @@ describe("Text modifier props", () => {
     );
     expect(screen.getByText("Modified").className.split(" ")).toContain(
       expected,
+    );
+  });
+
+  it("replaces the variant's line height", () => {
+    render(
+      <Text variant="h5" leading="8">
+        Leading
+      </Text>,
+    );
+    const classes = screen.getByText("Leading").className.split(" ");
+    expect(classes).toContain("leading-8");
+    expect(classes).not.toContain("leading-6");
+  });
+
+  it("steps up below md with narrowSize and keeps the base size", () => {
+    render(
+      <Text variant="small" leading="4" narrowSize="body">
+        Narrow
+      </Text>,
+    );
+    const classes = screen.getByText("Narrow").className.split(" ");
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "text-caption",
+        "leading-4",
+        "max-md:text-body",
+        "max-md:leading-5",
+      ]),
     );
   });
 

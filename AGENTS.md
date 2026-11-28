@@ -45,6 +45,7 @@ The full system (projects, quarters, areas) lives in the team's Notion page "Lin
 - `autogpt_platform/autogpt_libs` – Shared Python libraries.
 - `autogpt_platform/frontend` – Next.js + Typescript frontend.
 - `autogpt_platform/docker-compose.yml` – development stack.
+- `local_executor/` – the Local PC companion (`autogpt-shim`), a standalone MIT-licensed package with its own tooling. See `local_executor/AGENTS.md`.
 
 See `docs/platform/getting-started.md` for setup instructions.
 
@@ -62,6 +63,8 @@ See `docs/AGENTS.md` before adding a document.
 
 ## Frontend guidelines:
 
+**Design system, for every UI change:** before you add or change a component, page or style, read `autogpt_platform/frontend/DESIGN.md` and follow it. It says which colour role, `Text` variant, `Button` props, radius, shadow, layer and motion token to use for each need. Never write a design value at a call site (a hex or `rgb()` colour, a pixel radius, a hand-written shadow, a raw `z-index`, a cubic-bezier, a font size): name a token, or add one as that page describes. `pnpm lint` enforces this through the `design-system/*` rules; never raise the baseline or add a suppression to get past one.
+
 See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 
 1. **Pages**: Create in `src/app/(platform)/feature-name/page.tsx`
@@ -73,7 +76,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
-4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only (through the `Icon` atom)
+4. **Styling**: Tailwind CSS only, use design tokens, Hugeicons only (through the `Icon` atom); the tokens to use and the rules to follow are in `autogpt_platform/frontend/DESIGN.md`
 5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 7. **Keyboard handling**: Use `isKey(e, "Enter")` (or `isKey(e, "Enter", " ")`) from `@/lib/keyboard` instead of comparing `e.key`. It returns false while an IME is composing (Japanese, Chinese, Korean input), when Enter/Space/arrows belong to the input method, not the app. The `Input` atom drops composing keydowns before calling `onKeyDown` as a safety net; every handler on a raw `<input>`/`<textarea>`, a container, or `document` must use `isKey` itself. That atom-level guard is deliberately unconditional, so a modifier chord wired through `<Input onKeyDown>` is dropped mid-composition too — handle chords outside the atom. For focus traps and other containment handlers, which must keep holding a key even while composing, use `isKeyIgnoringComposition`. ESLint (`no-restricted-syntax`) flags direct `.key` comparisons and switches against the IME key names only; `// eslint-disable-next-line no-restricted-syntax` is the escape hatch for a domain object that merely has a `.key` field (e.g. `column.key === "Delete"`). Modifier chords like Cmd+K, `.key.toLowerCase()` and `[...].includes(e.key)` are not checked and are out of scope, since an IME never owns them. Passing `e.key` on as a function argument (e.g. into a roving-focus helper) is also invisible to the rule — guard those handlers with `isComposingEvent(e)` at the top.

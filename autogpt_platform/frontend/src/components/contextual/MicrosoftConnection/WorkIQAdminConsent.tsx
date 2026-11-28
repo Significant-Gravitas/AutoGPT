@@ -15,7 +15,7 @@ export function WorkIQAdminConsent({ tenantID, onRetry }: Props) {
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border-base p-4">
-      <Text as="h3" variant="body-medium">
+      <Text as="h3" variant="body" weight="medium">
         Set up Work IQ for your organization
       </Text>
       <Text variant="small" tone="muted">

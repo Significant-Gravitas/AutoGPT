@@ -53,10 +53,11 @@ from backend.copilot.background_delivery import (
 from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.computer import (
     ComputerInfo,
+    DesktopRefused,
     computer_owner,
     describe_computer,
     mounts_for,
-    open_desktop,
+    open_desktop_from_ui,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.credential_selection import (
@@ -146,6 +147,7 @@ from backend.copilot.rate_limit import (
     release_reset_lock,
     reset_daily_usage,
 )
+from backend.copilot.reply_timing import is_answer_text, is_model_output
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
@@ -228,7 +230,6 @@ from backend.copilot.transports import (
     save_default_chat_route,
 )
 from backend.copilot.trial_reads import sharing_trial_reads
-from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.db_accessors import background_task_db
 from backend.data.redis_client import get_redis_async
@@ -1549,7 +1550,7 @@ async def get_session_computer(
     responses={
         404: {"description": "Session not found or access denied"},
         409: {"description": "The chat runs on a Local PC, not in a cloud box"},
-        429: {"description": "Too many sandboxes are running"},
+        429: {"description": "Usage allowance spent, or too many sandboxes running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1580,14 +1581,14 @@ async def start_session_desktop(
             status_code=503, detail="E2B is not configured on this deployment."
         )
     try:
-        stream, _created, _shared = await open_desktop(
+        stream, _created, _shared = await open_desktop_from_ui(
             computer_owner(session_id, session.expert_id),
             mounts_for(user_id, session.expert_id),
             api_key,
             user_id=user_id,
             session_id=session_id,
         )
-    except SandboxLimitError as refusal:
+    except (DesktopRefused, SandboxLimitError) as refusal:
         raise HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
@@ -2857,6 +2858,7 @@ async def stream_chat_post(
         subscriber_queue = None
         first_chunk_yielded = False
         first_token_yielded = False
+        first_text_yielded = False
         chunks_yielded = 0
         try:
             # Subscribe from the position we captured before enqueuing
@@ -2901,12 +2903,19 @@ async def stream_chat_post(
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )
-                    if not first_token_yielded and isinstance(
-                        chunk, MODEL_OUTPUT_CHUNKS
-                    ):
+                    if not first_token_yielded and is_model_output(chunk):
                         first_token_yielded = True
                         tracing.set_timing(
                             "copilot.stream.ttft_ms",
+                            (time_module.perf_counter() - stream_start_time) * 1000,
+                            span=stream_transaction,
+                        )
+                    # Reasoning and tool calls count as the first token; the
+                    # answer starts with the first text the model wrote.
+                    if not first_text_yielded and is_answer_text(chunk):
+                        first_text_yielded = True
+                        tracing.set_timing(
+                            "copilot.stream.first_text_ms",
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )

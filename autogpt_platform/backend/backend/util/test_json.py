@@ -1,23 +1,36 @@
 import datetime
+import decimal
+import enum
 import gc
+import itertools
+import pathlib
 import threading
 import urllib.request
-from collections import OrderedDict
+import uuid
+from collections import OrderedDict, deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, cast
 
 import jsonschema
 import numpy as np
+import orjson
 import pytest
 import referencing.exceptions
 from prisma import Json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pydantic.dataclasses import dataclass
 
+from backend.blocks._base import BlockSchemaOutput
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.slack.blocks import SendSlackMessageBlock
 from backend.integrations.providers import ProviderName
 from backend.util import json as json_util
-from backend.util.json import SafeJson, validate_with_jsonschema
+from backend.util.json import (
+    SafeJson,
+    describe_validation_error,
+    sanitize_string,
+    validate_with_jsonschema,
+)
 
 
 class SamplePydanticModel(BaseModel):
@@ -773,6 +786,110 @@ class TestSafeJson:
         assert nested_metadata == "NestedValueDelete"
 
 
+class _Colour(enum.Enum):
+    RED = "red"
+
+
+class _Size(enum.IntEnum):
+    LARGE = 3
+
+
+class _Mode(str, enum.Enum):
+    FAST = "fast"
+
+
+@dataclass
+class _Point:
+    x: int
+    _label: str = "p"
+
+
+class _Aliased(BaseModel):
+    value: str = Field(alias="Value")
+    when: datetime.datetime
+
+
+_AT_ODD_OFFSET = datetime.datetime(
+    2026, 1, 2, 3, 4, 5, tzinfo=datetime.timezone(datetime.timedelta(seconds=3725))
+)
+
+# Values JSON has no type for, each converted the way `to_dict` converts it.
+_NON_JSON_VALUES = [
+    _AT_ODD_OFFSET,
+    datetime.time(3, 4, tzinfo=datetime.UTC),
+    datetime.date(2026, 1, 2),
+    datetime.timedelta(seconds=90),
+    _Point(1),
+    _Colour.RED,
+    _Size.LARGE,
+    _Mode.FAST,
+    uuid.UUID(int=1),
+    decimal.Decimal("1.5"),
+    decimal.Decimal(10),
+    b"bytes",
+    pathlib.PurePosixPath("/a/b"),
+    {3, 1, 2},
+    frozenset({"a"}),
+    (1, "two"),
+    deque([1, 2]),
+    np.float64(1.5),
+    np.float32(0.1),
+    np.int64(7),
+    np.bool_(True),
+    np.str_("s"),
+    _Aliased(Value="v\x00", when=_AT_ODD_OFFSET),
+    float("nan"),
+    float("inf"),
+]
+
+
+def _dumps_before(data: Any) -> str:
+    return orjson.dumps(json_util.to_dict(data)).decode()
+
+
+def _sanitize_before(data: Any) -> Any:
+    return json_util.to_dict(
+        json_util.to_dict(data), custom_encoder={str: sanitize_string}
+    )
+
+
+class TestJSONHelpersSkipThePythonWalk:
+    @pytest.mark.parametrize("value", _NON_JSON_VALUES, ids=repr)
+    def test_output_matches_the_full_conversion(self, value: Any):
+        data = {"k\x01": [value, {"nested": value}], "text": "a\x00b\\f"}
+
+        assert json_util.dumps(value) == _dumps_before(value)
+        assert json_util.dumps(data) == _dumps_before(data)
+        # repr, because NaN != NaN and 1 == 1.0
+        assert repr(json_util.sanitize_json(data)) == repr(_sanitize_before(data))
+
+    def test_json_data_and_models_never_reach_to_dict(self, monkeypatch):
+        calls: list[Any] = []
+        to_dict = json_util.to_dict
+        monkeypatch.setattr(
+            json_util, "to_dict", lambda *a, **kw: calls.append(a) or to_dict(*a, **kw)
+        )
+        payload = {
+            "lists": [[]] * 1000,
+            "text": "tab\tnull\x00",
+            "nan": float("nan"),
+            "model": _Aliased(Value="v", when=_AT_ODD_OFFSET),
+        }
+
+        assert json_util.loads(json_util.dumps(payload))["text"] == "tab\tnull\x00"
+        stored = cast(dict[str, Any], SafeJson({**payload, "big": 2**80}).data)
+
+        assert calls == []
+        assert stored["text"] == "tab\tnull"
+        assert stored["big"] == 2**80
+
+    def test_every_mix_of_backslashes_and_control_characters(self):
+        pieces = ["\\", "\x00", "\x08", "\x0b", "\x0c", "\x1f", "\x7f", "\t", "\n"]
+        for text in map("".join, itertools.product([*pieces, "b", "f", "u"], repeat=4)):
+            clean = sanitize_string(text)
+            assert SafeJson({text: text}).data == {clean: clean}, repr(text)
+
+
 @pytest.mark.parametrize(
     "value, expected",
     [
@@ -804,17 +921,210 @@ class TestValidateWithJsonschema:
             validate_with_jsonschema(self.SCHEMA, {"name": "John", "age": 30}) is None
         )
 
-    def test_type_mismatch_returns_error_message(self):
-        """A type mismatch produces the underlying jsonschema message."""
+    def test_type_mismatch_names_the_input_and_both_types(self):
         error = validate_with_jsonschema(self.SCHEMA, {"name": 1})
-        assert error is not None
-        assert "is not of type 'string'" in error
+        assert error == "name: expected string, got integer"
 
-    def test_missing_required_field_returns_error_message(self):
-        """A missing required field produces the underlying jsonschema message."""
+    def test_missing_required_field_names_the_field(self):
         error = validate_with_jsonschema(self.SCHEMA, {"age": 30})
+        assert error == "'name' is a required property"
+
+    def test_error_carries_neither_the_schema_nor_the_value(self):
+        """The raw jsonschema text appends the whole schema and the given
+        value, which can run to hundreds of lines."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "schema-description-marker " * 50,
+                    "items": {"type": "string"},
+                }
+            },
+        }
+        error = validate_with_jsonschema(schema, {"items": "given-value-marker" * 50})
+        assert error == "items: expected array, got string"
+
+    def test_optional_input_lists_every_allowed_type(self):
+        schema = {
+            "type": "object",
+            "properties": {"items": {"anyOf": [{"type": "array"}, {"type": "null"}]}},
+        }
+        error = validate_with_jsonschema(schema, {"items": "text"})
+        assert error == "items: expected array or null, got string"
+
+    def test_nested_error_gives_the_path_to_the_value(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"count": {"type": "integer", "minimum": 0}},
+                    },
+                }
+            },
+        }
+        error = validate_with_jsonschema(
+            schema, {"rows": [{"count": 1}, {"count": -7}]}
+        )
+        assert error == "rows[1].count: must be >= 0"
+
+    @pytest.mark.parametrize(
+        "property_schema,value,expected",
+        [
+            ({"enum": ["a", "b"]}, "secret-z", "f: is not one of the allowed values"),
+            ({"const": "a"}, "secret-z", "f: is not the required value"),
+            ({"maxLength": 3}, "secret-z", "f: must have at most 3 characters"),
+            ({"maxLength": 1}, "secret-z", "f: must have at most 1 character"),
+            (
+                {"pattern": "^a$"},
+                "secret-z",
+                "f: does not match the required pattern",
+            ),
+            ({"maxItems": 1}, ["secret-z", "b"], "f: must have at most 1 item"),
+            (
+                {"type": "object", "maxProperties": 0},
+                {"secret-z": 1},
+                "f: must have at most 0 properties",
+            ),
+            (
+                {"type": "object", "propertyNames": {"maxLength": 2}},
+                {"secret-z": 1},
+                "f: a key must have at most 2 characters",
+            ),
+            (
+                {"contains": {"type": "integer"}, "minContains": 2},
+                [1, "secret-z"],
+                "f: must contain at least 2 matching items",
+            ),
+            (
+                {"contains": {"type": "integer"}, "maxContains": 1},
+                [1, 2, "secret-z"],
+                "f: must contain at most 1 matching item",
+            ),
+            (
+                {"anyOf": [{"type": "string", "minLength": 2}, {"type": "string"}]},
+                5,
+                "f: expected string, got integer",
+            ),
+            (
+                {"type": "object", "additionalProperties": False},
+                {"secret-z": 1},
+                "f: has properties that are not allowed",
+            ),
+            (
+                {"oneOf": [{"minimum": 0}, {"maximum": 10}]},
+                5,
+                "f: matches more than one of the allowed forms",
+            ),
+            (
+                {"anyOf": [{"minimum": 10}, {"type": "string"}]},
+                5,
+                "f: does not match any of the allowed forms",
+            ),
+        ],
+    )
+    def test_each_failed_check_reads_without_the_value(
+        self, property_schema, value, expected
+    ):
+        schema = {"type": "object", "properties": {"f": property_schema}}
+        error = validate_with_jsonschema(schema, {"f": value})
+        assert error == expected
+        assert error is not None and "secret-z" not in error
+
+    @pytest.mark.parametrize(
+        "key,location",
+        [
+            ("plain_key-1", "headers.plain_key-1"),
+            ("a.b", 'headers["a.b"]'),
+            ("", 'headers[""]'),
+            ("\ud800", 'headers["\\\\ud800"]'),
+            ("日本", 'headers["日本"]'),
+            ("line\nbreak" + "k" * 100, 'headers["line\\nbreak' + "k" * 27 + '..."]'),
+        ],
+    )
+    def test_a_key_of_the_given_value_is_short_and_unambiguous(self, key, location):
+        schema = {
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                }
+            },
+        }
+        error = validate_with_jsonschema(schema, {"headers": {key: 1}})
+        assert error == f"{location}: expected string, got integer"
+
+    def test_a_long_required_name_keeps_the_failed_check(self):
+        schema = {"type": "object", "required": ["x" * 400]}
+        error = validate_with_jsonschema(schema, {})
+        assert error == f"'{'x' * 37}...' is a required property"
+
+    def test_a_block_output_names_its_field(self):
+        class Output(BlockSchemaOutput):
+            rows: list[int]
+
+        assert Output.validate_field("rows", cast(Any, [1, 2])) is None
+        assert (
+            Output.validate_field("rows", cast(Any, [1, "secret-z"]))
+            == "rows[1]: expected integer, got string"
+        )
+
+    def test_a_property_named_like_the_key_keyword_is_still_a_value(self):
+        schema = {
+            "type": "object",
+            "properties": {"propertyNames": {"type": "integer"}},
+        }
+        error = validate_with_jsonschema(schema, {"propertyNames": "x"})
+        assert error == "propertyNames: expected integer, got string"
+
+    def test_long_message_is_capped(self):
+        depth = 20
+        schema: dict[str, Any] = {"type": "integer"}
+        for _ in range(depth):
+            schema = {"type": "object", "additionalProperties": schema}
+        data: Any = "text"
+        for level in range(depth):
+            data = {f"level-{level}-" + "x" * 40: data}
+        error = validate_with_jsonschema(schema, data)
         assert error is not None
-        assert "'name' is a required property" in error
+        assert len(error) == json_util.VALIDATION_ERROR_MAX_LENGTH
+        assert error.startswith("...")
+        assert error.endswith(": expected integer, got string")
+
+    def test_a_draft_4_exclusive_bound_reads_as_exclusive(self):
+        schema = {
+            "$schema": "http://json-schema.org/draft-04/schema#",
+            "type": "object",
+            "properties": {"f": {"minimum": 5, "exclusiveMinimum": True}},
+        }
+        assert validate_with_jsonschema(schema, {"f": 5}) == "f: must be > 5"
+
+    @pytest.mark.parametrize(
+        "validator,expected",
+        [
+            ("enum", "is not one of the allowed values"),
+            ("required", "is missing a required property"),
+            ("type", "does not match any of the allowed forms"),
+            ("minimum", "is not valid"),
+        ],
+    )
+    def test_an_error_without_details_still_reads(self, validator, expected):
+        error = jsonschema.ValidationError("message", validator=validator)
+        assert describe_validation_error(error) == expected
+
+    def test_describe_names_the_field_of_a_field_schema(self):
+        with pytest.raises(jsonschema.ValidationError) as caught:
+            jsonschema.validate(
+                [1, "x"], {"type": "array", "items": {"type": "integer"}}
+            )
+        assert (
+            describe_validation_error(caught.value, field_name="numbers")
+            == "numbers[1]: expected integer, got string"
+        )
 
     def test_repeated_calls_with_one_schema_stay_correct(self):
         """The executor validates the same schema against different data on
@@ -1009,13 +1319,13 @@ class TestValidateWithJsonschema:
         cache: OrderedDict[json_util._SchemaCacheKey, Any] = OrderedDict()
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE", cache)
 
-        assert validate_with_jsonschema(
+        assert self._outcome(first_schema, first_data) == self._baseline_outcome(
             first_schema, first_data
-        ) == self._baseline_outcome(first_schema, first_data)
+        )
         assert not cache
-        assert validate_with_jsonschema(
+        assert self._outcome(second_schema, second_data) == self._baseline_outcome(
             second_schema, second_data
-        ) == self._baseline_outcome(second_schema, second_data)
+        )
         assert len(cache) == expected_entries
 
     def test_nonfinite_key_cannot_hide_malformed_schema(self, monkeypatch):
@@ -1059,9 +1369,7 @@ class TestValidateWithJsonschema:
         monkeypatch.setattr(json_util, "_VALIDATOR_CACHE_MAX_KEY_BYTES", 1024)
         schema = OrchestratorBlock().input_schema.jsonschema()
         for data in ({"prompt": "hello"}, {"prompt": 123}):
-            assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
-                schema, data
-            )
+            assert self._outcome(schema, data) == self._baseline_outcome(schema, data)
         assert not cache
 
     def test_uncached_schema_preserves_validation_without_copy_protocol(self):
@@ -1105,10 +1413,10 @@ class TestValidateWithJsonschema:
             "required": ["items"],
         }
 
-        def validate(index: int) -> str | None:
+        def validate(index: int) -> tuple | None:
             data = {"items": [index, index if index % 2 == 0 else -1]}
             expected = self._baseline_outcome(schema, data)
-            actual = validate_with_jsonschema(schema, data)
+            actual = self._outcome(schema, data)
             assert actual == expected
             return actual
 
@@ -1217,9 +1525,7 @@ class TestValidateWithJsonschema:
     )
     def test_nested_error_message_matches_jsonschema_exactly(self, schema, data):
         """best_match keeps byte-for-byte parity for combinator errors."""
-        assert validate_with_jsonschema(schema, data) == self._baseline_outcome(
-            schema, data
-        )
+        assert self._outcome(schema, data) == self._baseline_outcome(schema, data)
 
     def test_a_ref_outside_the_schema_is_never_retrieved(self, monkeypatch):
         """`$ref` resolves only within the schema and the bundled meta-schemas."""
@@ -1234,11 +1540,28 @@ class TestValidateWithJsonschema:
         assert retrievals == []
 
     @staticmethod
-    def _baseline_outcome(schema: dict[str, Any], data: dict[str, Any]) -> str | None:
+    def _signature(error: jsonschema.ValidationError) -> tuple:
+        return (
+            error.validator,
+            list(error.absolute_path),
+            list(error.absolute_schema_path),
+            error.message,
+        )
+
+    @classmethod
+    def _outcome(cls, schema: dict[str, Any], data: dict[str, Any]) -> tuple | None:
+        """The error validate_with_jsonschema describes, before it is shortened."""
+        error = json_util._best_error(schema, data)
+        return cls._signature(error) if error is not None else None
+
+    @classmethod
+    def _baseline_outcome(
+        cls, schema: dict[str, Any], data: dict[str, Any]
+    ) -> tuple | None:
         try:
             jsonschema.validate(data, schema)
         except jsonschema.ValidationError as error:
-            return str(error)
+            return cls._signature(error)
         return None
 
 

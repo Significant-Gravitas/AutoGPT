@@ -1,8 +1,8 @@
 """Masking for credentials that travel in request URLs and headers.
 
-The browser opens its WebSocket with the user's session JWT in ``?token=``,
-email links carry one-click tokens in the query, and some path segments are
-bearer secrets themselves: whoever holds one can post to a webhook, claim a
+Tabs on an older frontend open their WebSocket with the user's session JWT
+in ``?token=``, email links carry one-click tokens in the query, and some path
+segments are bearer secrets themselves: whoever holds one can post to a webhook, claim a
 platform link, read a shared chat or run, or accept an org invitation. uvicorn
 logs the path and query of every request and Sentry attaches both to every
 event, so anything that records a request URL masks it here first. Outgoing
@@ -79,16 +79,23 @@ _MENTIONS_URL = re.compile(r"\?|/api/|(?i:api\.telegram\.org)(?::443)?/|://[^/?#
 _QUERY_NAME = re.compile(r"[?&]([^=&?]*)=")
 # How many values named like a credential one URL is read for.
 _MAX_QUERY_CREDENTIALS = 16
-# Names of headers, cookies and query parameters whose values are credentials.
+# Names of headers, cookies and query parameters whose values are credentials,
+# matched anywhere in a name, so glued names such as `PHPSESSID` and
+# `clientsecret`, and header names as Sentry shows an ASGI scope's bytes
+# (`b'cookie'`), are masked. The accepted cost: a name that only contains one of
+# these words, such as `author` or `design`, has its value masked too.
+# `backend.util.request` also drops, on a redirect to another origin, every
+# header this matches: narrowing it lets more headers through there, widening
+# it drops more.
 _CREDENTIAL_NAME = re.compile(
-    r"(?i)auth|code|cookie|credential|jwt|key|password|secret|sess|sid|sig|state"
-    r"|token|sec-websocket-protocol|content-mac"
+    r"(?i)auth|code|cookie|credential|csrf|jwt|key|password|secret|sess|sid|sig"
+    r"|state|token|sec-websocket-protocol|content-mac"
 )
 # A shorter value can't be a credential the platform issued or a provider's
 # key, and masking it everywhere it turns up would mangle the rest of an event.
 MIN_CREDENTIAL_LENGTH = 16
-# Past this many places in one text, mask_known replaces credentials one after
-# another rather than merging overlapping ones.
+# Past this many places of the request's credentials in one text, mask_known
+# masks the text whole.
 _MAX_MERGED_MATCHES = 1024
 # A credential shown by its prefix must be long enough that the rest can't be
 # guessed: a UUID keeps 90 random bits once its first 8 characters are shown.
@@ -111,9 +118,9 @@ def mask_known(text: str, credentials: Iterable[str]) -> str:
     """``text`` with every place any of ``credentials``, longest first, occurs
     masked. Each is found without overlapping itself, as ``str.replace`` finds
     it, and places where different ones overlap are masked as one, so none is
-    left partly shown by another's mask. Past ``_MAX_MERGED_MATCHES`` places
-    they are replaced one after another instead: only crafted text holds that
-    many, and the work stays linear in ``text`` either way."""
+    left partly shown by another's mask. A text where different ones occur in
+    more than ``_MAX_MERGED_MATCHES`` places is masked whole: only crafted text
+    holds that many, and the work stays linear in ``text`` either way."""
     present = [
         credential for credential in credentials if credential and credential in text
     ]
@@ -125,7 +132,9 @@ def mask_known(text: str, credentials: Iterable[str]) -> str:
                 stop = start + len(credential)
                 spans.append((start, stop))
                 start = text.find(credential, stop)
-    if len(present) < 2 or len(spans) > _MAX_MERGED_MATCHES:
+    if len(spans) > _MAX_MERGED_MATCHES:
+        return REDACTED
+    if len(present) < 2:
         for credential in present:
             text = text.replace(credential, REDACTED)
         return text
@@ -288,13 +297,23 @@ class RequestURLRedactionFilter(logging.Filter):
         ):
             try:
                 message = record.getMessage()
-            except Exception:
-                # A malformed record fails again, and is reported, in the
-                # handler; raising here would fail the request that logged it.
-                return True
-            masked = _masked_text(message, credentials)
-            if masked != message:
-                record.msg, record.args = masked, ()
+            except Exception as failure:
+                # The handler would fail on it again and report its arguments
+                # and the failure's text, which can hold what this filter
+                # couldn't check, so it gets a notice instead: the format,
+                # masked, and the failure's type. Raising here would fail the
+                # request that logged it.
+                template = record.msg if isinstance(record.msg, str) else ""
+                shown = _masked_text(template, credentials)
+                record.msg = (
+                    "Not logged: a record that couldn't be formatted "
+                    f"({type(failure).__name__}): {shown}"
+                )
+                record.args = ()
+            else:
+                masked = _masked_text(message, credentials)
+                if masked != message:
+                    record.msg, record.args = masked, ()
         if record.exc_info and not record.exc_text:
             # Rendered as every handler's formatter renders it, which then
             # uses this text instead of rendering the traceback again.
@@ -328,12 +347,15 @@ def _masked_text(text: str, credentials: tuple[str, ...]) -> str:
 
 
 def _masks(value: object, credentials: tuple[str, ...]) -> bool:
-    """Whether ``value``, as text, has anything to mask."""
-    try:
-        text = str(value)
-    except Exception:
-        return False  # the handler hits, and reports, the same failure
-    return _masked_text(text, credentials) != text
+    """Whether ``value``, as ``%s`` or ``%r`` shows it, has anything to mask.
+    A value that either can't show can't be checked, so it counts as one."""
+    shown: list[str] = []
+    for show in (str, repr):
+        try:
+            shown.append(show(value))
+        except Exception:
+            return True
+    return any(_masked_text(text, credentials) != text for text in dict.fromkeys(shown))
 
 
 # At DEBUG, websockets logs every handshake header it reads as ``< name: value``

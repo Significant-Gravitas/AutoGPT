@@ -87,7 +87,13 @@ export const MainSearchResultPage = ({
         </div>
         <div className="flex flex-col gap-4 md:flex-row md:items-center">
           <div className="flex-1">
-            <Text variant="large-medium-tight" as="h2" tone="emphasis">
+            <Text
+              variant="large"
+              weight="medium"
+              leading="6"
+              as="h2"
+              tone="emphasis"
+            >
               Showing results for:
             </Text>
             <h1 className="font-poppins text-heading-md leading-8 font-semibold text-foreground-emphasis">
@@ -162,7 +168,8 @@ export const MainSearchResultPage = ({
         ) : (
           <div className="flex min-h-[60vh] flex-col items-center justify-center">
             <Text
-              variant="lead-medium"
+              variant="lead"
+              weight="medium"
               as="h3"
               tone="secondary"
               className="mb-2"

@@ -1,8 +1,8 @@
 {
   "$comment": [
     "The colours that may stay outside the role tokens (SECRT-3154): artwork, logos, brand marks, chart series, user-picked colour palettes, and markup that never reaches the app's stylesheet.",
-    "files: a glob from autogpt_platform/frontend. allow: only these palette classes (no variant or opacity) and hex values may stay in the file; without it, the whole file may keep its colours.",
-    "design-system/no-raw-palette-classes and no-hex-colours read this list, and scripts/__tests__/colour-exempt.test.ts checks every entry still matches a file and every allowed value is still used. Add an entry only with a reason."
+    "files: a glob from autogpt_platform/frontend. allow: only these palette classes (no variant or opacity), hex values and colour functions (rgba(0,0,0,0.08)) may stay in the file; without it, the whole file may keep its colours.",
+    "design-system/no-raw-palette-classes, no-hex-colours, no-arbitrary-colour and no-colour-functions read this list, and scripts/__tests__/colour-exempt.test.ts checks every entry still matches a file and every allowed value is still used. Add an entry only with a reason."
   ],
   "exempt": [
     {
@@ -51,8 +51,8 @@
       "reason": "The AutoGPT logo's brand colours."
     },
     {
-      "files": "src/components/molecules/GlassOrb/GlassOrb.tsx",
-      "reason": "The glass orb artwork's colour blobs."
+      "files": "src/components/molecules/GlassOrb/{GlassOrb,GlassSurface}.tsx",
+      "reason": "The glass orb artwork: its colour blobs, and the glass pane's white tint, rim highlights and violet glow, set from the design lab's knobs at runtime."
     },
     {
       "files": "src/components/molecules/Confetti/Confetti.tsx",
@@ -118,6 +118,11 @@
     {
       "files": "src/app/(platform)/auth/integrations/mcp_callback/route.ts",
       "reason": "A standalone HTML page the OAuth popup shows: it has no access to the app's stylesheet."
+    },
+    {
+      "files": "src/app/(public)/tour/components/TourHero/TourBackground.tsx",
+      "allow": ["rgba(0,0,0,0.08)"],
+      "reason": "The stroke of the tour hero's grid tile, an SVG drawn as a data-URI image, where CSS variables do not resolve."
     },
     {
       "files": "src/app/(public)/tour/chat/script/completionArtifacts.ts",

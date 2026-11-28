@@ -5,8 +5,29 @@ import pytest
 from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
 
-from backend.api.external import middleware
+from backend.api.external import auth_rate_limit, middleware
 from backend.data.auth import api_key
+
+
+@pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
+async def test_v1_client_authenticates_without_admission_redis(
+    mocker, v1_client, v1_counter, v1_generated_keys, v1_key_rows, bearer
+):
+    """A key in either header authenticates through v1_client without the
+    admission limiter reaching Redis (#17099)."""
+    redis = mocker.AsyncMock()
+    redis.eval.return_value = 1
+    get_redis = mocker.patch.object(
+        auth_rate_limit, "get_redis_async", return_value=redis
+    )
+    key = v1_generated_keys[0].key
+    headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
+
+    response = await v1_client.get("/v1/me", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["id"] == v1_key_rows[0].user_id
+    get_redis.assert_not_awaited()
 
 
 @pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
@@ -144,11 +165,19 @@ async def test_verification_and_permissions_are_not_cached_across_requests(
 
 @pytest.mark.parametrize("path", ["/me", "/blocks"])
 @pytest.mark.parametrize("credential", ["api-key", "bearer-key", "token"])
-async def test_a_request_verifies_its_credential_once(
-    mocker, v1_client, v1_counter, v1_auth_storage, v1_generated_keys, path, credential
+async def test_a_request_verifies_its_credential_and_is_recorded_once(
+    mocker,
+    v1_client,
+    v1_counter,
+    v1_auth_storage,
+    v1_generated_keys,
+    v1_key_rows,
+    path,
+    credential,
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    recorded = mocker.patch.object(middleware, "record_api_request")
     key = v1_generated_keys[0].key
     headers = {
         "api-key": {"X-API-Key": key},
@@ -162,28 +191,35 @@ async def test_a_request_verifies_its_credential_once(
     key_lookup, token_lookup = v1_auth_storage
     assert key_lookup.await_count + token_lookup.await_count == 1
     assert verify.call_count == (0 if credential == "token" else 1)
+    recorded.assert_called_once_with(v1_key_rows[0].user_id, "external")
 
 
 @pytest.mark.parametrize("throttled", [True, False])
 @pytest.mark.parametrize("path", ["/me", "/blocks"])
 @pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
-async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
-    mocker, v1_client, v1_auth_storage, v1_generated_keys, path, bearer, throttled
+async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified_or_recorded(
+    mocker,
+    v1_client,
+    v1_counter,
+    v1_admission,
+    v1_auth_storage,
+    v1_generated_keys,
+    path,
+    bearer,
+    throttled,
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
-    reserve = mocker.patch.object(
-        middleware,
-        "enforce_api_key_validate_rate_limit",
-        side_effect=HTTPException(status_code=429) if throttled else None,
-        return_value=None,
-    )
+    if throttled:
+        v1_admission.side_effect = HTTPException(status_code=429)
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    recorded = mocker.patch.object(middleware, "record_api_request")
     key = v1_generated_keys[0].key
     headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
 
     response = await v1_client.get(f"/v1{path}", headers=headers)
 
     assert response.status_code == (429 if throttled else 200)
-    reserve.assert_awaited_once()
+    v1_admission.assert_awaited_once()
     assert v1_auth_storage[0].await_count == 1
     assert verify.call_count == (0 if throttled else 1)
+    assert recorded.call_count == (0 if throttled else 1)

@@ -75,6 +75,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     <Icon icon={ImageNotFound01Icon} className="h-5 w-5" />
                   </div>
                 ) : thumbnail.kind === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- listing images and YouTube thumbnails can be on hosts next/image isn't configured for
                   <img
                     src={thumbnail.src}
                     alt={`Thumbnail ${index + 1}`}

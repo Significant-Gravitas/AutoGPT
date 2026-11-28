@@ -136,6 +136,16 @@ async def test_browse_matches_a_legacy_category_alias():
     assert [s.slug for s in result.skills] == ["legacy-one"]
 
 
+async def test_browse_search_matches_underscores_literally():
+    """`_` in a search is the character, not a one-character wildcard (#15660)."""
+    await _make_listing("first_last")
+    await _make_listing("firstxlast")
+
+    result = await skill_db.get_marketplace_skills(search_query="first_last")
+
+    assert [s.slug for s in result.skills] == ["first_last"]
+
+
 async def test_detail_carries_the_body_and_providers():
     await _make_listing("detail-one", body="# how to\nsteps\n")
 

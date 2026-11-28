@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
+import { LoadingSetup } from "./components/LoadingSetup/LoadingSetup";
 import { ProgressBar } from "./components/ProgressBar";
 import { ProgressError } from "./components/ProgressError";
 import { StepIndicator } from "./components/StepIndicator";
@@ -35,6 +36,8 @@ export default function OnboardingPage() {
     progressConflict,
     retryProgress,
     completionError,
+    setupWaitingFor,
+    reportSlowSetup,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
@@ -69,9 +72,10 @@ export default function OnboardingPage() {
         retry={retryProgress}
       />
     ) : (
-      <WizardPlaceholder
-        message="Loading your setup…"
+      <LoadingSetup
         totalSteps={totalSteps}
+        waitingFor={setupWaitingFor}
+        onSlow={reportSlowSetup}
       />
     );
 
@@ -120,6 +124,7 @@ export default function OnboardingPage() {
           type="button"
           variant="toggle"
           size="xs"
+          shape="sharp"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
           className="absolute top-6 left-6"
@@ -171,6 +176,7 @@ export default function OnboardingPage() {
           href="/logout"
           variant="toggle"
           size="xs"
+          shape="sharp"
           leadingIcon={Logout03Icon}
           className="absolute bottom-6 left-6"
         >

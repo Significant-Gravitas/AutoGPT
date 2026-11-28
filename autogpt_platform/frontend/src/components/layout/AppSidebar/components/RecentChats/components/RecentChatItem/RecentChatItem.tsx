@@ -69,7 +69,8 @@ function ChatLinkLoader() {
   return (
     <LoadingSpinner
       size="small"
-      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
+      tone="muted"
+      className="ml-auto !size-4 shrink-0"
     />
   );
 }
@@ -143,14 +144,15 @@ export const RecentChatItem = memo(function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
-        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
+        variant="chat"
+        className="max-md:h-11"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
-              className="size-4 shrink-0 text-brand-hover"
+              tone="brand-strong"
+              className="size-4 shrink-0"
             />
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
@@ -214,7 +216,7 @@ export const RecentChatItem = memo(function RecentChatItem({
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
+            tone="error-strong"
           >
             <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import prisma.models
 import prisma.types
 
+from backend.copilot.permissions import CopilotPermissions
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -188,8 +189,11 @@ async def create_routine_schedules(
     session_id: str | None,
     user_timezone: str,
     replaces: list[str],
+    permissions: CopilotPermissions | None,
 ) -> list[str]:
     scheduler = get_scheduler_client()
+    if permissions is None and replaces:
+        permissions = await _replaced_jobs_permissions(user_id, replaces)
     created: list[str] = []
     # A one-shot is one job with no cron; a cadence is one job per cron. Both
     # carry ``routine_id``, which is what tells the fire path there is a row
@@ -212,6 +216,7 @@ async def create_routine_schedules(
                 # Deleted once the row names the new jobs, so both sets
                 # exist for a moment and only one of them counts.
                 replaces_schedule_ids=replaces,
+                permissions=permissions,
             )
             created.append(info.id)
     except Exception:
@@ -227,6 +232,25 @@ async def create_routine_schedules(
                 )
         raise
     return created
+
+
+async def _replaced_jobs_permissions(
+    user_id: str, replaces: list[str]
+) -> CopilotPermissions | None:
+    """The filter the jobs being replaced fire under, if they have one."""
+    jobs = await get_scheduler_client().get_execution_schedules(
+        user_id=user_id, kind="copilot_turn", include_paused=True
+    )
+    return next(
+        (
+            job.permissions
+            for job in jobs
+            if job.kind == "copilot_turn"
+            and job.id in replaces
+            and job.permissions is not None
+        ),
+        None,
+    )
 
 
 async def delete_routine_schedules(

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
+import { duration } from "@/components/styles/motion";
 
 type FolderSize = "xs" | "sm" | "md" | "lg" | "xl";
 export type FolderColorName = "blue" | "purple" | "emerald" | "orange" | "pink";
@@ -119,7 +120,7 @@ export function FolderIcon({
                 stiffness: 160,
                 damping: 22,
               },
-              className: "z-10",
+              className: "z-raised",
             },
             {
               initial: { rotate: 0, x: 0, y: 0 },
@@ -131,7 +132,7 @@ export function FolderIcon({
                 stiffness: 190,
                 damping: 24,
               },
-              className: "z-20",
+              className: "z-sticky",
             },
             {
               initial: { rotate: 3.5, x: 42, y: 1 },
@@ -143,7 +144,7 @@ export function FolderIcon({
                 stiffness: 170,
                 damping: 21,
               },
-              className: "z-10",
+              className: "z-raised",
             },
           ].map((page, i) => (
             <motion.div
@@ -162,8 +163,12 @@ export function FolderIcon({
           animate={{
             rotateX: isOpen ? -15 : 0,
           }}
-          transition={{ type: "spring", duration: 0.5, bounce: 0.25 }}
-          className="absolute inset-x-0 -bottom-px z-30 mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
+          transition={{
+            type: "spring",
+            duration: duration.slowest,
+            bounce: 0.25,
+          }}
+          className="absolute inset-x-0 -bottom-px z-floating mx-auto flex h-44 w-[87.5%] origin-bottom items-end justify-center overflow-visible [transform-style:preserve-3d]"
         >
           <svg
             className="h-auto w-full"
@@ -200,8 +205,8 @@ function Page({ color = "blue" }: PageProps) {
         <Text variant="h5">agent.json</Text>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
-            <div className="h-1.5 flex-1 rounded-full bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-pill bg-surface-hover" />
+            <div className="h-1.5 flex-1 rounded-pill bg-surface-hover" />
           </div>
         ))}
       </div>

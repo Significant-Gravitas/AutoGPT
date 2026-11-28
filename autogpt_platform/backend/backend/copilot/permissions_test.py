@@ -178,28 +178,27 @@ class TestIsBlockAllowed:
 
     def test_parent_blocks_when_child_allows(self):
         parent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        child = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child._parent = parent
+        child = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_parent_allows_when_child_blocks(self):
         parent = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        child._parent = parent
+        child = CopilotPermissions(
+            blocks=["HTTP Request"], blocks_exclude=True
+        ).merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_both_must_allow(self):
         parent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=False)
-        child = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=False)
-        child._parent = parent
+        child = CopilotPermissions(
+            blocks=["HTTP Request"], blocks_exclude=False
+        ).merged_with_parent(parent, ALL_TOOL_NAMES)
         assert child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
     def test_grandparent_blocks_propagate(self):
         grandparent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)
-        parent = CopilotPermissions(blocks=[], blocks_exclude=True)
-        parent._parent = grandparent
-        child = CopilotPermissions(blocks=[], blocks_exclude=True)
-        child._parent = parent
+        parent = CopilotPermissions().merged_with_parent(grandparent, ALL_TOOL_NAMES)
+        child = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
         assert not child.is_block_allowed(BLOCK_ID, BLOCK_NAME)
 
 
@@ -246,6 +245,13 @@ class TestMergedWithParent:
         merged = child.merged_with_parent(parent, all_t)
         assert not merged.tools_exclude  # stored as whitelist
         assert set(merged.tools) == {"run_block", "web_fetch"}
+
+    def test_a_parents_denial_holds_against_what_a_merged_entry_implies(self):
+        parent = CopilotPermissions(tools=["run_capability"], tools_exclude=True)
+        merged = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+        effective = merged.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "run_capability" not in effective
+        assert "web_fetch" in effective
 
     def test_block_parent_stored(self):
         all_t = frozenset(["run_block"])

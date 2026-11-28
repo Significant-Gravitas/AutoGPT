@@ -15,7 +15,7 @@ import threading
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -236,7 +236,9 @@ def test_two_copies_of_a_create_that_both_miss_the_replay_make_one_schedule(
     scheduler: Scheduler, recorded: MagicMock
 ):
     """Each copy finds no schedule under the key, then both insert it: the
-    jobstore keeps one, and the copy that lost answers with it."""
+    jobstore keeps one, and the copy that lost answers with it. The capacity
+    lock keeps two creates from checking at once, so it is taken out here to
+    reach the insert race this answer still guards."""
     key = str(uuid.uuid4())
     both_checked = threading.Barrier(2, timeout=30)
     check_capacity = scheduler._check_schedule_capacity
@@ -246,6 +248,7 @@ def test_two_copies_of_a_create_that_both_miss_the_replay_make_one_schedule(
         both_checked.wait()
 
     with (
+        patch.object(scheduler, "_schedule_capacity_lock", nullcontext()),
         patch.object(scheduler, "_check_schedule_capacity", check_then_wait),
         ThreadPoolExecutor(max_workers=2) as pool,
     ):
@@ -286,7 +289,8 @@ def test_a_different_create_that_loses_the_insert_race_gets_a_conflict(
     scheduler: Scheduler, recorded: MagicMock
 ):
     """Two different creates under one key both find it free; the one the
-    jobstore turns away is refused, not answered with the other's schedule."""
+    jobstore turns away is refused, not answered with the other's schedule.
+    The capacity lock is taken out, as above."""
     key = str(uuid.uuid4())
     both_checked = threading.Barrier(2, timeout=30)
     check_capacity = scheduler._check_schedule_capacity
@@ -302,6 +306,7 @@ def test_a_different_create_that_loses_the_insert_race_gets_a_conflict(
             return refused
 
     with (
+        patch.object(scheduler, "_schedule_capacity_lock", nullcontext()),
         patch.object(scheduler, "_check_schedule_capacity", check_then_wait),
         ThreadPoolExecutor(max_workers=2) as pool,
     ):
@@ -312,6 +317,138 @@ def test_a_different_create_that_loses_the_insert_race_gets_a_conflict(
     [job] = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
     assert (job.id, job.kwargs["cron"]) == (key, made.cron)
     recorded.assert_called_once()
+
+
+def test_two_creates_racing_for_the_accounts_last_slot_leave_it_at_its_limit(
+    scheduler: Scheduler,
+):
+    """Two creates under different keys each count one free slot. The first
+    is held right after its count until the second reaches the capacity lock,
+    or, without the lock, counts too: only one of them may take the slot
+    (#16910)."""
+    held = _add(scheduler, str(uuid.uuid4()))
+    first_counted, release_first = threading.Event(), threading.Event()
+    second_reached_the_count = threading.Event()
+    count = scheduler._schedule_count
+    capacity_lock = scheduler._schedule_capacity_lock
+
+    class NotingTheSecondCreate:
+        """The capacity lock, noting the second create as it reaches it."""
+
+        def __enter__(self) -> None:
+            if first_counted.is_set():
+                second_reached_the_count.set()
+            capacity_lock.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            capacity_lock.release()
+
+    def count_and_hold_the_first(*args: Any, **kwargs: Any) -> int:
+        counted = count(*args, **kwargs)
+        if not first_counted.is_set():
+            first_counted.set()
+            release_first.wait(30)
+        else:
+            second_reached_the_count.set()
+        return counted
+
+    def send(key: str) -> GraphExecutionJobInfo | ValueError:
+        try:
+            return _add(scheduler, key)
+        except ValueError as refused:
+            return refused
+
+    with (
+        patch.object(scheduler, "_schedule_capacity_lock", NotingTheSecondCreate()),
+        patch.object(scheduler, "_schedule_count", count_and_hold_the_first),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        first = pool.submit(send, str(uuid.uuid4()))
+        try:
+            assert first_counted.wait(30)
+            second = pool.submit(send, str(uuid.uuid4()))
+            assert second_reached_the_count.wait(30)
+        finally:
+            release_first.set()
+        outcomes = [first.result(30), second.result(30)]
+
+    made = [o for o in outcomes if isinstance(o, GraphExecutionJobInfo)]
+    refused = [o for o in outcomes if isinstance(o, ValueError)]
+    assert len(made) == len(refused) == 1
+    assert "the most one account can have" in str(refused[0])
+    assert _job_ids(scheduler) == sorted([held.id, made[0].id])
+
+
+@pytest.mark.parametrize("action", ["create", "edit"])
+def test_two_writes_racing_for_the_accounts_last_storage_leave_it_in_budget(
+    scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch, action: str
+):
+    """Two creates, or two edits of held schedules, that each fit the storage
+    budget, but not together. The first is held right after it measures the
+    account's storage until the second reaches the capacity lock, or,
+    measuring outside it, measures too: only one of them may be stored."""
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_storage_bytes", 150_000)
+    big = {**INPUTS, "input_1": "x" * 100_000}
+    # Each edit grows one of two small schedules the account already holds.
+    held: list[str] = []
+    if action == "edit":
+        held = [_add(scheduler, str(uuid.uuid4())).id for _ in range(2)]
+    first_measured, release_first = threading.Event(), threading.Event()
+    second_reached_the_measure = threading.Event()
+    measure = scheduler._check_schedule_storage
+    capacity_lock = scheduler._schedule_capacity_lock
+
+    class NotingTheSecondWrite:
+        """The capacity lock, noting the second write as it reaches it."""
+
+        def __enter__(self) -> None:
+            if first_measured.is_set():
+                second_reached_the_measure.set()
+            capacity_lock.acquire()
+
+        def __exit__(self, *exc: object) -> None:
+            capacity_lock.release()
+
+    def measure_and_hold_the_first(*args: Any, **kwargs: Any) -> None:
+        if first_measured.is_set():
+            try:
+                return measure(*args, **kwargs)
+            finally:
+                second_reached_the_measure.set()
+        measure(*args, **kwargs)
+        first_measured.set()
+        release_first.wait(30)
+
+    def send(n: int) -> GraphExecutionJobInfo | ValueError:
+        try:
+            if action == "edit":
+                return scheduler.update_graph_execution_schedule(
+                    schedule_id=held[n], user_id="user-1", input_data=big
+                )
+            return _add(scheduler, str(uuid.uuid4()), input_data=big)
+        except ValueError as refused:
+            return refused
+
+    with (
+        patch.object(scheduler, "_schedule_capacity_lock", NotingTheSecondWrite()),
+        patch.object(scheduler, "_check_schedule_storage", measure_and_hold_the_first),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
+        first = pool.submit(send, 0)
+        try:
+            assert first_measured.wait(30)
+            second = pool.submit(send, 1)
+            assert second_reached_the_measure.wait(30)
+        finally:
+            release_first.set()
+        outcomes = [first.result(30), second.result(30)]
+
+    made = [o for o in outcomes if isinstance(o, GraphExecutionJobInfo)]
+    refused = [o for o in outcomes if isinstance(o, ValueError)]
+    assert len(made) == len(refused) == 1
+    assert "can store 150,000 bytes together" in str(refused[0])
+    stored = scheduler.scheduler.get_jobs(Jobstores.EXECUTION.value)
+    assert [job.kwargs["input_data"] == big for job in stored].count(True) == 1
 
 
 def test_a_limit_refusal_under_a_key_another_create_took_is_a_conflict(
@@ -519,7 +656,8 @@ async def _create(
         user_id=user.id,
         ctx=RequestContext(
             user_id=user.id,
-            org_id="",
+            # The org `test_create_graph` puts the workflow in.
+            org_id=f"test-org-{user.id}",
             team_id=None,
             is_org_owner=True,
             is_org_admin=True,

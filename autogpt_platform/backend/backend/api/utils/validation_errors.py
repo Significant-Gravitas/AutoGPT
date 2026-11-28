@@ -8,10 +8,11 @@ line; ``backend/util/architecture_validation_errors_test.py`` enforces that.
 import functools
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 import pydantic
 from fastapi.exceptions import RequestValidationError
+from pydantic_core import PydanticKnownError
 from pydantic_core.core_schema import ErrorType
 
 from backend.util.url_redaction import REDACTED
@@ -21,18 +22,51 @@ MAX_VALIDATION_ERROR_CHARS = 200
 MAX_VALIDATION_ERROR_LOC_PARTS = 16
 # FastAPI's first location part says where in the request a value was.
 _REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
-# pydantic's own messages say what was expected, not what was sent, so a log
-# keeps them. The exceptions: a union's rejected tag, logged from its context
-# instead, and the messages of a validator, an attribute read and a custom
-# error, which can quote the refused value in any form (escaped, sliced,
-# re-cased), so a log leaves them out.
-_INPUT_FREE_TYPES = frozenset(get_args(ErrorType)) - {
-    "union_tag_invalid",
-    "value_error",
-    "assertion_error",
-    "get_attribute_error",
-}
-VALIDATOR_MESSAGE_NOT_LOGGED = "Not logged: a validator's message can quote the input"
+# What a log may show of pydantic's own messages: the schema's side of an error
+# (what was expected, a pattern, a limit, an encoding, a class or field name, a
+# discriminator and its tags), and the numbers pydantic counts from the input
+# (a length, an offset), which can't carry its text. Every other value in an
+# error's context comes from the refused input, such as a parser's account of
+# it, an exception's text or a validator's message, and is masked. An error
+# pydantic doesn't define has a message that can say anything, so a log leaves
+# it out. That trusts the schema's side to come from the schema:
+# architecture_pydantic_errors_test.py keeps code from raising a built-in
+# error with a context of its own.
+_SCHEMA_CONTEXT = frozenset(
+    {
+        "attribute",
+        "class",
+        "class_name",
+        "decimal_places",
+        "discriminator",
+        "encoding",
+        "expected",
+        "expected_plural",
+        "expected_schemes",
+        "expected_tags",
+        "expected_version",
+        "field_type",
+        "ge",
+        "gt",
+        "le",
+        "lt",
+        "max_digits",
+        "max_length",
+        "method_name",
+        "min_length",
+        "multiple_of",
+        "pattern",
+        "tz_expected",
+        "whole_digits",
+        # Counted from the input, but a count or an offset can't carry a
+        # credential, and both help debugging.
+        "actual_length",
+        "tz_actual",
+    }
+)
+_BUILT_IN_TYPES = frozenset(get_args(ErrorType))
+CUSTOM_MESSAGE_NOT_LOGGED = "Not logged: a custom error's message can quote the input"
+_UNREADABLE = "Not logged: the errors are of a shape the log can't read"
 
 
 def bounded_validation_errors(
@@ -51,16 +85,26 @@ def loggable_validation_errors(
     stays out of. A location part that no loaded pydantic model declares, such
     as a mapping's key, is ``*``, and so is a key a model refused as extra,
     whatever another model calls its fields. pydantic's own messages are kept,
-    but a union's rejected tag is left out of its message, and a validator's or
-    a custom error's message, which can quote the refused value in any form, is
-    left out whole. Field names, indices and the reasons are kept."""
+    with any part the refused input gives them, such as a rejected tag, a
+    parser's account of it or a validator's message, masked; a custom error's
+    message, which can say anything, is left out. Field names, indices and the
+    reasons are kept."""
     names = _declared_names(len(sys.modules))
-    return _bounded(
-        exc.errors(),
-        lambda part: part if isinstance(part, int) or part in names else "*",
-        _message_without_input,
-        _loggable_location,
-    )
+    try:
+        return _bounded(
+            exc.errors(),
+            lambda part: (
+                part
+                if isinstance(part, int) or (isinstance(part, str) and part in names)
+                else "*"
+            ),
+            _message_without_input,
+            _loggable_location,
+        )
+    except Exception:
+        # A hand-built error of a shape pydantic never makes; the log line
+        # must not fail the response it accompanies.
+        return [{"type": "unreadable", "loc": [], "msg": _UNREADABLE}]
 
 
 def describe_validation_error(exc: pydantic.ValidationError) -> str:
@@ -107,6 +151,8 @@ def _bounded(
 def _loggable_location(error: Mapping[str, Any]) -> Sequence[Any]:
     """A location, with the key a model refused as extra as ``*``."""
     location = error.get("loc", ())
+    if not isinstance(location, (tuple, list)):
+        return ()
     if error.get("type") == "extra_forbidden":
         return (*location[:-1], "*")
     return location
@@ -114,15 +160,23 @@ def _loggable_location(error: Mapping[str, Any]) -> Sequence[Any]:
 
 def _message_without_input(error: Mapping[str, Any]) -> str:
     error_type = error.get("type")
-    if error_type in _INPUT_FREE_TYPES:
-        return error.get("msg", "")
-    if error_type == "union_tag_invalid":
-        context = error.get("ctx") or {}
-        return (
-            f"Input tag '{REDACTED}' found using {context.get('discriminator')} "
-            f"does not match any of the expected tags: {context.get('expected_tags')}"
-        )
-    return VALIDATOR_MESSAGE_NOT_LOGGED
+    if not isinstance(error_type, str) or error_type not in _BUILT_IN_TYPES:
+        return CUSTOM_MESSAGE_NOT_LOGGED
+    context = error.get("ctx") or {}
+    if not isinstance(context, Mapping):
+        return CUSTOM_MESSAGE_NOT_LOGGED
+    shown = {
+        key: value if key in _SCHEMA_CONTEXT else REDACTED
+        for key, value in context.items()
+    }
+    try:
+        # Rendered even when nothing is masked: a hand-built error's own
+        # message can quote the input.
+        return PydanticKnownError(cast(ErrorType, error_type), shown or None).message()
+    except Exception:
+        # A context pydantic-core can't render, which a later version could
+        # bring; the type and location still say what failed.
+        return CUSTOM_MESSAGE_NOT_LOGGED
 
 
 @functools.lru_cache(maxsize=1)

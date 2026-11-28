@@ -28,7 +28,10 @@ export const TriggerAgentBanner = () => {
   );
 
   return (
-    <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 rounded-xlarge select-none">
+    <Alert
+      shape="builder"
+      className="absolute bottom-4 left-1/2 z-sticky w-auto -translate-x-1/2 select-none"
+    >
       <AlertTitle>You are building a Trigger Workflow</AlertTitle>
       <AlertDescription>
         Your workflow will listen for its trigger and will run when the time is
@@ -41,7 +44,7 @@ export const TriggerAgentBanner = () => {
           }
           className="underline"
         >
-          <Text variant="body-tight" as="span" tone="inherit">
+          <Text variant="body" leading="5" as="span" tone="inherit">
             Workflow Library
           </Text>
         </Link>

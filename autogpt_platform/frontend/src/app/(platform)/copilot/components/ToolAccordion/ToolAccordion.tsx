@@ -7,6 +7,7 @@ import { useToolAccordion } from "./useToolAccordion";
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   icon: React.ReactNode;
@@ -68,7 +69,12 @@ export function ToolAccordion({
               {title}
             </p>
             {description && (
-              <Text variant="small-tight" tone="body" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="body"
+                className="truncate"
+              >
                 {description}
               </Text>
             )}
@@ -92,7 +98,7 @@ export function ToolAccordion({
             transition={
               shouldReduceMotion
                 ? { duration: 0 }
-                : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }
+                : { duration: duration.slower, ease: ease.emphasized }
             }
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}

@@ -1,9 +1,13 @@
+"use client";
+
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Text } from "@/components/atoms/Text/Text";
-import { formatDistanceToNow, formatDistanceStrict } from "date-fns";
+import { useNowSecond } from "@/hooks/useNowSecond";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
+import { formatRunDuration, isLiveRun } from "./helpers";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
@@ -19,6 +23,9 @@ type Props = {
 
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
   const isBillingEnabled = useIsBillingEnabled();
+  const nowMs = useNowSecond(isLiveRun(run) && Boolean(run?.started_at));
+  const durationLabel = run ? formatRunDuration(run, nowMs) : null;
+
   return (
     <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
@@ -34,7 +41,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   {run.is_dry_run && (
                     <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-warning-foreground">
                       <Icon icon={FlaskConicalIcon} size={16} />
-                      <Text variant="small-medium" tone="warning">
+                      <Text variant="small" weight="medium" tone="warning">
                         Simulated
                       </Text>
                     </div>
@@ -43,7 +50,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
               ) : scheduleRecurrence ? (
                 <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-foreground">
                   <Icon icon={TimeScheduleIcon} size={16} />
-                  <Text variant="small-medium" tone="inherit">
+                  <Text variant="small" weight="medium" tone="inherit">
                     Scheduled
                   </Text>
                 </div>
@@ -55,9 +62,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-foreground-subtle">
               <Text variant="small" tone="muted">
                 Started{" "}
-                {run.started_at
-                  ? formatDistanceToNow(run.started_at, { addSuffix: true })
-                  : "—"}
+                {run.started_at ? <RelativeTime date={run.started_at} /> : "—"}
               </Text>
               <span className="mx-1 inline-block text-border-base">|</span>
               <Text variant="small" tone="muted">
@@ -71,12 +76,11 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.duration !== undefined && (
+              {durationLabel && (
                 <>
                   <span className="mx-1 inline-block text-border-base">|</span>
                   <Text variant="small" tone="muted">
-                    Duration:{" "}
-                    {formatDistanceStrict(0, run.stats.duration * 1000)}
+                    Duration: {durationLabel}
                   </Text>
                 </>
               )}

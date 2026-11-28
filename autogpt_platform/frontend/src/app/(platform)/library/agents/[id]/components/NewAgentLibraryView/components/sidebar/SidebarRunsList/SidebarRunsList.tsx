@@ -5,6 +5,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import {
   TabsLine,
@@ -30,6 +31,7 @@ interface Props {
     tab?: "runs" | "scheduled" | "templates" | "triggers",
   ) => void;
   onClearSelectedRun?: () => void;
+  onItemDeleted?: (deletedID: string) => void;
   onScheduleDeleted?: (deletedScheduleId: string) => void;
   onTabChange?: (tab: "runs" | "scheduled" | "templates" | "triggers") => void;
   onCountsChange?: (info: {
@@ -47,6 +49,7 @@ export function SidebarRunsList({
   selectedRunId,
   onSelectRun,
   onClearSelectedRun,
+  onItemDeleted,
   onScheduleDeleted,
   onTabChange,
   onCountsChange,
@@ -54,9 +57,17 @@ export function SidebarRunsList({
   // Stable, so the memoised run rows and the auto-select effects in
   // useSidebarRunsList do not re-run on every parent render.
   const selectRun = useStableCallback(onSelectRun);
+  // Stable too, so a delete that finishes after the selection changed checks
+  // the current selection, not the one from when it started.
+  const handleItemDeleted = useStableCallback((id: string) =>
+    onItemDeleted?.(id),
+  );
   const {
     runs,
     schedules,
+    schedulesUnavailable,
+    retrySchedules,
+    retryingSchedules,
     templates,
     triggers,
     triggerAgents,
@@ -118,7 +129,7 @@ export function SidebarRunsList({
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute top-0 right-0 z-10 h-[46px] w-12 bg-gradient-to-l from-canvas to-transparent" />
+        <div className="pointer-events-none absolute top-0 right-0 z-raised h-[46px] w-12 bg-gradient-to-l from-canvas to-transparent" />
         <div className="overflow-x-auto">
           <TabsLineList
             // oxlint-disable-next-line design-system/no-restyle -- the tab underline (border-b) spans this padding; a margin would shorten it
@@ -129,7 +140,16 @@ export function SidebarRunsList({
             </TabsLineTrigger>
             <TabsLineTrigger value="scheduled">
               Scheduled{" "}
-              <span className="ml-3 inline-block">{schedulesCount}</span>
+              <span className="ml-3 inline-block">
+                {schedulesUnavailable ? (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className="sr-only">Unknown</span>
+                  </>
+                ) : (
+                  schedulesCount
+                )}
+              </span>
             </TabsLineTrigger>
             {triggersCount > 0 && (
               <TabsLineTrigger value="triggers">
@@ -165,6 +185,7 @@ export function SidebarRunsList({
                 agent={agent}
                 selected={selectedRunId === run.id}
                 onSelectRun={selectRun}
+                onRunDeleted={handleItemDeleted}
               />
             )}
           />
@@ -174,7 +195,14 @@ export function SidebarRunsList({
           className="mx-4 mt-0 flex min-h-0 flex-1 flex-col"
         >
           <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:flex-col lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
-            {schedules.length > 0 ? (
+            <SchedulesUnavailableNotice
+              show={schedulesUnavailable}
+              onRetry={retrySchedules}
+              retrying={retryingSchedules}
+              stacked
+              className="w-full"
+            />
+            {schedulesUnavailable ? null : schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem
@@ -204,7 +232,12 @@ export function SidebarRunsList({
             <div className="scrollbar-thin flex min-h-0 flex-1 scrollbar-thumb-border-strong scrollbar-track-transparent flex-col gap-4 overflow-x-scroll px-1 pt-1 pb-4 lg:gap-3 lg:overflow-x-hidden lg:overflow-y-auto">
               {triggers.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" tone="muted" className="mx-1">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    tone="muted"
+                    className="mx-1"
+                  >
                     Webhook Triggers
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -220,6 +253,7 @@ export function SidebarRunsList({
                               "triggers",
                             )
                           }
+                          onDeleted={() => handleItemDeleted(trigger.id)}
                         />
                       </div>
                     ))}
@@ -228,7 +262,12 @@ export function SidebarRunsList({
               )}
               {triggerAgents.length > 0 && (
                 <div className="flex flex-col gap-2">
-                  <Text variant="body-medium" tone="muted" className="mx-1">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    tone="muted"
+                    className="mx-1"
+                  >
                     Trigger Workflows
                   </Text>
                   <div className="flex flex-nowrap items-center justify-start gap-4 lg:flex-col lg:gap-3">
@@ -250,6 +289,7 @@ export function SidebarRunsList({
                               "triggers",
                             )
                           }
+                          onDeleted={() => handleItemDeleted(triggerAgent.id)}
                         />
                       </div>
                     ))}
@@ -283,6 +323,7 @@ export function SidebarRunsList({
                     agent={agent}
                     selected={selectedRunId === template.id}
                     onClick={() => onSelectRun(template.id, "templates")}
+                    onDeleted={() => handleItemDeleted(template.id)}
                   />
                 </div>
               ))

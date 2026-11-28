@@ -63,93 +63,96 @@ export function AccountMenu({
         side={side}
         align={align}
         sideOffset={8}
-        className="w-72 overflow-hidden rounded-2xl border border-border-base bg-surface px-0 py-2 shadow-lg"
+        variant="menu"
+        className="w-72 overflow-hidden"
         data-testid="account-menu-popover"
       >
-        <div className="px-2">
-          <AccountMenuHeader
-            userName={userName}
-            userHandle={userHandle}
-            userEmail={userEmail}
-            avatarSrc={avatarSrc}
-            isLoading={isLoading}
-          />
-        </div>
+        <div className="py-2">
+          <div className="px-2">
+            <AccountMenuHeader
+              userName={userName}
+              userHandle={userHandle}
+              userEmail={userEmail}
+              avatarSrc={avatarSrc}
+              isLoading={isLoading}
+            />
+          </div>
 
-        {menuItemGroups.map((group, groupIndex) => {
-          const isLogoutGroup = group.items.some(
-            (item) => item.text === "Log out",
-          );
-          const showDivider = groupIndex === 0 || isLogoutGroup;
+          {menuItemGroups.map((group, groupIndex) => {
+            const isLogoutGroup = group.items.some(
+              (item) => item.text === "Log out",
+            );
+            const showDivider = groupIndex === 0 || isLogoutGroup;
 
-          return (
-            <React.Fragment key={`group-${groupIndex}`}>
-              {showDivider && (
-                <div className="mx-3 my-1 h-px bg-surface-active" />
-              )}
-              <div className="px-2 py-1">
-                <ul className="flex flex-col gap-0.5">
-                  {/* Help lives in the last group: replaying the first-run
-                      walkthrough sits with "What's new" and the docs. */}
-                  {isLogoutGroup && (
-                    <li>
-                      <AccountMenuTourRow />
-                    </li>
-                  )}
-                  {group.items.map((item, itemIndex) => {
-                    const key = `${groupIndex}-${itemIndex}-${item.text}`;
-                    const icon = getAccountMenuIcon(item.icon);
+            return (
+              <React.Fragment key={`group-${groupIndex}`}>
+                {showDivider && (
+                  <div className="mx-3 my-1 h-px bg-surface-active" />
+                )}
+                <div className="px-2 py-1">
+                  <ul className="flex flex-col gap-0.5">
+                    {/* Help lives in the last group: replaying the first-run
+                        walkthrough sits with "What's new" and the docs. */}
+                    {isLogoutGroup && (
+                      <li>
+                        <AccountMenuTourRow />
+                      </li>
+                    )}
+                    {group.items.map((item, itemIndex) => {
+                      const key = `${groupIndex}-${itemIndex}-${item.text}`;
+                      const icon = getAccountMenuIcon(item.icon);
 
-                    if (item.text === "Log out") {
-                      return (
-                        <li key={key}>
-                          <AccountLogoutOption />
-                        </li>
-                      );
-                    }
+                      if (item.text === "Log out") {
+                        return (
+                          <li key={key}>
+                            <AccountLogoutOption />
+                          </li>
+                        );
+                      }
 
-                    if (item.href) {
+                      if (item.href) {
+                        return (
+                          <li key={key}>
+                            <AccountMenuRow
+                              as="link"
+                              href={item.href}
+                              external={item.external}
+                              icon={icon}
+                              label={item.text}
+                            />
+                          </li>
+                        );
+                      }
+
                       return (
                         <li key={key}>
                           <AccountMenuRow
-                            as="link"
-                            href={item.href}
-                            external={item.external}
+                            as="button"
+                            onClick={item.onClick}
                             icon={icon}
                             label={item.text}
                           />
                         </li>
                       );
-                    }
-
-                    return (
-                      <li key={key}>
-                        <AccountMenuRow
-                          as="button"
-                          onClick={item.onClick}
-                          icon={icon}
-                          label={item.text}
-                        />
-                      </li>
-                    );
-                  })}
-                  {groupIndex === 0 && (
-                    <>
-                      <li>
-                        <AccountMenuActivityRow />
-                      </li>
-                      {environment.isCloud() && (
+                    })}
+                    {groupIndex === 0 && (
+                      <>
                         <li>
-                          <AccountMenuFeedbackRow />
+                          <AccountMenuActivityRow />
                         </li>
-                      )}
-                    </>
-                  )}
-                </ul>
-              </div>
-            </React.Fragment>
-          );
-        })}
+                        {environment.isCloud() && (
+                          <li>
+                            <AccountMenuFeedbackRow />
+                          </li>
+                        )}
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
       </PopoverContent>
     </Popover>
   );

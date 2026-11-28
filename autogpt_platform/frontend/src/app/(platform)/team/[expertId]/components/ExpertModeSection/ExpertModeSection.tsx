@@ -35,7 +35,9 @@ function ExpertModeOptions({ expert }: Props) {
       aria-label={`${expert.name} approval mode`}
       className="rounded-xl border border-border-base bg-surface p-4"
     >
-      <Text variant="large-medium">Approvals</Text>
+      <Text variant="large" weight="medium">
+        Approvals
+      </Text>
       <Text variant="small" tone="secondary" className="mt-1">
         How every new web chat with {expert.name} starts. You can still change
         it per chat from the composer, and chats already open keep their own
@@ -73,11 +75,16 @@ function ExpertModeOptions({ expert }: Props) {
                 <Icon icon={option.icon} size={18} aria-hidden="true" />
               </span>
               <span className="flex flex-col gap-0.5">
-                <Text variant="body-md-medium" as="span" tone="primary">
+                <Text
+                  variant="body-md"
+                  weight="medium"
+                  as="span"
+                  tone="primary"
+                >
                   {option.label}
                   {option.value === DEFAULT_AUTOPILOT_MODE ? " (default)" : ""}
                 </Text>
-                <Text variant="small-tight" as="span" tone="muted">
+                <Text variant="small" leading="4" as="span" tone="muted">
                   {option.description}
                 </Text>
               </span>

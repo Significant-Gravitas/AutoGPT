@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from backend.util import retry as retry_module
 from backend.util.retry import (
     ALERT_RATE_LIMIT_SECONDS,
     _alert_rate_limiter,
@@ -129,6 +130,22 @@ def test_create_retry_decorator_aborts_on_shutdown():
     with pytest.raises(ValueError):
         always_failing_function()
     assert attempts < 5
+
+
+def test_a_wait_passed_in_replaces_the_backoff(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(retry_module, "_interruptible_sleep", slept.append)
+
+    @create_retry_decorator(
+        max_attempts=3, wait=lambda retry_state: 10.0 * retry_state.attempt_number
+    )
+    def always_failing_function():
+        raise ValueError("persistent failure")
+
+    with pytest.raises(ValueError, match="persistent failure"):
+        always_failing_function()
+
+    assert slept == [10.0, 20.0]
 
 
 def test_interruptible_sleep_returns_early_on_shutdown():

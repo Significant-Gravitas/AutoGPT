@@ -12,6 +12,7 @@ import { countOpenTasks } from "./helpers";
 import { SuggestedTaskList } from "./SuggestedTaskList";
 import type { useCollapsedSuggestions } from "./useCollapsedSuggestions";
 import type { useSuggestedTasks } from "./useSuggestedTasks";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   suggestions: ReturnType<typeof useSuggestedTasks>;
@@ -51,6 +52,7 @@ export function SuggestedTasksBlock({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           withTooltip={false}
           id={toggleID}
           aria-expanded={isOpen}
@@ -59,9 +61,12 @@ export function SuggestedTasksBlock({
           tone="secondary"
           className="hover:text-foreground-body"
         >
-          {isOpen
-            ? "Hide"
-            : `${count} ${count === 1 ? "task" : "tasks"} · Show`}
+          {/* Own element, so translators cannot detach the text node. */}
+          <span>
+            {isOpen
+              ? "Hide"
+              : `${count} ${count === 1 ? "task" : "tasks"} · Show`}
+          </span>
           <Icon icon={isOpen ? ArrowUp01Icon : ArrowDown01Icon} size={14} />
         </Button>
       </div>
@@ -76,7 +81,9 @@ export function SuggestedTasksBlock({
               exit={
                 prefersReducedMotion ? undefined : { height: 0, opacity: 0 }
               }
-              transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+              transition={{
+                duration: prefersReducedMotion ? 0 : duration.base,
+              }}
               className="overflow-hidden"
             >
               {showTeam ? <YourTeamRow experts={suggestions.experts} /> : null}

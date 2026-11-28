@@ -53,9 +53,14 @@ export const IntegrationChip: IntegrationChipComponent = ({
 
 const IntegrationChipSkeleton: React.FC = () => {
   return (
-    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-lg bg-surface-hover p-2 pr-3">
-      <Skeleton className="h-9 w-12 rounded-lg bg-surface-active" />
-      <Skeleton className="h-5 w-24 self-center rounded-sm bg-surface-active" />
+    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] rounded-lg">
+      <div className="flex w-full gap-2 p-2 pr-3">
+        <Skeleton variant="nested" className="h-9 w-12 rounded-lg" />
+        <Skeleton
+          variant="nested"
+          className="h-5 w-24 self-center rounded-sm"
+        />
+      </div>
     </Skeleton>
   );
 };

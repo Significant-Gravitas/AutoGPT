@@ -6,10 +6,13 @@ from fastapi.testclient import TestClient
 
 from backend.api.features.schedules import routes
 from backend.api.features.schedules.model import ScheduleCreationRequest
+from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH
 
 
-@pytest.mark.parametrize("name", ["", "   ", "\t\n", "\u2003"])
-def test_blank_schedule_name_is_rejected_before_dispatch(name: str):
+@pytest.mark.parametrize(
+    "name", ["", "   ", "\t\n", "\u2003", "x" * (MAX_SCHEDULE_NAME_LENGTH + 1)]
+)
+def test_blank_or_overlong_schedule_name_is_rejected_before_dispatch(name: str):
     app = FastAPI()
     app.include_router(routes.router)
     app.dependency_overrides[routes.requires_user] = lambda: None
@@ -39,3 +42,9 @@ def test_schedule_name_is_trimmed_without_changing_internal_spaces():
         name="  Weekly  report ", cron="0 9 * * *", inputs={}
     )
     assert request.name == "Weekly  report"
+
+
+def test_a_name_at_the_limit_is_trimmed_then_accepted():
+    name = "x" * MAX_SCHEDULE_NAME_LENGTH
+    request = ScheduleCreationRequest(name=f"  {name} ", cron="0 9 * * *", inputs={})
+    assert request.name == name

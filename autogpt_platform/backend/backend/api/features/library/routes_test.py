@@ -66,6 +66,50 @@ def test_create_expert_preset_missing_workspace_returns_503(
     )
 
 
+def test_create_expert_preset_with_a_key_the_expert_was_never_granted_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its every run would be refused for that key, so it isn't saved (#17376)."""
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=mocker.MagicMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=["cred-granted"])
+        ),
+    )
+    create = mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {
+                "notion_credentials": {
+                    "id": "cred-own",
+                    "provider": "notion",
+                    "type": "api_key",
+                }
+            },
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Grant them on the expert's page" in response.json()["detail"]
+    create.assert_not_awaited()
+
+
 def test_create_preset_from_run_without_saved_credentials_returns_400(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -450,6 +494,24 @@ async def test_list_trigger_agents_route(
     )
 
 
+def test_bulk_move_agents_unknown_id_returns_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    library_agents = mocker.MagicMock()
+    library_agents.find_many = AsyncMock(return_value=[])
+    library_agents.update_many = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=library_agents)
+
+    response = client.post(
+        "/folders/agents/bulk-move",
+        json={"agent_ids": ["unknown-agent-id"], "folder_id": None},
+    )
+
+    assert response.status_code == 404
+    assert "unknown-agent-id" in response.json()["detail"]
+    library_agents.update_many.assert_not_called()
+
+
 def _team_preset(**overrides) -> library_model.LibraryAgentPreset:
     now = datetime.datetime.now(tz=datetime.UTC)
     return library_model.LibraryAgentPreset.model_validate(
@@ -582,3 +644,58 @@ def test_a_billing_manager_role_is_refused_listing_and_running_from_the_library(
     assert response.status_code == 403
     listing.assert_not_awaited()
     preset.assert_not_awaited()
+
+
+def test_create_preset_for_a_workflow_of_no_expert_reads_no_grants(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Grants bind an expert's workflows only: any other preset is saved on
+    the user's key as before."""
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    grants = mocker.patch(
+        "backend.executor.utils.get_experts_db",
+        return_value=mocker.MagicMock(
+            expert_allowed_credential_ids=AsyncMock(return_value=[])
+        ),
+    )
+    key = {"id": "cred-own", "provider": "notion", "type": "api_key"}
+    create = mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPreset.model_validate(
+            {
+                "id": "preset-1",
+                "user_id": "test-user-id",
+                "graph_id": "graph-1",
+                "graph_version": 1,
+                "inputs": {},
+                "credentials": {"notion_credentials": key},
+                "name": "Preset",
+                "description": "",
+                "created_at": FIXED_NOW,
+                "updated_at": FIXED_NOW,
+                "webhook": None,
+            }
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {"notion_credentials": key},
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    grants.assert_not_called()
+    assert create.await_args.kwargs["expert_id"] is None

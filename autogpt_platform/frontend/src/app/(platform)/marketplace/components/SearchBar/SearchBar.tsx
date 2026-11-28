@@ -27,7 +27,7 @@ export function SearchBar({
     <form
       onSubmit={handleSubmit}
       data-testid="store-search-bar"
-      className={`${width} ${height} flex items-center gap-3 rounded-full border border-border-base bg-surface px-4 shadow-none focus-within:border-foreground-subtle focus-within:ring-1 focus-within:ring-foreground-subtle focus-within:ring-offset-0`}
+      className={`${width} ${height} flex items-center gap-3 rounded-pill border border-border-base bg-surface px-4 shadow-none focus-within:border-foreground-subtle focus-within:ring-1 focus-within:ring-foreground-subtle focus-within:ring-offset-0`}
     >
       <Icon
         icon={Search01Icon}

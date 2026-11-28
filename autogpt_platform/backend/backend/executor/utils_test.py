@@ -1,15 +1,21 @@
+import time
 from datetime import datetime, timezone
 from typing import Optional, cast
 
 import pytest
 from prisma.enums import ReviewStatus
+from pydantic import SecretStr
 from pytest_mock import MockerFixture
 
 from backend.blocks import get_blocks
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.anysearch.extract import AnySearchExtractBlock
+from backend.blocks.autopilot import AutoPilotBlock
+from backend.blocks.github.issues import GithubCommentBlock
 from backend.blocks.google._drive import GoogleDriveFile
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import (
@@ -19,7 +25,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
 )
 from backend.data.graph import GraphSettings, Node
-from backend.data.model import User
+from backend.data.model import APIKeyCredentials, User
 from backend.executor.utils import (
     CRED_ERR_INVALID_PREFIX,
     CRED_ERR_INVALID_TYPE_MISMATCH,
@@ -28,6 +34,8 @@ from backend.executor.utils import (
     CRED_ERR_UNKNOWN_PREFIX,
     ExecutionNotRequeuedError,
     _is_optional_picker,
+    _user_timezone,
+    _validate_node_input_credentials,
     add_graph_execution,
     is_credential_validation_error_message,
     validate_exec,
@@ -4455,6 +4463,186 @@ async def test_a_resumed_sub_graph_whose_parent_is_gone_names_no_chat(
     assert context.sensitive_action_safe_mode is True
 
 
+# ============ validate_exec: optional credentials ============ #
+
+
+def _anysearch_node(input_default: dict) -> Node:
+    return Node(block_id=AnySearchExtractBlock().id, input_default=input_default)
+
+
+@pytest.mark.parametrize(
+    "input_default",
+    [
+        {"auth": "anonymous", "credentials": {}},
+        {"credentials": {}},
+        {"auth": "anonymous", "credentials": {"provider": "anysearch"}},
+    ],
+    ids=["anonymous", "default-auth", "id-less-meta"],
+)
+def test_validate_exec_treats_unset_optional_credentials_as_none(input_default):
+    """Graphs saved before #16193 store `{}` for a cleared optional credential.
+    It must validate like an absent field instead of failing the nested
+    credentials schema and leaving the node unqueued."""
+    data, msg = validate_exec(
+        _anysearch_node(input_default), {"url": "https://example.com"}
+    )
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_passes_api_key_mode_with_unset_credentials():
+    """In api_key mode an unset credential passes validation too; the block
+    then fails with a clear error (see manager_optional_credentials_test)."""
+    data, msg = validate_exec(
+        _anysearch_node({"auth": "api_key", "credentials": {}}),
+        {"url": "https://example.com"},
+    )
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_keeps_selected_optional_credentials():
+    meta = {"id": "cred-1", "provider": "anysearch", "type": "api_key"}
+    data, msg = validate_exec(
+        _anysearch_node({"auth": "api_key", "credentials": meta}),
+        {"url": "https://example.com"},
+    )
+
+    assert data is not None, msg
+    assert data["credentials"]["id"] == "cred-1"
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["llama3.2", "gpt-4o-mini", "claude-opus-4-5-20251101"],
+    ids=["ollama", "openai", "anthropic"],
+)
+def test_validate_exec_clears_unset_llm_credentials(model):
+    """LLM blocks declare `credentials` with `default=None`; a stored `{}`
+    must not fail the nested schema and leave the node unqueued."""
+    node = Node(
+        block_id=AITextGeneratorBlock().id,
+        input_default={"model": model, "credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["credentials"] is None
+
+
+def test_validate_exec_clears_unset_autopilot_codex_credentials():
+    """AutoPilot on the platform transport with a stored `{}` Codex
+    reference is queued instead of skipped."""
+    node = Node(
+        block_id=AutoPilotBlock().id,
+        input_default={"transport": "platform", "codex_credentials": {}},
+    )
+
+    data, msg = validate_exec(node, {"prompt": "hi"})
+
+    assert data is not None, msg
+    assert data["codex_credentials"] is None
+
+
+def test_validate_exec_rejects_unset_required_credentials():
+    """Required credential fields stay strict: `{}` is still a mismatch."""
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {},
+            "issue_url": "https://github.com/o/r/issues/1",
+            "comment": "hi",
+        },
+    )
+
+    data, msg = validate_exec(node, {})
+
+    assert data is None
+    assert "'id' is a required property" in msg
+
+
+# ============ _validate_node_input_credentials: API key expiry ============ #
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "offset, expired",
+    [(-60, True), (0, True), (86400, False), (None, False)],
+    ids=["past", "now", "future", "none"],
+)
+async def test_validate_node_input_credentials_rejects_expired_api_key(
+    mocker: MockerFixture, offset: int | None, expired: bool
+):
+    """#16234: a key past its expiry fails the pre-run check with a marker
+    Copilot reads as "reconnect"."""
+    now = int(time.time())
+    key = APIKeyCredentials(
+        id="cred-1",
+        provider="github",
+        api_key=SecretStr("k"),
+        title="GitHub key",
+        expires_at=None if offset is None else now + offset,
+    )
+    store = mocker.MagicMock()
+    store.get_all_creds = mocker.AsyncMock(return_value=[key])
+    mocker.patch(
+        "backend.executor.utils.get_integration_credentials_store",
+        return_value=store,
+    )
+    user_timezone = mocker.patch(
+        "backend.executor.utils._user_timezone",
+        new=mocker.AsyncMock(return_value="America/Chicago"),
+    )
+    node = Node(
+        block_id=GithubCommentBlock().id,
+        input_default={
+            "credentials": {"id": "cred-1", "provider": "github", "type": "api_key"}
+        },
+    )
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mocker.MagicMock(nodes=[node], links=[]),
+        user_id="user-1",
+        nodes_input_masks=None,
+    )
+
+    if expired:
+        message = errors[node.id]["credentials"]
+        assert message.startswith(CRED_ERR_NOT_AVAILABLE_PREFIX)
+        assert "API key 'GitHub key' expired on" in message
+        assert is_credential_validation_error_message(message)
+        # Dated in the user's own zone, so it names the day they picked.
+        assert message.endswith(str(key.expired_error("America/Chicago")))
+        user_timezone.assert_awaited_once_with("user-1")
+    else:
+        assert node.id not in errors
+        # Nothing to date, so the user isn't read.
+        user_timezone.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "lookup, zone",
+    [
+        ({"return_value": MockObject(timezone="Europe/Paris")}, "Europe/Paris"),
+        ({"side_effect": ValueError("User not found")}, "UTC"),
+    ],
+    ids=["set", "no-such-user"],
+)
+async def test_user_timezone_reads_the_users_setting(
+    mocker: MockerFixture, lookup: dict, zone: str
+):
+    mocker.patch("backend.executor.utils.prisma.is_connected", return_value=True)
+    mocker.patch(
+        "backend.executor.utils.user_db.get_user_by_id",
+        new=mocker.AsyncMock(**lookup),
+    )
+
+    assert await _user_timezone("user-1") == zone
+
+
 @pytest.mark.parametrize(
     "block_cls, schema_key, values_key",
     [
@@ -4490,6 +4678,27 @@ def test_only_reviewed_blocks_override_the_input_check():
     }
     assert overriders == {
         ("AgentExecutorBlock", "get_mismatch_error"),
+        # Read a saved gpt-5.1-codex as gpt-5.3-codex, on a copy (#17138).
+        ("CodeGenerationBlock", "validate_data"),
         ("MCPToolBlock", "get_mismatch_error"),
         ("PerplexityBlock", "validate_data"),
+        # Read a saved Claude Sonnet 4.5 as Sonnet 4.6, on a copy (#17103).
+        ("StagehandActBlock", "validate_data"),
+        ("StagehandExtractBlock", "validate_data"),
+        ("StagehandObserveBlock", "validate_data"),
     }
+
+
+def test_validate_exec_keeps_an_mcp_tools_own_credentials_argument():
+    """An MCP tool's arguments stand in for the block's inputs, and a tool may
+    declare its own `credentials`: an object without an `id` there is the
+    tool's value, not an unset connection."""
+    tool_credentials = {"username": "bob"}
+    node = Node(
+        block_id=MCPToolBlock().id,
+        input_default={"tool_arguments": {"credentials": tool_credentials}},
+    )
+
+    data, msg = validate_exec(node, {})
+
+    assert data == {"credentials": tool_credentials}, msg

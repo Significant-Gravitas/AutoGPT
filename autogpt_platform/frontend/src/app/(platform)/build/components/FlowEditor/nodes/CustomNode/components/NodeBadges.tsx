@@ -12,7 +12,7 @@ export const NodeBadges = ({
       key={category.category}
       variant="solid"
       className={cn(
-        "rounded-full border border-foreground-tertiary bg-surface-hover text-foreground-base shadow-none",
+        "rounded-pill border border-foreground-tertiary bg-surface-hover text-foreground-base shadow-none",
       )}
     >
       {beautifyString(category.category.toLowerCase())}

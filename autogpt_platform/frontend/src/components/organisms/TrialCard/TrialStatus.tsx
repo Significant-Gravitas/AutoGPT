@@ -48,7 +48,7 @@ export function TrialStatus({
           data-slot="trial-status-header"
           className="flex flex-wrap items-center gap-2.5"
         >
-          <Text variant="large-semibold" as="h2">
+          <Text variant="large" weight="semibold" as="h2">
             {trial.active ? "Your trial" : "Your trial has ended"}
           </Text>
           <Badge variant="info" size="small">
@@ -59,7 +59,12 @@ export function TrialStatus({
                 : "Ended"}
           </Badge>
         </div>
-        <Text variant="small-loose" tone="secondary" className="max-w-[560px]">
+        <Text
+          variant="small"
+          leading="5"
+          tone="secondary"
+          className="max-w-[560px]"
+        >
           {trial.status === "canceled"
             ? "Cancellation confirmed. Trial access has ended and your trial will not convert to a paid plan."
             : trial.cancel_at_period_end
@@ -69,7 +74,7 @@ export function TrialStatus({
                 : "Paid access requires a successful payment. Review your payment method and plan below."}
         </Text>
         {trial.active && (
-          <Text variant="small-tight" tone="secondary">
+          <Text variant="small" leading="4" tone="secondary">
             Cancel before your trial ends to avoid a charge.
           </Text>
         )}

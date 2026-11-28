@@ -786,6 +786,10 @@ class TestEnvelopeEnforcement:
 
         assert result.success is False
         assert tool.ran is False, "the denied tool's body executed anyway"
+        # The report goes back to the turn that delegated it, which must not
+        # pass a refused call on as done (SECRT-3224).
+        assert "did not run" in result.output
+        assert "never report that it happened" in result.output
 
     @pytest.mark.asyncio
     async def test_a_permitted_tool_still_runs(self, monkeypatch):

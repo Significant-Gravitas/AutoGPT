@@ -69,9 +69,10 @@ Recursion inheritance
 :meth:`CopilotPermissions.merged_with_parent` produces a new instance that
 is at most as permissive as the parent:
 
-- Tools: effective-allowed sets are intersected then stored as a whitelist.
-- Blocks: the parent is stored in ``_parent`` and consulted during every
-  :meth:`is_block_allowed` call so both constraints must pass.
+- Tools: effective-allowed sets are intersected then stored as a whitelist,
+  or as a blacklist of every tool when none is left.
+- Blocks: the parent's filters go in ``block_ceilings``, and
+  :meth:`is_block_allowed` requires every one of them to pass.
 """
 
 from __future__ import annotations
@@ -271,7 +272,8 @@ UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
 # access to the account forever: a routine that can write a routine can grant
 # itself the credentials its own prompt was denied, and the owner sees a
 # schedule they never agreed to.  Standing work is created where somebody is
-# present to refuse it.
+# present to refuse it. ``run_agent`` with a cron answers to
+# ``schedule_followup`` (``RunAgentTool._execute``), so its immediate runs stay.
 ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
     {
         "schedule_routine",
@@ -413,6 +415,17 @@ def _deferred_tool_names() -> frozenset[str]:
 # ---------------------------------------------------------------------------
 
 
+def _block_filter_allows(
+    blocks: list[str], blocks_exclude: bool, block_id: str, block_name: str
+) -> bool:
+    if not blocks:
+        return True  # No filter → allow all
+    matched = any(
+        _block_matches(identifier, block_id, block_name) for identifier in blocks
+    )
+    return not matched if blocks_exclude else matched
+
+
 def _block_matches(identifier: str, block_id: str, block_name: str) -> bool:
     """Return True if *identifier* resolves to the given block.
 
@@ -434,6 +447,18 @@ def _block_matches(identifier: str, block_id: str, block_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+class BlockFilter(BaseModel):
+    """One block filter of a run that this one runs under."""
+
+    blocks: list[str]
+    blocks_exclude: bool
+
+    def allows(self, block_id: str, block_name: str) -> bool:
+        return _block_filter_allows(
+            self.blocks, self.blocks_exclude, block_id, block_name
+        )
+
+
 class CopilotPermissions(BaseModel):
     """Capability filter for a single copilot execution.
 
@@ -443,6 +468,8 @@ class CopilotPermissions(BaseModel):
             when False it is a whitelist.  Ignored when *tools* is empty.
         blocks: Block identifiers (name, full UUID, or 8-char partial UUID).
         blocks_exclude: Same semantics as *tools_exclude* but for blocks.
+        block_ceilings: The block filters of the runs this one runs under;
+            a block must pass each of them as well.
         providers: Provider slugs (``github``) whose connected accounts the
             run's sandbox may use.
         providers_exclude: Same semantics as *tools_exclude* but for
@@ -453,6 +480,7 @@ class CopilotPermissions(BaseModel):
     tools_exclude: bool = True
     blocks: list[str] = []
     blocks_exclude: bool = True
+    block_ceilings: list[BlockFilter] = []
     providers: list[str] = []
     providers_exclude: bool = True
 
@@ -487,24 +515,16 @@ class CopilotPermissions(BaseModel):
     def is_block_allowed(self, block_id: str, block_name: str) -> bool:
         """Return True if the block may be executed under these permissions.
 
-        Checks this instance first, then consults the parent (if any) so
+        Checks this instance's own filter, then every inherited ceiling, so
         the entire inheritance chain is respected.
         """
-        if not self._check_block_locally(block_id, block_name):
+        if not _block_filter_allows(
+            self.blocks, self.blocks_exclude, block_id, block_name
+        ):
             return False
-        if self._parent is not None:
-            return self._parent.is_block_allowed(block_id, block_name)
-        return True
-
-    def _check_block_locally(self, block_id: str, block_name: str) -> bool:
-        """Check *only* this instance's block filter (ignores parent)."""
-        if not self.blocks:
-            return True  # No filter → allow all
-        matched = any(
-            _block_matches(identifier, block_id, block_name)
-            for identifier in self.blocks
+        return all(
+            ceiling.allows(block_id, block_name) for ceiling in self.block_ceilings
         )
-        return not matched if self.blocks_exclude else matched
 
     # ------------------------------------------------------------------
     # Provider helpers
@@ -549,27 +569,47 @@ class CopilotPermissions(BaseModel):
     ) -> CopilotPermissions:
         """Return a new instance that is at most as permissive as *parent*.
 
-        - Tools: intersection of effective-allowed sets, stored as a whitelist.
-        - Blocks and providers: parent is stored internally; both
-          constraints are applied during :meth:`is_block_allowed` and
-          :meth:`is_provider_allowed`.
+        - Tools: intersection of effective-allowed sets, stored as a whitelist
+          of the entries whose implied grants it holds too (a blacklist of
+          every tool when none is left).
+        - Blocks: the parent's own filter and its ceilings join this one's
+          ceilings, all applied by :meth:`is_block_allowed`.
+        - Providers: the effective ceiling of the whole chain, written out.
         """
         merged_tools = self.effective_allowed_tools(
             all_tools
         ) & parent.effective_allowed_tools(all_tools)
+        # A whitelist entry also allows what it implies (``_IMPLIED_GRANTS``),
+        # so keep only the entries whose grants both sides allow.
+        kept_tools = frozenset(
+            tool
+            for tool in merged_tools
+            if _with_implied_grants(frozenset({tool})) & all_tools <= merged_tools
+        )
+        parent_filter = (
+            [BlockFilter(blocks=parent.blocks, blocks_exclude=parent.blocks_exclude)]
+            if parent.blocks
+            else []
+        )
         result = CopilotPermissions(
-            tools=sorted(merged_tools),
-            tools_exclude=False,
+            # An empty whitelist reads as no filter; nothing left denies all.
+            tools=sorted(kept_tools or all_tools),
+            tools_exclude=not kept_tools,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
+            block_ceilings=[
+                *self.block_ceilings,
+                *parent.block_ceilings,
+                *parent_filter,
+            ],
             # The child's own filter first, then the parent's chain on top.
             providers=self.providers,
             providers_exclude=self.providers_exclude,
         )
         result._parent = parent
-        # Unlike blocks, the provider ceiling is written out in full rather
-        # than left to ``_parent``: a private attribute does not survive the
-        # executor queue's JSON, and the child turn must not come back wider.
+        # Ceilings are written out rather than left to ``_parent``: a private
+        # attribute does not survive the executor queue's JSON, and the child
+        # turn must not come back wider.
         result.providers, result.providers_exclude = result.flattened_providers()
         return result
 
@@ -582,6 +622,7 @@ class CopilotPermissions(BaseModel):
         return (
             not self.tools
             and not self.blocks
+            and not self.block_ceilings
             and not self.providers
             and self._parent is None
         )

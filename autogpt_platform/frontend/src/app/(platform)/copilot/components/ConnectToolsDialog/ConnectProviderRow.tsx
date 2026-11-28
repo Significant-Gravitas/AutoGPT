@@ -63,7 +63,8 @@ export function ConnectProviderRow({
         <span className="flex min-w-0 items-center gap-1.5">
           <Text
             tone="emphasis"
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             className="truncate"
           >
@@ -82,7 +83,8 @@ export function ConnectProviderRow({
         </span>
         {description && (
           <Text
-            variant="small-tight"
+            variant="small"
+            leading="4"
             as="span"
             tone="muted"
             className="truncate"

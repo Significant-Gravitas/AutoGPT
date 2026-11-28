@@ -45,7 +45,7 @@ export function ExpertSummaryCard({
         className="flex flex-col gap-2 rounded-2xl bg-surface p-4 smooth-shadow-ring-sm"
       >
         <div className="flex items-center justify-between gap-2">
-          <Text variant="body-md-medium" tone="primary">
+          <Text variant="body-md" weight="medium" tone="primary">
             Activity
           </Text>
           {summary ? <ActivityStatus isActive={summary.isActive} /> : null}

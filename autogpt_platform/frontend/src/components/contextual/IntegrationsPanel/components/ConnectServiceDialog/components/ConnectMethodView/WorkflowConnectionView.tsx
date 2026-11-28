@@ -46,7 +46,7 @@ export function WorkflowConnectionView({
         <h3 className="text-lead font-medium text-foreground-strong">
           Connect {provider.name}
         </h3>
-        <Text variant="body-tight" tone="muted" className="mt-2">
+        <Text variant="body" leading="5" tone="muted" className="mt-2">
           Choose the account Otto should use for this workflow.
         </Text>
       </div>
@@ -67,7 +67,12 @@ export function WorkflowConnectionView({
               ? "Connecting…"
               : `Continue with ${provider.name}`}
           </Button>
-          <Text variant="small-tight" tone="muted" className="text-center">
+          <Text
+            variant="small"
+            leading="4"
+            tone="muted"
+            className="text-center"
+          >
             Sign in on the app&apos;s own page, then return here.
           </Text>
           {hasKey && (

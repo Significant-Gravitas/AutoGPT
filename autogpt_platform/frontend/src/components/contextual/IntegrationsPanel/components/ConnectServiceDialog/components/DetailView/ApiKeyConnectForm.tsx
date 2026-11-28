@@ -31,7 +31,7 @@ export function ApiKeyConnectForm({
   });
 
   return (
-    <Form form={form} onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <Form form={form} onSubmit={handleSubmit} spacing="stack">
       <FormField
         control={form.control}
         name="title"

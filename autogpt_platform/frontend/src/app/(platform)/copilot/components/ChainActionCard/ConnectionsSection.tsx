@@ -32,16 +32,22 @@ export function ConnectionsSection({ rows, mcp }: Props) {
       <div className="flex items-center gap-3 border-b border-separator px-4 py-5">
         <Icon icon={PlugSocketIcon} size={18} tone="subtle" />
         <div className="min-w-0 flex-1">
-          <Text variant="large-medium-tight" as="h3" tone="primary">
+          <Text
+            variant="large"
+            weight="medium"
+            leading="6"
+            as="h3"
+            tone="primary"
+          >
             {remaining.length ? "Connect your apps" : "Your apps are connected"}
           </Text>
-          <Text variant="body-tight" tone="muted" className="mt-1">
+          <Text variant="body" leading="5" tone="muted" className="mt-1">
             Choose the accounts Otto should use.
           </Text>
         </div>
         <span
           role="status"
-          className="shrink-0 rounded-full border border-separator px-2.5 py-1 text-caption text-foreground-tertiary"
+          className="shrink-0 rounded-pill border border-separator px-2.5 py-1 text-caption text-foreground-tertiary"
         >
           {rows.length + mcpRows.length - remaining.length} of{" "}
           {rows.length + mcpRows.length} ready
@@ -55,18 +61,18 @@ export function ConnectionsSection({ rows, mcp }: Props) {
       ))}
       {remaining.length > 0 && rows.length + mcpRows.length > 1 && (
         <div className="border-t border-separator px-4 py-2.5">
-          <Text variant="body-tight" as="span" tone="muted">
+          <Text variant="body" leading="5" as="span" tone="muted">
             Still to connect: {remaining.join(", ")}
           </Text>
         </div>
       )}
       <div className="space-y-2 border-t border-separator bg-surface-muted px-4 py-3">
-        <Text variant="body-tight" tone="muted">
+        <Text variant="body" leading="5" tone="muted">
           {remaining.length
             ? "Once these apps are connected, Otto will continue."
             : "Connections are ready. Otto can continue setting up your workflow."}
         </Text>
-        <Text variant="body-tight" as="span" tone="muted">
+        <Text variant="body" leading="5" as="span" tone="muted">
           Looking for something else?{" "}
           <button
             type="button"

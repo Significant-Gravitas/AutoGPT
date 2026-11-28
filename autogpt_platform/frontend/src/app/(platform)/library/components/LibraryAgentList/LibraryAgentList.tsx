@@ -17,6 +17,7 @@ import {
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
 import { LibraryEmptyState } from "../LibraryEmptyState/LibraryEmptyState";
+import { SchedulesUnavailableNotice } from "@/components/contextual/SchedulesUnavailableNotice/SchedulesUnavailableNotice";
 import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
@@ -24,6 +25,7 @@ import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { duration, spring } from "@/components/styles/motion";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -32,7 +34,7 @@ const containerVariants = {
   exit: {
     opacity: 0,
     filter: "blur(4px)",
-    transition: { duration: 0.12 },
+    transition: { duration: duration.instant },
   },
 };
 
@@ -41,7 +43,7 @@ const reducedContainerVariants = {
   show: {},
   exit: {
     opacity: 0,
-    transition: { duration: 0.12 },
+    transition: { duration: duration.instant },
   },
 };
 
@@ -57,15 +59,14 @@ const itemAnimate = {
 
 const itemTransition = {
   type: "spring" as const,
-  stiffness: 300,
-  damping: 25,
-  opacity: { duration: 0.2 },
-  filter: { duration: 0.15 },
+  ...spring.gentle,
+  opacity: { duration: duration.base },
+  filter: { duration: duration.fast },
 };
 
 const reducedItemInitial = { opacity: 0 };
 const reducedItemAnimate = { opacity: 1 };
-const reducedItemTransition = { duration: 0.15 };
+const reducedItemTransition = { duration: duration.fast };
 
 interface Props {
   searchTerm: string;
@@ -112,6 +113,9 @@ export function LibraryAgentList({
     displayedCount,
     favoritesCount,
     agents,
+    schedulesUnknown,
+    retrySchedules,
+    retryingSchedules,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -167,6 +171,7 @@ export function LibraryAgentList({
           onTabChange={onTabChange}
           allCount={displayedCount}
           favoritesCount={favoritesCount}
+          librarySort={librarySort}
           setLibrarySort={setLibrarySort}
           statusFilter={statusFilter}
           onStatusFilterChange={onStatusFilterChange}
@@ -180,6 +185,12 @@ export function LibraryAgentList({
             <LowCreditBanner />
           </div>
         )}
+        <SchedulesUnavailableNotice
+          show={schedulesUnknown}
+          onRetry={retrySchedules}
+          retrying={retryingSchedules}
+          className="mb-4"
+        />
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
@@ -206,7 +217,7 @@ export function LibraryAgentList({
           <div className="flex h-[200px] items-center justify-center">
             <LoadingSpinner size="large" />
           </div>
-        ) : isFavoritesTab && agents.length === 0 ? (
+        ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
             <Text variant="body">No favorite workflows yet</Text>

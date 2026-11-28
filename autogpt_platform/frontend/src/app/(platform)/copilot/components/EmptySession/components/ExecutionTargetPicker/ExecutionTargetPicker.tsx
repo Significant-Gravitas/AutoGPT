@@ -19,12 +19,21 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { LocalFolderPicker } from "./components/LocalFolderPicker/LocalFolderPicker";
+import { useAnotherComputer } from "./useAnotherComputer";
 import { useExecutionTargetPicker } from "./useExecutionTargetPicker";
 
 export function ExecutionTargetPicker() {
   const picker = useExecutionTargetPicker();
   const [warningResolved, setWarningResolved] = useState(false);
   const isLocal = picker.target.kind === "local";
+  const isFolderDialogOpen = isLocal && warningResolved && picker.isOpen;
+  const selectedMachineID =
+    picker.target.kind === "local" ? picker.target.machineID : null;
+  const anotherComputer = useAnotherComputer({
+    isOpen: isFolderDialogOpen,
+    machines: picker.machines,
+    selectedMachineID,
+  });
 
   function handleTargetChange(value: string) {
     if (value === "local") picker.selectLocal();
@@ -39,7 +48,7 @@ export function ExecutionTargetPicker() {
             <button
               type="button"
               aria-label={`Execution target: ${isLocal ? "Local PC" : "Cloud"}`}
-              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-body font-medium text-foreground-emphasis shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-pill border border-border-base bg-surface px-3 py-2 text-body font-medium text-foreground-emphasis shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
             >
               {isLocal ? (
                 <span className="flex shrink-0 text-brand">
@@ -92,7 +101,7 @@ export function ExecutionTargetPicker() {
                 ? `Local folder: ${picker.target.displayPath}. Change folder`
                 : "Choose a Local PC folder"
             }
-            className="inline-flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-full border border-border-base bg-surface px-3 py-2 text-body text-foreground-body shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 max-w-full min-w-0 items-center gap-2 rounded-pill border border-border-base bg-surface px-3 py-2 text-body text-foreground-body shadow-sm outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
           >
             <span className="flex shrink-0 text-warning">
               <Icon icon={FolderOpenIcon} size={17} aria-hidden="true" />
@@ -126,11 +135,10 @@ export function ExecutionTargetPicker() {
             ? `${picker.target.machineID ?? "none"}:${picker.target.connectionID ?? "none"}`
             : "cloud"
         }
-        isOpen={isLocal && warningResolved && picker.isOpen}
+        isOpen={isFolderDialogOpen}
         machines={picker.machines}
-        selectedMachineID={
-          picker.target.kind === "local" ? picker.target.machineID : null
-        }
+        selectedMachineID={selectedMachineID}
+        anotherComputer={anotherComputer}
         isLoadingMachines={picker.isLoadingMachines}
         isMachinesError={picker.isMachinesError}
         isRefreshingMachines={picker.isRefreshingMachines}
