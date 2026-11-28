@@ -4,14 +4,15 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphiti_core.edges import EntityEdge
 from graphiti_core.nodes import EpisodeType, EpisodicNode
+from graphiti_core.search.search_config import SearchResults
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 
-from . import context
+from . import context, recall
 from .context import _format_context, fetch_warm_context
 from .context_refresh import refresh_warm_context
 from .memory_model import MemoryEnvelope
@@ -200,6 +201,35 @@ class TestFetchInternal:
         assert kwargs["recipe"] is EDGE_HYBRID_SEARCH_CROSS_ENCODER
         assert kwargs["limit"] == context.graphiti_config.context_max_facts
         recent_mock.assert_awaited_once_with(MemoryScope.for_user("abc"), 5)
+
+    @pytest.mark.asyncio
+    async def test_a_long_message_still_gets_its_memories(self) -> None:
+        """Through the real fact search: the embedder refuses a query over
+        8,192 tokens, and a turn whose message is longer still gets its
+        memories rather than none."""
+
+        async def embedding_search(*, query: str, **_):
+            # Stricter than the real limit: 8,192 UTF-8 bytes never make more
+            # than 8,192 tokens.
+            if len(query.encode("utf-8")) > 8_192:
+                raise RuntimeError("maximum input length is 8192 tokens")
+            return SearchResults(edges=[_edge()])
+
+        client = MagicMock()
+        client.search_ = AsyncMock(side_effect=embedding_search)
+        client.driver.execute_query = AsyncMock(
+            return_value=([{"uuid": "edge-a"}], [], None)
+        )
+        message = "What do I like? " + "Here is the report I mentioned. " * 2_000
+        with (
+            patch.object(recall, "get_graphiti_client", AsyncMock(return_value=client)),
+            patch.object(
+                context, "recent_episodes", new_callable=AsyncMock, return_value=[]
+            ),
+        ):
+            result = await fetch_warm_context("abc", message)
+
+        assert result is not None and "user likes python" in result
 
 
 class TestFormatContextWithContent:
