@@ -16,7 +16,9 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.enums import APIKeyStatus
+from pydantic import ValidationError
 
+from backend.api.features.orgs.team_model import CreateTeamRequest, UpdateTeamRequest
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1070,7 +1072,10 @@ class TestWorkspaceDbDelete:
         update = self.prisma.team.update.await_args.kwargs
         assert update["where"] == {"id": WS_ID}
         assert update["data"]["archivedAt"] is not None
-        assert update["data"]["name"] != "Research"
+        # No request can give a live workspace the name the archive takes.
+        for request in (CreateTeamRequest, UpdateTeamRequest):
+            with pytest.raises(ValidationError):
+                request(name=update["data"]["name"])
         for model in removed:
             model.delete_many.assert_awaited_once_with(where={"teamId": WS_ID})
         revoked = self.prisma.apikey.update_many.await_args.kwargs
@@ -3235,8 +3240,6 @@ class TestInvitationSeeding:
 
     @pytest.mark.parametrize("email", ["", "   "])
     def test_create_invitation_rejects_a_blank_email(self, email):
-        from pydantic import ValidationError
-
         from backend.api.features.orgs.model import CreateInvitationRequest
 
         with pytest.raises(ValidationError):

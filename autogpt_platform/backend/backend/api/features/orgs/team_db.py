@@ -11,6 +11,7 @@ from prisma.types import TeamMemberWhereUniqueInput
 from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import ConflictError, NotFoundError
+from backend.util.text_limits import MAX_NAME_LENGTH
 
 from .team_model import TeamMemberResponse, TeamResponse
 
@@ -136,10 +137,11 @@ async def delete_team(ws_id: str) -> None:
         await revoke_api_keys(tx, {"teamIdRestriction": ws_id})
         await tx.team.update(
             where={"id": ws_id},
-            # (orgId, name) is unique: free the name for a new workspace.
+            # (orgId, name) is unique: free the name for a new workspace, with one
+            # longer than any request can set, so no other workspace holds it.
             data={
                 "archivedAt": datetime.now(timezone.utc),
-                "name": f"{ws.name} [deleted {ws_id}]",
+                "name": f"{ws.name:<{MAX_NAME_LENGTH}} [deleted {ws_id}]",
             },
         )
 

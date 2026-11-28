@@ -5,9 +5,11 @@ mocked Prisma has none. Outside `orgs/`, whose conftest no-ops `server`.
 """
 
 import uuid
+from typing import AsyncIterator
 
 import prisma.models
 import pytest
+import pytest_asyncio
 
 from backend.api.features.orgs import db as orgs_db
 from backend.api.features.orgs import team_db
@@ -23,14 +25,16 @@ from backend.util.test import SpinTestServer
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_deleted_private_teams_agents_and_runs_stay_with_their_authors(
-    server: SpinTestServer,
+    people: tuple[str, str, str],
 ):
-    author, teammate, outsider = await _user(), await _user(), await _user()
+    author, teammate, outsider = people
     org = await orgs_db.create_org("Team Delete", f"td-{uuid.uuid4().hex[:12]}", author)
     for user_id in (teammate, outsider):
         await orgs_db.add_org_member(org.id, user_id)
     team = await team_db.create_team(org.id, "Private", author, join_policy="PRIVATE")
     await team_db.add_team_member(team.id, teammate, org.id)
+    # A name a workspace could take before this one is deleted.
+    await team_db.create_team(org.id, f"Private [deleted {team.id}]", author)
     graph = await create_graph(
         Graph(name="Team agent", description="", nodes=[], links=[]),
         author,
@@ -62,10 +66,26 @@ async def test_a_deleted_private_teams_agents_and_runs_stay_with_their_authors(
         data={"teamId": team.id, "userId": teammate, "status": "ACTIVE"}
     )
     assert await _sees(teammate, org.id, graph.id, run.id) == (False, False)
+    assert not await orgs_db.is_active_member(teammate, org.id, team.id)
     with pytest.raises(NotFoundError):
         await team_db.get_team(team.id, expected_org_id=org.id)
     # The name is free for a new team.
     await team_db.create_team(org.id, "Private", author, join_policy="PRIVATE")
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def people(server: SpinTestServer) -> AsyncIterator[tuple[str, str, str]]:
+    users = [await _user() for _ in range(3)]
+    try:
+        yield users[0], users[1], users[2]
+    finally:
+        memberships = await prisma.models.OrgMember.prisma().find_many(
+            where={"userId": {"in": users}}
+        )
+        await prisma.models.User.prisma().delete_many(where={"id": {"in": users}})
+        await prisma.models.Organization.prisma().delete_many(
+            where={"id": {"in": [m.orgId for m in memberships]}}
+        )
 
 
 async def _sees(

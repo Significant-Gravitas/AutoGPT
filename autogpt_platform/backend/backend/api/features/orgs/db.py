@@ -234,7 +234,8 @@ async def is_active_member(
     user_id: str, organization_id: str, team_id: str | None
 ) -> bool:
     """Whether the user is an active member of the organization, which isn't
-    deleted, and, when ``team_id`` is given, of that team within it."""
+    deleted, and, when ``team_id`` is given, of that team within it, which isn't
+    archived."""
     org_member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
         include={"Org": True},
@@ -256,6 +257,7 @@ async def is_active_member(
         and team_member.status == "ACTIVE"
         and team_member.Team is not None
         and team_member.Team.orgId == organization_id
+        and team_member.Team.archivedAt is None
     )
 
 
