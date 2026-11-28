@@ -82,6 +82,7 @@ export function QuestionAnswerField({
             variant="outline"
             size="xs"
             className="self-start"
+            aria-label={`Use example: ${example}`}
             onClick={() => {
               onChange(example);
               textareaRef.current?.focus();

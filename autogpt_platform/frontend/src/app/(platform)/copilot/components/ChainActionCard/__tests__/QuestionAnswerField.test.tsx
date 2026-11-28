@@ -73,11 +73,15 @@ describe("QuestionAnswerField Use example", () => {
     render(<ControlledField question={withExample} />);
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 
-    fireEvent.click(screen.getByRole("button", { name: "Use example" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Use example: Weekly sales summary",
+      }),
+    );
 
     expect(textarea.value).toBe("Weekly sales summary");
     expect(document.activeElement).toBe(textarea);
-    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use example/ })).toBeNull();
   });
 
   it("hides once the user has typed and comes back when the answer is cleared", () => {
@@ -85,11 +89,12 @@ describe("QuestionAnswerField Use example", () => {
     const textarea = screen.getByRole("textbox");
 
     fireEvent.change(textarea, { target: { value: "Q3 numbers" } });
-    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use example/ })).toBeNull();
     expect(screen.getByRole("textbox")).toBe(textarea);
 
     fireEvent.change(textarea, { target: { value: "" } });
-    expect(screen.getByRole("button", { name: "Use example" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Use example/ })).toBeDefined();
+    expect(screen.getByRole("textbox")).toBe(textarea);
   });
 
   it("is not offered without an example", () => {
@@ -99,7 +104,7 @@ describe("QuestionAnswerField Use example", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use example/ })).toBeNull();
   });
 
   it("is not offered for a question with options", () => {
@@ -114,6 +119,6 @@ describe("QuestionAnswerField Use example", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Use example/ })).toBeNull();
   });
 });

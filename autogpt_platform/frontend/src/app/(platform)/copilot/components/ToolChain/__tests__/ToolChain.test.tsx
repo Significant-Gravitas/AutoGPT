@@ -486,7 +486,7 @@ describe("ToolChain", () => {
     await expectTypingKept(field, " 日本語");
   });
 
-  it("sends the example as the answer after Use example", async () => {
+  it("sends the example, edited, as the answer after Use example", async () => {
     const user = userEvent.setup();
     const pending: PendingQuestions = {
       dockId: "m1:call-ask_question",
@@ -514,17 +514,24 @@ describe("ToolChain", () => {
       </CopilotChatActionsProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "Use example" }));
+    await user.click(
+      screen.getByRole("button", { name: "Use example: Europe" }),
+    );
 
-    const field = screen.getByPlaceholderText("e.g. Europe");
-    expect((field as HTMLTextAreaElement).value).toBe("Europe");
+    const field = screen.getByPlaceholderText(
+      "e.g. Europe",
+    ) as HTMLTextAreaElement;
+    expect(field.value).toBe("Europe");
     expect(document.activeElement).toBe(field);
-    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+    expect(field.selectionStart).toBe("Europe".length);
+    expect(screen.queryByRole("button", { name: /^Use example/ })).toBeNull();
+
+    await expectTypingKept(field, " 日本語");
 
     await user.click(screen.getByRole("button", { name: "Send answers" }));
 
     expect(onSend).toHaveBeenCalledWith(
-      "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+      "**Here are my answers:**\n\n> Which region?\n\nEurope 日本語\n\nPlease proceed.",
     );
   });
 
