@@ -128,6 +128,21 @@ def test_is_allowed_local_path_empty():
     assert not is_allowed_local_path("")
 
 
+@pytest.mark.parametrize(
+    "path", ["a/" * 2_100, "/" + "a/" * 2_100], ids=["relative", "absolute"]
+)
+def test_path_longer_than_any_host_path_is_refused_unresolved(path, mocker):
+    realpath = mocker.patch("backend.copilot.context.os.path.realpath")
+    token = _current_project_dir.set("test-encoded-dir")
+    try:
+        assert not is_allowed_local_path(path, "/tmp/copilot-session")
+        assert not is_sdk_tool_path(path)
+    finally:
+        _current_project_dir.reset(token)
+
+    realpath.assert_not_called()
+
+
 def test_is_allowed_local_path_inside_sdk_cwd():
     with tempfile.TemporaryDirectory() as cwd:
         path = os.path.join(cwd, "file.txt")

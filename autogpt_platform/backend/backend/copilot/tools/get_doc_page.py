@@ -13,6 +13,9 @@ from .models import DocPageResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+# Far longer than any page path under docs/, and well under PATH_MAX.
+MAX_DOC_PATH_LENGTH = 1024
+
 
 class GetDocPageTool(BaseTool):
     """Tool for fetching full content of a documentation page."""
@@ -85,7 +88,7 @@ class GetDocPageTool(BaseTool):
             )
 
         # Sanitize path to prevent directory traversal
-        if ".." in path or path.startswith("/"):
+        if len(path) > MAX_DOC_PATH_LENGTH or ".." in path or path.startswith("/"):
             return ErrorResponse(
                 message="Invalid documentation path.",
                 error="invalid_path",

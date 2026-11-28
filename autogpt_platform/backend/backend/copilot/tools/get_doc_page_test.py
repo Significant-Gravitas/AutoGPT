@@ -163,3 +163,12 @@ async def test_empty_path_rejected(tool, session):
     result = await tool._execute(user_id=None, session=session, path="  ")
     assert isinstance(result, ErrorResponse)
     assert "path" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_overlong_path_rejected_before_it_is_resolved(tool, session, mocker):
+    get_root = mocker.patch("backend.copilot.tools.get_doc_page.get_docs_root")
+    result = await tool._execute(user_id=None, session=session, path="a/" * 600)
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "invalid_path"
+    get_root.assert_not_called()
