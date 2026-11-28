@@ -56,7 +56,13 @@ export function APIKeyCredentialsModal({
     >
       <Dialog.Content>
         {schemaDescription && (
-          <Text variant="body-tight" as="p" tone="secondary" className="mb-4">
+          <Text
+            variant="body"
+            leading="5"
+            as="p"
+            tone="secondary"
+            className="mb-4"
+          >
             {schemaDescription}
           </Text>
         )}
@@ -91,12 +97,15 @@ export function APIKeyCredentialsModal({
                     placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
-                        <FormDescription className="text-body-sm leading-inherit">
+                        <FormDescription size="body-sm">
                           Required scope(s) for this block:{" "}
                           {schema.credentials_scopes?.map((s, i, a) => (
                             <span key={i}>
                               <Text
-                                variant="small-mono-bold-tight"
+                                variant="small"
+                                weight="bold"
+                                mono
+                                leading="4"
                                 as="code"
                                 tone="inherit"
                               >

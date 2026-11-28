@@ -120,7 +120,7 @@ export function LocalFolderPicker({
               className="flex flex-col items-center gap-3 rounded-2xl border border-error/20 bg-error-surface p-6 text-center text-error-foreground"
             >
               <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
-              <Text variant="body-medium" tone="inherit">
+              <Text variant="body" weight="medium" tone="inherit">
                 Could Not Check Your Computers
               </Text>
               <Text variant="small" tone="inherit">
@@ -191,7 +191,7 @@ export function LocalFolderPicker({
                     <span className="flex text-warning-foreground">
                       <Icon icon={Alert02Icon} size={24} aria-hidden="true" />
                     </span>
-                    <Text variant="small-medium" tone="primary">
+                    <Text variant="small" weight="medium" tone="primary">
                       {browser.error}
                     </Text>
                     <Button

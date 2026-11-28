@@ -36,6 +36,8 @@ JWKS connection failures follow the retryable authentication-outage contract abo
 
 An account its owner closed (self-serve deletion) gets HTTP 401 with detail `This account is closed.` from signed-in routes other than the account-deletion status and restore routes, and WebSocket 4003 with that reason. A failed closed-account lookup closes with retryable 1011, as a failed ban lookup does.
 
+REST rejects a revoked, expired or mismatched session with HTTP 401 and detail `{"code": "session_revoked", "message": "Session expired or revoked"}`; a closed account's token gets the closed-account 401 above instead, though closing ended its sessions.
+
 **Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and a Redis outage can still interrupt rollback recovery. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
 
 ## Remaining backend slices

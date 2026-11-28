@@ -5,17 +5,31 @@ import { HTMLAttributes, ReactNode } from "react";
 const variants = {
   default: "rounded-large bg-surface p-6 shadow-md",
   outlined: "agpt-card text-foreground-base",
+  // A small bordered box for a list of help rows under a form.
+  panel:
+    "agpt-card text-foreground-base rounded-lg border border-border-base bg-surface shadow-sm",
 } as const;
 
 interface Props {
   children: ReactNode;
   className?: string;
   variant?: keyof typeof variants;
+  /** `roomy`: 32px inside, for a card that is the whole page (an auth or
+   *  error screen). */
+  size?: "roomy";
 }
 
-export function Card({ children, className, variant = "default" }: Props) {
+export function Card({
+  children,
+  className,
+  variant = "default",
+  size,
+}: Props) {
   return (
-    <div data-slot="card" className={cn(variants[variant], className)}>
+    <div
+      data-slot="card"
+      className={cn(variants[variant], size === "roomy" && "p-8", className)}
+    >
       {children}
     </div>
   );
@@ -55,7 +69,8 @@ export function CardDescription({
 }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <Text
-      variant="body-tight"
+      variant="body"
+      leading="5"
       as="p"
       data-slot="card-description"
       tone="muted"
@@ -67,12 +82,16 @@ export function CardDescription({
 
 export function CardContent({
   className,
+  padding,
   ...props
-}: HTMLAttributes<HTMLDivElement>) {
+}: HTMLAttributes<HTMLDivElement> & {
+  /** `none`: rows that run to the card's edges. */
+  padding?: "none";
+}) {
   return (
     <div
       data-slot="card-content"
-      className={cn("p-6 pt-0", className)}
+      className={cn("p-6 pt-0", padding === "none" && "p-0", className)}
       {...props}
     />
   );

@@ -55,7 +55,7 @@ export function ProActivationDialog({ activation }: Props) {
           data-slot="pro-activation-dialog-heading"
           className="space-y-2 pr-7"
         >
-          <Text variant="small-medium" tone="muted">
+          <Text variant="small" weight="medium" tone="muted">
             {review ? "Payment review" : `AutoGPT ${plan}`}
           </Text>
           <span

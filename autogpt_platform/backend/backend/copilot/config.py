@@ -818,6 +818,14 @@ class ChatConfig(BaseSettings):
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
+    e2b_desktop_usd_per_hour: float = Field(
+        default=0.08,
+        ge=0,
+        allow_inf_nan=False,
+        description="What a box's running time costs, charged to the user's usage "
+        "allowance when they open its desktop from the Computer tab or side panel. "
+        "The default is E2B's price for the default template; 0 charges nothing.",
+    )
 
     # --- Local PC executor ---
     local_pc_executor_oauth_client_id: str = Field(

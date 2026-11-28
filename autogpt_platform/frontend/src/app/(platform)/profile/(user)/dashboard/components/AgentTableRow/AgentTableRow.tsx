@@ -92,7 +92,8 @@ export const AgentTableRow = ({
             <div className="flex items-center gap-2">
               <Text
                 variant="h3"
-                size="large-medium"
+                size="large"
+                weight="medium"
                 tone="emphasis"
                 className="line-clamp-1"
               >
@@ -148,7 +149,7 @@ export const AgentTableRow = ({
             >
               <Icon icon={MoreVerticalIcon} className="h-5 w-5" />
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-surface p-1 shadow-md">
+            <DropdownMenu.Content className="z-raised rounded-xl border bg-surface p-1 shadow-md">
               {canModify ? (
                 <DropdownMenu.Item
                   onSelect={handleEdit}

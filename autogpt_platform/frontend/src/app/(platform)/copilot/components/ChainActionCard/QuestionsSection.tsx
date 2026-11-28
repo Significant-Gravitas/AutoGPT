@@ -18,6 +18,7 @@ import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";
 import { Text } from "@/components/atoms/Text/Text";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   requests: QuestionRequest[];
@@ -64,14 +65,20 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
       <div className="flex items-center justify-between gap-2.5 border-b border-separator px-4 py-3">
         <span className="flex items-center gap-2.5">
           <Icon icon={Message01Icon} size={18} tone="subtle" />
-          <Text variant="body-medium-tight" as="span" tone="primary">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            as="span"
+            tone="primary"
+          >
             Answer a few questions
           </Text>
         </span>
         <button
           type="button"
           onClick={() => requests.forEach((req) => req.onSkip())}
-          className="rounded-full px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
+          className="rounded-pill px-2 py-0.5 text-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-secondary"
         >
           Skip
         </button>
@@ -81,7 +88,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
         key={id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+        transition={{ duration: duration.base, ease: ease.outQuint }}
         className="flex flex-col gap-4 px-5 pt-5 pb-4"
       >
         <span
@@ -140,7 +147,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
                   (i === current
                     ? "size-2.5 border-2 border-action"
                     : i < current
-                      ? "size-2 bg-foreground-subtle"
+                      ? "size-2 bg-fill-subtle"
                       : "size-2 border border-border-strong")
                 }
               />
@@ -163,7 +170,7 @@ export function QuestionsSection({ requests, isReady, onProceed }: Props) {
           disabled={!actionEnabled}
           onClick={handleAction}
           className={
-            "flex size-8 items-center justify-center rounded-full transition-all duration-200 enabled:active:scale-95 " +
+            "flex size-8 items-center justify-center rounded-pill transition-all duration-200 enabled:active:scale-95 " +
             (actionEnabled
               ? "bg-action text-action-foreground hover:bg-action-hover"
               : "bg-surface-hover text-foreground-subtle")

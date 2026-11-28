@@ -50,7 +50,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
                 {apiKey.scopes.map((scope) => (
                   <li
                     key={scope}
-                    className="rounded-full bg-surface-hover px-2.5 py-1 text-caption text-foreground-body"
+                    className="rounded-pill bg-surface-hover px-2.5 py-1 text-caption text-foreground-body"
                   >
                     {humanizePermission(scope)}
                     {SCOPE_API_VERSION[scope] === "v1" && (
@@ -87,7 +87,7 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <Text variant="small-medium" as="span" tone="muted">
+      <Text variant="small" weight="medium" as="span" tone="muted">
         {label}
       </Text>
       {children}

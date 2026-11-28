@@ -278,6 +278,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "is paywalled and the billing pages offer plans. Off for self-hosted "
         "installs; the hosted platform sets it.",
     )
+    mobile_min_app_version: str = Field(
+        default="",
+        description="Oldest mobile app version (MAJOR.MINOR.PATCH) still allowed "
+        "in; an older app asks to be updated. Empty means no minimum.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -624,6 +629,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Must be set so the application knows where it's hosted at. "
         "This is necessary to make sure webhooks find their way.",
+    )
+
+    claude_code_key_in_sandbox: bool = Field(
+        default=False,
+        description="Give the Claude Code block's E2B sandbox the user's Anthropic "
+        "key instead of sending its model calls through this server's relay. Use it "
+        "only when E2B's cloud cannot reach this server at platform_base_url.",
     )
 
     # Documented in docs/platform/client-ip.md: update it with any change here.

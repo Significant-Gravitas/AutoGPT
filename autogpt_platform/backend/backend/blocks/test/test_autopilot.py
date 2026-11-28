@@ -1,6 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,9 +15,12 @@ from backend.blocks.autopilot import (
     _autopilot_recursion_limit,
     _check_recursion,
     _enqueue_for_recovery,
+    _inherited_permissions,
     _reset_recursion,
 )
-from backend.copilot.tree import TurnEnvelope
+from backend.copilot.constants import AUTOPILOT_BLOCK_TOOL_NAME
+from backend.copilot.executor import utils as executor_utils
+from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.data.execution import ExecutionContext
 
 
@@ -371,7 +375,12 @@ class TestRecoveryEnqueue:
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
         block.create_session = AsyncMock(return_value="sess-recover")
 
-        input_data = block.Input(prompt="do work", max_recursion_depth=3)
+        input_data = block.Input(
+            prompt="do work",
+            max_recursion_depth=3,
+            tools=["web_fetch"],
+            tools_exclude=False,
+        )
         ctx = _make_context()
 
         with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
@@ -381,15 +390,77 @@ class TestRecoveryEnqueue:
                 outputs[name] = value
 
         assert "network error" in outputs.get("error", "")
-        # The 5th argument is the spawning turn's envelope, so recovery
-        # re-derives a child of it rather than re-rooting with full authority.
-        # A test context carries no tree, so it is None here.
+        # ``spawner_envelope`` is the spawning turn's, so recovery re-derives a
+        # child of it rather than re-rooting; a test context carries no tree.
         mock_enqueue.assert_awaited_once_with(
             "sess-recover",
             ctx.user_id,
             "do work",
             False,
-            None,
+            permissions=CopilotPermissions(tools=["web_fetch"], tools_exclude=False),
+            spawner_envelope=None,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "own_tools, outer, tools_left, web_requests_allowed",
+        [
+            (
+                ["web_fetch", "bash_exec"],
+                CopilotPermissions(
+                    tools=["web_fetch", "web_search"], tools_exclude=False
+                ),
+                {"web_fetch"},
+                True,
+            ),
+            (
+                ["web_fetch"],
+                CopilotPermissions(tools=["web_search"], tools_exclude=False),
+                set(),
+                True,
+            ),
+            (
+                [],
+                CopilotPermissions(blocks=["SendWebRequestBlock"]),
+                ALL_TOOL_NAMES,
+                False,
+            ),
+        ],
+        ids=["shared-tools", "no-shared-tool", "outer-block-filter"],
+    )
+    async def test_recovery_stays_under_an_outer_blocks_ceiling(
+        self, block, own_tools, outer, tools_left, web_requests_allowed
+    ):
+        """A block nested in another one's turn re-runs under both filters,
+        as its first run did, in the form the executor queue carries."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
+        block.create_session = AsyncMock(return_value="sess-nested")
+        input_data = block.Input(
+            prompt="do work",
+            max_recursion_depth=3,
+            tools=own_tools,
+            tools_exclude=not own_tools,
+        )
+        token = _inherited_permissions.set(outer)
+        try:
+            with patch(
+                "backend.blocks.autopilot._enqueue_for_recovery"
+            ) as mock_enqueue:
+                mock_enqueue.return_value = None
+                async for _ in block.run(input_data, execution_context=_make_context()):
+                    pass
+        finally:
+            _inherited_permissions.reset(token)
+
+        sent = CopilotPermissions.model_validate_json(
+            mock_enqueue.call_args.kwargs["permissions"].model_dump_json()
+        )
+        assert sent.effective_allowed_tools(ALL_TOOL_NAMES) == tools_left
+        assert (
+            sent.is_block_allowed(
+                "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+            )
+            is web_requests_allowed
         )
 
     @pytest.mark.asyncio
@@ -526,42 +597,101 @@ class TestRecoveryEnqueue:
 
 
 @pytest.mark.asyncio
-async def test_a_recovered_turn_spends_against_its_own_chat():
-    """Kills: a recovery envelope with no chat, whose paid reads never ask."""
-    enqueue = AsyncMock()
+async def test_a_recovered_turn_starts_like_any_turn_under_the_blocks_filter():
+    """Through ``schedule_turn``, which applies the turn cap, and with the
+    filter the first run had, ``render_ui`` still withheld."""
+    schedule_turn = AsyncMock()
     session = AsyncMock(return_value=MagicMock())
     with (
-        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
-        patch("backend.copilot.model.get_chat_session", session),
-    ):
-        await _enqueue_for_recovery("sess-1", "user-1", "resume", dry_run=False)
-    call = enqueue.await_args
-    assert call is not None and call.kwargs["envelope"].spend_session_id == "sess-1"
-
-
-@pytest.mark.asyncio
-async def test_a_recovered_graph_nested_turn_stays_in_its_spawners_tree_and_chat():
-    """Kills: recovery re-rooting a graph-nested turn, which would drop its
-    depth and tools and charge its own chat instead of the one that started it,
-    and a recovered turn that is no longer the block's, so cannot run on credits."""
-    spawner = TurnEnvelope(
-        tree_id="tree-1",
-        depth=1,
-        tools=frozenset({"run_sub_session"}),
-        spend_session_id="chat-origin",
-    )
-    enqueue = AsyncMock()
-    session = AsyncMock(return_value=MagicMock())
-    with (
-        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+        patch("backend.copilot.executor.utils.schedule_turn", schedule_turn),
         patch("backend.copilot.model.get_chat_session", session),
     ):
         await _enqueue_for_recovery(
-            "sess-1", "user-1", "resume", dry_run=False, spawner_envelope=spawner
+            "sess-1",
+            "user-1",
+            "resume",
+            dry_run=False,
+            permissions=CopilotPermissions(tools=["web_fetch"], tools_exclude=False),
         )
+    call = schedule_turn.await_args
+    assert call is not None
+    assert call.kwargs["session_id"] == "sess-1"
+    assert call.kwargs["permissions"].tools == ["web_fetch"]
+    assert call.kwargs["permissions"].tools_exclude is False
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_graph_nested_turn_keeps_its_spawners_tree_and_filters():
+    """Kills: recovery re-rooting a graph-nested turn (it would drop its depth
+    and tools and charge its own chat), and recovery dropping the block's own
+    and outer filters (the re-run would reach tools and blocks the first
+    could not). Drives the real ``schedule_turn`` and ``dispatch_turn``."""
+    block = AutoPilotBlock()
+    block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
+    block.create_session = AsyncMock(return_value="sess-nested")
+    ctx = _make_context().model_copy(
+        update={
+            "copilot_tree_id": "tree-1",
+            "copilot_tree_depth": 1,
+            "copilot_tree_tools": ["run_sub_session", "web_fetch", "web_search"],
+            "copilot_tree_spend_session_id": "chat-origin",
+        }
+    )
+    input_data = block.Input(
+        prompt="do work",
+        max_recursion_depth=3,
+        tools=["web_fetch", "web_search"],
+        tools_exclude=False,
+    )
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    enqueue = AsyncMock()
+    token = _inherited_permissions.set(
+        CopilotPermissions(
+            tools=["web_fetch"], tools_exclude=False, blocks=["SendWebRequestBlock"]
+        )
+    )
+    try:
+        with (
+            patch(
+                "backend.copilot.turn_queue.count_inflight_turns",
+                new=AsyncMock(return_value=0),
+            ),
+            patch.object(executor_utils, "acquire_turn_slot", new=acquire),
+            patch.object(executor_utils, "admit_turn", new=AsyncMock()),
+            patch.object(
+                executor_utils,
+                "chat_db",
+                return_value=MagicMock(
+                    record_chat_session_turn=AsyncMock(return_value=True)
+                ),
+            ),
+            patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+            patch.object(executor_utils, "enqueue_copilot_turn", new=enqueue),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+        ):
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+    finally:
+        _inherited_permissions.reset(token)
+
     call = enqueue.await_args
     assert call is not None
     envelope = call.kwargs["envelope"]
     assert (envelope.tree_id, envelope.depth) == ("tree-1", 2)
     assert envelope.spend_session_id == "chat-origin"
-    assert call.kwargs["tool_name"] == "autopilot_block"
+    assert call.kwargs["tool_name"] == AUTOPILOT_BLOCK_TOOL_NAME
+    sent = CopilotPermissions.model_validate_json(
+        call.kwargs["permissions"].model_dump_json()
+    )
+    assert sent.effective_allowed_tools(ALL_TOOL_NAMES) == {"web_fetch"}
+    assert not sent.is_block_allowed(
+        "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+    )

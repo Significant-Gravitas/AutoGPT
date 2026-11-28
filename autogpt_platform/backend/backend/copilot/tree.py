@@ -104,6 +104,7 @@ ISOLATE_DENIED_TOOLS: frozenset[str] = frozenset(
     {
         "post_to_chat_platform",
         "schedule_followup",
+        "schedule_routine",
         # Capability gate: withholds every MCP server from run_capability.
         "run_mcp_tool",
         "store_skill",

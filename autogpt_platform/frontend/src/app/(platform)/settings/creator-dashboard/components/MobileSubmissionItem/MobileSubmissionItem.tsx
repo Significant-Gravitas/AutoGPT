@@ -29,6 +29,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon as UIIcon } from "@/components/atoms/Icon/Icon";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   submission: StoreSubmission;
@@ -39,10 +40,9 @@ interface Props {
   creatorUsername?: string;
 }
 
-const ROW_EASE = [0.16, 1, 0.3, 1] as const;
 const ROW_STAGGER = 0.025;
 const ROW_STAGGER_CAP = 6;
-const ROW_DURATION = 0.22;
+const ROW_DURATION = duration.base;
 
 export function MobileSubmissionItem({
   submission,
@@ -87,7 +87,7 @@ export function MobileSubmissionItem({
           ? undefined
           : {
               duration: ROW_DURATION,
-              ease: ROW_EASE,
+              ease: ease.emphasized,
               delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
             }
       }
@@ -126,7 +126,12 @@ export function MobileSubmissionItem({
                 className="inline-flex min-w-0 items-center gap-1 truncate text-foreground-base hover:underline"
                 data-testid="submission-marketplace-link"
               >
-                <Text variant="body-medium" as="span" className="truncate">
+                <Text
+                  variant="body"
+                  weight="medium"
+                  as="span"
+                  className="truncate"
+                >
                   {submission.name}
                 </Text>
                 <UIIcon
@@ -138,7 +143,12 @@ export function MobileSubmissionItem({
                 />
               </Link>
             ) : (
-              <Text variant="body-medium" as="span" className="truncate">
+              <Text
+                variant="body"
+                weight="medium"
+                as="span"
+                className="truncate"
+              >
                 {submission.name}
               </Text>
             )}
@@ -169,7 +179,7 @@ export function MobileSubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:active:scale-100"
+              className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong active:scale-[0.92] motion-reduce:active:scale-100"
             >
               <UIIcon icon={MoreVerticalIcon} size={18} />
             </button>
@@ -229,7 +239,7 @@ export function MobileSubmissionItem({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span
-          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption-sm leading-inherit font-medium whitespace-nowrap ${visual.pillClass}`}
+          className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-caption-sm leading-inherit font-medium whitespace-nowrap ${visual.pillClass}`}
         >
           <UIIcon icon={visual.Icon} size={10} />
           {visual.label}

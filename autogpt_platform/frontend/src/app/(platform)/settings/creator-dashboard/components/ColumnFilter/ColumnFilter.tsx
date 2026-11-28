@@ -30,7 +30,7 @@ export function ColumnFilter({
           type="button"
           aria-label={`Filter ${label}`}
           className={cn(
-            "inline-flex h-6 w-6 items-center justify-center rounded-full",
+            "inline-flex h-6 w-6 items-center justify-center rounded-pill",
             "transition-[transform,background-color,color] duration-150",
             "active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100",
             active

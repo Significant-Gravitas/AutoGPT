@@ -60,10 +60,8 @@ export function PlanSteps({ steps }: ItemsProps) {
               <Icon
                 icon={CircleIcon}
                 size={15}
-                className={
-                  "shrink-0 " +
-                  (active ? "text-brand" : "text-foreground-disabled")
-                }
+                tone={active ? "brand" : "disabled"}
+                className="shrink-0"
               />
             )}
             <span
@@ -79,7 +77,7 @@ export function PlanSteps({ steps }: ItemsProps) {
               {str(step, "description") ?? inline(step)}
             </span>
             {blockName && (
-              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {blockName}
               </span>
             )}
@@ -158,7 +156,12 @@ export function QuestionsCard({ questions }: QuestionsCardProps) {
               {str(entry, "question") ?? inline(entry)}
             </p>
             {str(entry, "example") && (
-              <Text variant="small-tight" tone="subtle" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="subtle"
+                className="truncate"
+              >
                 e.g. {str(entry, "example")}
               </Text>
             )}
@@ -183,13 +186,15 @@ export function SetupCard({ output, provider }: SetupCardProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
-        <Text variant="small-tight" tone="muted" className="truncate">
+        <Text variant="small" leading="4" tone="muted" className="truncate">
           Connection required
         </Text>
       </div>
@@ -208,20 +213,22 @@ export function SkillCard({ output }: OutputProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           {name}
         </Text>
         {str(output, "description") && (
-          <Text variant="small-tight" tone="muted" className="truncate">
+          <Text variant="small" leading="4" tone="muted" className="truncate">
             {str(output, "description")}
           </Text>
         )}
       </div>
       {triggers[0] && (
-        <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+        <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
           {triggers[0]}
         </span>
       )}
@@ -236,11 +243,11 @@ export function SuggestedGoalCard({ output }: OutputProps) {
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
-      <Text variant="body-sm-medium-inherit" tone="emphasis">
+      <Text variant="body-sm" weight="medium" leading="inherit" tone="emphasis">
         {goal}
       </Text>
       {str(output, "reason") && (
-        <Text variant="small-tight" tone="muted">
+        <Text variant="small" leading="4" tone="muted">
           {str(output, "reason")}
         </Text>
       )}

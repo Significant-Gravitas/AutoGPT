@@ -47,9 +47,10 @@ from backend.api.features.experts.reset import ExpertResetResult
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot.computer import (
     ComputerInfo,
+    DesktopRefused,
     describe_computer,
     mounts_for,
-    open_desktop,
+    open_desktop_from_ui,
 )
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import enforce_payment_paywall
@@ -432,7 +433,7 @@ async def get_expert_computer(
     operation_id="postV2StartExpertDesktop",
     responses={
         404: {"description": "Expert not found"},
-        429: {"description": "Too many sandboxes are running"},
+        429: {"description": "Usage allowance spent, or too many sandboxes running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -457,13 +458,13 @@ async def start_expert_desktop(
             status_code=503, detail="E2B is not configured on this deployment."
         )
     try:
-        stream, _created, _shared = await open_desktop(
+        stream, _created, _shared = await open_desktop_from_ui(
             SandboxOwner(kind="expert", id=expert_id),
             mounts_for(user_id, expert_id),
             api_key,
             user_id=user_id,
         )
-    except SandboxLimitError as refusal:
+    except (DesktopRefused, SandboxLimitError) as refusal:
         raise fastapi.HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(

@@ -114,19 +114,20 @@ function ContextualTip({
         role="region"
         aria-labelledby={titleID}
         data-testid="contextual-tip"
-        className="z-[120] w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
+        className="z-tour w-[18rem] max-w-[calc(100vw-2rem)] rounded-2xl border-border-base p-4 shadow-xl"
       >
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-1.5 text-foreground-secondary">
             <Icon icon={BulbIcon} size={14} aria-hidden />
-            <Text variant="small-medium" tone="inherit">
+            <Text variant="small" weight="medium" tone="inherit">
               Tip
             </Text>
           </span>
           <Text
             as="h2"
             id={titleID}
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             tone="primary"
             className="[overflow-wrap:anywhere]"
           >
@@ -143,6 +144,7 @@ function ContextualTip({
             type="button"
             variant="secondary"
             size="xs"
+            shape="sharp"
             onClick={onDismiss}
             className="mt-1 self-end"
           >

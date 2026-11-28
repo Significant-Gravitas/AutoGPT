@@ -304,7 +304,8 @@ def _record_execution_failure(
 # Terminal conditions the platform already understands. Anything outside this
 # set is treated as an unexpected failure and pages via Discord, so a known
 # business outcome left out of it produces a spurious "Unknown Graph Execution
-# Error" alert with a stack trace.
+# Error" alert with a stack trace. A run one of these ends bills the requests
+# it cuts off mid-call, as a stop does (see _cleanup_graph_execution).
 KNOWN_GRAPH_EXECUTION_ERRORS = (
     InsufficientBalanceError,
     ModerationError,
@@ -2115,10 +2116,11 @@ class ExecutionProcessor:
         This method is decorated with @error_logged(swallow=True) to ensure cleanup
         never fails in the finally block.
         """
-        # Cancel and wait for all node executions to complete. Only a stop
-        # request ends a run TERMINATED, and its nodes are billed for the
-        # requests it cuts off (see billing.bills_stop_estimate).
-        stop_requested = execution_status == ExecutionStatus.TERMINATED
+        # Requests cut off mid-call are billed when the user ended the run: a stop,
+        # or a known error such as an unaffordable node (billing.bills_stop_estimate).
+        stop_requested = execution_status == ExecutionStatus.TERMINATED or isinstance(
+            error, KNOWN_GRAPH_EXECUTION_ERRORS
+        )
         for node_id, inflight_exec in running_node_execution.items():
             if inflight_exec.is_done():
                 continue

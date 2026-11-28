@@ -21,6 +21,7 @@ from backend.blocks.elevenlabs._auth import (
 )
 from backend.blocks.video._render import add_narration_to_video, check_input_video
 from backend.blocks.video._utils import VideoMediaStorage, extract_source_name, run_edit
+from backend.data.block import BlockInput
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 from backend.util.exceptions import BlockExecutionError
@@ -108,18 +109,22 @@ class VideoNarrationBlock(VideoMediaStorage, Block):
     # ElevenLabs Starter plan: $5 / 30K credits = $0.000167 / credit.
     _USD_PER_CREDIT = 0.000167
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return self._script_cost(
+            input_data.get("script") or "", input_data.get("model_id") or ""
+        )
+
     def _record_script_cost(self, script: str, model_id: str) -> None:
         """Emit provider_cost (USD) for the narration run so the COST_USD
-        resolver can bill real ElevenLabs spend. Flash/Turbo v2.5 bill at
-        half the char rate of Multilingual/Turbo v2.
-        """
+        resolver can bill real ElevenLabs spend."""
+        self.merge_stats(self._script_cost(script, model_id))
+
+    def _script_cost(self, script: str, model_id: str) -> NodeExecutionStats:
+        """Flash/Turbo v2.5 bill at half the char rate of Multilingual/Turbo v2."""
         credits_per_char = 0.5 if model_id in self._HALF_RATE_MODELS else 1.0
-        script_usd = len(script) * self._USD_PER_CREDIT * credits_per_char
-        self.merge_stats(
-            NodeExecutionStats(
-                provider_cost=script_usd,
-                provider_cost_type="cost_usd",
-            )
+        return NodeExecutionStats(
+            provider_cost=len(script) * self._USD_PER_CREDIT * credits_per_char,
+            provider_cost_type="cost_usd",
         )
 
     async def _check_input_video(self, video_abspath: str) -> None:

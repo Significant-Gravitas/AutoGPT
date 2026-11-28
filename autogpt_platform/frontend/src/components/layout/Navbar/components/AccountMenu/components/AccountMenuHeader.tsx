@@ -80,7 +80,8 @@ export function AccountMenuHeader({
         side="right"
         align="start"
         sideOffset={12}
-        className="w-64 rounded-2xl border border-border-base p-0 shadow-lg"
+        variant="menu"
+        className="w-64"
         data-testid="account-menu-org-popover"
       >
         <AccountMenuOrgList />

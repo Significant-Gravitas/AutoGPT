@@ -27,7 +27,8 @@ function ActivityNavIndicator() {
     return (
       <LoadingSpinner
         size="small"
-        className="shrink-0 text-foreground-subtle"
+        tone="subtle"
+        className="shrink-0"
         aria-hidden="true"
       />
     );
@@ -75,13 +76,7 @@ export function ActivityItem({ execution }: Props) {
       case AgentExecutionStatus.INCOMPLETE:
         return <Icon icon={MinusSignCircleIcon} size={18} tone="brand" />;
       case AgentExecutionStatus.REVIEW:
-        return (
-          <Icon
-            icon={Alert01Icon}
-            size={18}
-            className="text-yellow-foreground"
-          />
-        );
+        return <Icon icon={Alert01Icon} size={18} tone="yellow" />;
       default:
         return null;
     }
@@ -140,7 +135,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text variant="small-medium" className="max-w-44 truncate">
+        <Text variant="small" weight="medium" className="max-w-44 truncate">
           {execution.agent_name}
         </Text>
       </div>

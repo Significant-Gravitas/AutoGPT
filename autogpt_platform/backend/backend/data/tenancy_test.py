@@ -94,7 +94,7 @@ async def test_get_user_team_ids_filters_active_org_memberships(members):
     where = members.teammember.find_many.call_args.kwargs["where"]
     assert where["userId"] == "u1"
     assert where["status"] == "ACTIVE"
-    assert where["Team"] == {"is": {"orgId": "org-1"}}
+    assert where["Team"] == {"is": {"orgId": "org-1", "archivedAt": None}}
     assert members.orgmember.find_first.call_args.kwargs["where"] == {
         "userId": "u1",
         "orgId": "org-1",

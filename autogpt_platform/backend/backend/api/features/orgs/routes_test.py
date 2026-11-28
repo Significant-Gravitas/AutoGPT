@@ -6,7 +6,9 @@ actual logic in db.py / routes.py / team_db.py is exercised.
 """
 
 import inspect
+import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -14,9 +16,11 @@ import fastapi.testclient
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.enums import APIKeyStatus
+from pydantic import ValidationError
 
 from backend.api.features.orgs.invitation_routes import create_invitation
 from backend.api.features.orgs.model import CreateInvitationRequest
+from backend.api.features.orgs.team_model import CreateTeamRequest, UpdateTeamRequest
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1030,11 +1034,18 @@ class TestWorkspaceDbJoinLeave:
 
 
 class TestWorkspaceDbDelete:
+    # What removing a Team row deletes through its foreign keys.
+    CASCADED = ("TeamMember", "TeamInvite", "APIKey", "IntegrationCredential")
+
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.team_db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
     async def test_delete_default_workspace_raises(self):
@@ -1047,21 +1058,71 @@ class TestWorkspaceDbDelete:
             await delete_team(WS_ID)
 
     @pytest.mark.asyncio
-    async def test_delete_non_default_workspace_success(self):
+    async def test_delete_archives_the_workspace(self):
         from backend.api.features.orgs.team_db import delete_team
 
-        ws = _make_workspace(isDefault=False)
+        ws = _make_workspace(name="Research", isDefault=False)
         self.prisma.team.find_unique = AsyncMock(return_value=ws)
-        self.prisma.team.delete = AsyncMock()
+        self.prisma.team.update = AsyncMock()
+        removed = [getattr(self.prisma, model.lower()) for model in self.CASCADED]
+        for model in removed:
+            model.delete_many = AsyncMock()
 
         await delete_team(WS_ID)
 
-        self.prisma.team.delete.assert_called_once_with(where={"id": WS_ID})
+        self.prisma.team.delete.assert_not_called()
+        update = self.prisma.team.update.await_args.kwargs
+        assert update["where"] == {"id": WS_ID}
+        assert update["data"]["archivedAt"] is not None
+        # No request can give a live workspace the name the archive takes.
+        for request in (CreateTeamRequest, UpdateTeamRequest):
+            with pytest.raises(ValidationError):
+                request(name=update["data"]["name"])
+        for model in removed:
+            model.delete_many.assert_awaited_once_with(where={"teamId": WS_ID})
         revoked = self.prisma.apikey.update_many.await_args.kwargs
         assert revoked["where"] == {
             "teamIdRestriction": WS_ID,
             "status": {"not": APIKeyStatus.REVOKED},
         }
+
+    def test_the_archive_removes_every_cascade_of_a_delete(self):
+        schema = (Path(__file__).parents[4] / "schema.prisma").read_text()
+        cascading = {
+            model
+            for model, body in re.findall(
+                r"^model (\w+) \{(.*?)^\}", schema, re.M | re.S
+            )
+            if re.search(
+                r"^\s*\w+\s+Team\??\s+@relation\([^)]*onDelete: Cascade", body, re.M
+            )
+        }
+
+        assert cascading == set(self.CASCADED)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "call, error",
+        [
+            (lambda db: db.get_team(WS_ID, expected_org_id=ORG_ID), NotFoundError),
+            (lambda db: db.delete_team(WS_ID), NotFoundError),
+            (lambda db: db.join_team(WS_ID, OTHER_USER_ID, ORG_ID), NotFoundError),
+            (lambda db: db.leave_team(WS_ID, OTHER_USER_ID), NotFoundError),
+            (lambda db: db.add_team_member(WS_ID, OTHER_USER_ID, ORG_ID), ValueError),
+        ],
+    )
+    async def test_a_deleted_workspace_is_not_found(self, call, error):
+        from backend.api.features.orgs import team_db
+
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(isDefault=False, archivedAt=FIXED_NOW)
+        )
+
+        with pytest.raises(error):
+            await call(team_db)
+
+        self.prisma.teammember.create.assert_not_called()
+        self.prisma.team.update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_team_not_found_raises(self):
@@ -3245,8 +3306,6 @@ class TestInvitationSeeding:
 
     @pytest.mark.parametrize("email", ["", "   "])
     def test_create_invitation_rejects_a_blank_email(self, email):
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             CreateInvitationRequest(email=email)
 
@@ -3773,6 +3832,52 @@ class TestTeamManagementByTeamId:
         # get_team raises NotFoundError because the team is not in ORG_ID.
         assert resp.status_code == 404
         self.prisma.team.update.assert_not_awaited()
+
+    # --- team details and roster (GET /{ws_id}, GET /{ws_id}/members) -------
+
+    @pytest.mark.parametrize("path", ["", "/members"])
+    @pytest.mark.parametrize(
+        "join_policy, caller_status, org_admin, expected",
+        [
+            ("PRIVATE", None, False, 404),
+            ("PRIVATE", "SUSPENDED", False, 404),
+            ("PRIVATE", "ACTIVE", False, 200),
+            ("PRIVATE", None, True, 200),
+            ("OPEN", None, False, 200),
+        ],
+    )
+    def test_team_reads_follow_the_team_list(
+        self, _app_and_client, path, join_policy, caller_status, org_admin, expected
+    ):
+        _, client = _app_and_client
+        self.prisma.team.find_unique = AsyncMock(
+            return_value=_make_workspace(
+                id=WS_ID, isDefault=False, joinPolicy=join_policy
+            )
+        )
+        self._team_rows(
+            **(
+                {
+                    OTHER_USER_ID: _make_ws_member(
+                        workspaceId=WS_ID, userId=OTHER_USER_ID, status=caller_status
+                    )
+                }
+                if caller_status
+                else {}
+            )
+        )
+        self.prisma.teammember.find_many = AsyncMock(
+            return_value=[_make_ws_member(workspaceId=WS_ID, userId=USER_ID)]
+        )
+        self._use_ctx(_mgmt_ctx(user_id=OTHER_USER_ID, org_admin=org_admin))
+
+        resp = client.get(f"/api/orgs/{ORG_ID}/workspaces/{WS_ID}{path}")
+
+        assert resp.status_code == expected
+        if expected == 404:
+            # The same answer as for an id that does not exist.
+            assert resp.json() == {"detail": f"Workspace {WS_ID} not found"}
+            self.prisma.teammember.find_many.assert_not_awaited()
 
 
 class TestCanonicalPersonalOrgOrdering:

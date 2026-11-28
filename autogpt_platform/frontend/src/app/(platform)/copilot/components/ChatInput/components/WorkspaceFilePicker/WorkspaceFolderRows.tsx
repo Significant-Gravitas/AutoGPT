@@ -84,7 +84,8 @@ export function WorkspaceFolderRows({
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text
                   tone="primary"
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   className="truncate"
                   title={folder.name}
                 >
@@ -104,7 +105,7 @@ export function WorkspaceFolderRows({
                 onToggleAttach(folder, subfolderCount);
               }}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-body transition-colors",
+                "flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-1 text-body transition-colors",
                 "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none",
                 isSelected
                   ? "text-brand"

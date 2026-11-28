@@ -34,9 +34,11 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
     <RunDetailCard title="Trigger Status">
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <Text variant="large-medium">Status</Text>
+          <Text variant="large" weight="medium">
+            Status
+          </Text>
           <span
-            className={`rounded-full px-2 py-0.5 text-caption font-medium ${
+            className={`rounded-pill px-2 py-0.5 text-caption font-medium ${
               status === "active"
                 ? "bg-success/30 text-success-foreground"
                 : status === "inactive"
@@ -64,7 +66,9 @@ export function WebhookTriggerCard({ template, triggerSetupInfo }: Props) {
               up the trigger connection with the service of your choosing.
             </Text>
             <div className="flex flex-col gap-1">
-              <Text variant="body-medium">Webhook URL:</Text>
+              <Text variant="body" weight="medium">
+                Webhook URL:
+              </Text>
               <div className="flex gap-2 rounded-md bg-surface-muted p-2">
                 <code className="ph-no-capture flex-1 text-body select-all">
                   {webhook.url}

@@ -37,6 +37,7 @@ function OnboardingFrame({
             href="/logout"
             variant="toggle"
             size="xs"
+            shape="sharp"
             leadingIcon={Logout03Icon}
             className="absolute bottom-6 left-6"
           >

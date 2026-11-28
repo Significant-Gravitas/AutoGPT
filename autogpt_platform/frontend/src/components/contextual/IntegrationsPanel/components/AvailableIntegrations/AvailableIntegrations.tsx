@@ -22,7 +22,8 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
     >
       <div className="flex flex-col gap-1 px-4">
         <Text
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="h2"
           id="available-integrations-heading"
           tone="secondary"

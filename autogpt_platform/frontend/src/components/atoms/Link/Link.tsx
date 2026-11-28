@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import NextLink from "next/link";
 import { forwardRef } from "react";
+import { type Tone, tones } from "@/components/styles/tones";
 
 interface LinkProps {
   href: string;
@@ -9,6 +10,8 @@ interface LinkProps {
   isExternal?: boolean;
   onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   variant?: "primary" | "secondary";
+  /** Text colour over the default, from the shared tones. */
+  tone?: Tone;
 }
 
 export const linkBaseClasses =
@@ -32,6 +35,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
     className,
     isExternal = false,
     variant = "primary",
+    tone,
     ...props
   },
   ref,
@@ -40,6 +44,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
     linkBaseClasses,
     linkVariantClasses[variant],
     linkFocusClasses,
+    tone && tones[tone],
     className,
   );
 

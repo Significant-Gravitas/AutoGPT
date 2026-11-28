@@ -104,7 +104,11 @@ from backend.copilot.model import (
     get_chat_session_metadata,
 )
 from backend.copilot.optimize_blocks import optimize_block_descriptions
-from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.permissions import (
+    ALL_TOOL_NAMES,
+    CopilotPermissions,
+    routine_disabled_tools,
+)
 from backend.copilot.scheduled_chats.notices import (
     SkippedRun,
     post_notice,
@@ -114,7 +118,7 @@ from backend.copilot.scheduled_chats.notices import (
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import experts_db, orgs_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -538,6 +542,26 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
     return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
 
 
+def _scheduled_turn_permissions(
+    args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
+) -> CopilotPermissions | None:
+    """The filter a fire runs under: the scheduling turn's, kept with the job,
+    and a routine's own on top of it."""
+    if args.routine_id is None:
+        return args.permissions
+    own = _routine_turn_permissions(routine)
+    if args.permissions is None:
+        return own
+    allowed = args.permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    # Both as one deny-list: an allow-list left empty would read as no filter.
+    return args.permissions.model_copy(
+        update={
+            "tools": sorted((ALL_TOOL_NAMES - allowed) | set(own.tools)),
+            "tools_exclude": True,
+        }
+    )
+
+
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
@@ -567,6 +591,7 @@ async def _execute_copilot_turn(**kwargs):
         args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
+        args = await _in_current_membership(args)
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
@@ -731,11 +756,7 @@ async def _execute_copilot_turn(**kwargs):
             # user also drives themselves, and muting the conversation would
             # take capabilities away from the person sitting in it. What is
             # unattended is this turn.
-            permissions=(
-                _routine_turn_permissions(routine)
-                if args.routine_id is not None
-                else None
-            ),
+            permissions=_scheduled_turn_permissions(args, routine),
             # Nobody watches a scheduled turn, so the executor alerts when it
             # fails after this dispatch succeeded (SECRT-2799).
             scheduled=ScheduledTurnOrigin(
@@ -794,6 +815,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _in_current_membership(args: "CopilotTurnJobArgs") -> "CopilotTurnJobArgs":
+    """A turn runs in the org and team it was scheduled in only while its owner
+    still belongs to them; otherwise in the owner's default, as a run does."""
+    if not args.organization_id or await orgs_db().is_active_member(
+        args.user_id, args.organization_id, args.team_id
+    ):
+        return args
+    organization_id, team_id = await orgs_db().resolve_default_tenancy(args.user_id)
+    return args.model_copy(
+        update={"organization_id": organization_id, "team_id": team_id}
+    )
 
 
 async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
@@ -1118,6 +1152,8 @@ async def _reschedule_one_shot(
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
+            # And the filter the scheduling turn ran under.
+            permissions=args.permissions,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1254,6 +1290,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             return
         _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
+            args = await _in_current_membership(args)
             try:
                 await _dispatch_at_reset_turn(args, kind, chat.session)
             except ConcurrentTurnLimitError as cap:
@@ -1432,6 +1469,7 @@ async def _put_back_at_reset_turn(
             purpose=args.purpose,
             schedule_id=args.schedule_id,
             created_at=args.created_at,
+            permissions=args.permissions,
         )
     except Exception:
         logger.warning(
@@ -2776,6 +2814,9 @@ class CopilotTurnJobArgs(BaseModel):
     # When the job was first set, kept when it is put back for a retry; a
     # resume stands down if the user carried the chat on after it.
     created_at: datetime | None = None
+    # The filter of the turn that set the job, which every fire runs under.
+    # None when it had none, and on rows persisted before this field.
+    permissions: CopilotPermissions | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -3742,6 +3783,14 @@ class Scheduler(AppService):
                 graph_credentials_inputs=input_credentials,
             )
         )
+        if expert_id is not None:
+            # Each run would be refused for a key the expert was never
+            # granted, and a scheduled run's refusal is only logged.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, expert_id, input_credentials
+                )
+            )
 
         try:
             job = self._persist_schedule(
@@ -3825,6 +3874,7 @@ class Scheduler(AppService):
         schedule_id: str | None = None,
         created_at: datetime | None = None,
         replaces_schedule_ids: list[str] | None = None,
+        permissions: CopilotPermissions | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3846,6 +3896,9 @@ class Scheduler(AppService):
 
         *replaces_schedule_ids* names jobs this one takes the place of, so a
         routine given a new cadence is not refused for its own current jobs.
+
+        *permissions* is the filter of the turn making the schedule; every
+        fire runs under it.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3887,6 +3940,7 @@ class Scheduler(AppService):
             routine_schedule_id=routine_schedule_id,
             purpose=purpose,
             created_at=created_at or datetime.now(timezone.utc),
+            permissions=permissions,
         )
         if purpose != "followup":
             default_name = AT_RESET_JOB_NAMES[purpose]
@@ -4062,6 +4116,13 @@ class Scheduler(AppService):
                 graph_credentials_inputs=merged.input_credentials,
             )
         )
+        if merged.expert_id is not None:
+            # As at creation, on the keys each run will carry after the edit.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, merged.expert_id, merged.input_credentials
+                )
+            )
 
     def _authorized_graph_job(
         self, schedule_id: str, user_id: str
