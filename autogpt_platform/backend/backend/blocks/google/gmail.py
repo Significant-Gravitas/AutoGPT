@@ -408,12 +408,12 @@ class GmailBase(Block, ABC):
         return None
 
 
-# System labels only Gmail itself puts on or takes off a message; a modify
-# call naming one fails with "Invalid label".
+# The system labels Gmail's labels guide marks "can't be manually applied":
+# only Gmail puts them on or takes them off, and a modify call naming one
+# fails with "Invalid label".
 _LABELS_GMAIL_MANAGES = {
     "DRAFT": "A draft keeps it until it is sent or deleted.",
     "SENT": "Gmail puts it on every message you send.",
-    "CHAT": "Gmail puts it on chat messages.",
 }
 
 

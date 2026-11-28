@@ -289,14 +289,18 @@ _WITH_FIXED_LABELS = {
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "label, reason",
+    [("DRAFT", "A draft keeps it"), ("SENT", "every message you send")],
+)
 async def test_remove_label_refuses_a_label_only_gmail_can_remove(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, label: str, reason: str
 ):
     fake = _FakeGmail(
         {
             "labels.list": _WITH_FIXED_LABELS,
-            "messages.get": {"id": "m1", "threadId": "t1", "labelIds": ["DRAFT"]},
-            "messages.modify": _http_error(400, "Invalid label: DRAFT"),
+            "messages.get": {"id": "m1", "threadId": "t1", "labelIds": [label]},
+            "messages.modify": _http_error(400, f"Invalid label: {label}"),
         }
     )
     block = GmailRemoveLabelBlock()
@@ -304,26 +308,27 @@ async def test_remove_label_refuses_a_label_only_gmail_can_remove(
     input_data = GmailRemoveLabelBlock.Input(
         credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
         message_id="m1",
-        label_name="DRAFT",
+        label_name=label,
     )
     # A ValueError reaches the user as a block execution error with this
     # message, where Gmail's 400 became an unknown error.
-    with pytest.raises(ValueError, match='remove the "DRAFT" label. A draft keeps'):
+    with pytest.raises(ValueError, match=f'remove the "{label}" label. .*{reason}'):
         async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
             pass
     assert fake.called("messages.modify") == []
 
 
 @pytest.mark.asyncio
-async def test_add_label_refuses_a_label_only_gmail_can_add():
+@pytest.mark.parametrize("label", ["DRAFT", "SENT"])
+async def test_add_label_refuses_a_label_only_gmail_can_add(label: str):
     fake = _FakeGmail(
         {
             "labels.list": _WITH_FIXED_LABELS,
-            "messages.modify": _http_error(400, "Invalid label: SENT"),
+            "messages.modify": _http_error(400, f"Invalid label: {label}"),
         }
     )
-    with pytest.raises(ValueError, match='add or remove the "SENT" label'):
-        await GmailAddLabelBlock()._add_label(fake, "m1", "SENT")
+    with pytest.raises(ValueError, match=f'add or remove the "{label}" label'):
+        await GmailAddLabelBlock()._add_label(fake, "m1", label)
     assert fake.called("labels.create") == []
     assert fake.called("messages.modify") == []
 
