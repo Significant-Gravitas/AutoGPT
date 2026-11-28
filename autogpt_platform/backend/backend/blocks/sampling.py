@@ -1,6 +1,6 @@
 import heapq
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -12,7 +12,11 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.data_manipulation import _json_bytes
 from backend.data.model import SchemaField
+
+# Most bytes of JSON a weighted sample's repeated items may add, the Zip Lists cap.
+WEIGHTED_SAMPLE_MAX_REPEATED_BYTES = 4 * 1024 * 1024
 
 
 class SamplingMethod(str, Enum):
@@ -220,6 +224,18 @@ class DataSamplingBlock(Block):
             indices = rng.choices(
                 range(data_size), weights=weights, k=input_data.sample_size
             )
+            repeated_bytes = sum(
+                (count - 1) * _json_bytes(data_to_sample[i])
+                for i, count in Counter(indices).items()
+                if count > 1
+            )
+            if repeated_bytes > WEIGHTED_SAMPLE_MAX_REPEATED_BYTES:
+                raise ValueError(
+                    f"Items drawn more than once would add "
+                    f"{repeated_bytes / 2**20:.1f} MiB to the sample, more than "
+                    f"the limit of "
+                    f"{WEIGHTED_SAMPLE_MAX_REPEATED_BYTES / 2**20:g} MiB."
+                )
         elif input_data.sampling_method == SamplingMethod.RESERVOIR:
             indices = list(range(input_data.sample_size))
             for i in range(input_data.sample_size, data_size):
