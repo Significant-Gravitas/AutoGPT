@@ -110,6 +110,13 @@ Each schedule stores at most 1 MiB of inputs, measured as JSON (for a follow-up 
 - **Counted per:** account for the number of schedules; schedule for its size; account and its organization together for what they store.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`), `MAX_SCHEDULE_PAYLOAD_BYTES` (default `1048576`), `MAX_SCHEDULE_PAYLOAD_VALUES` (default `10000`) and `MAX_SCHEDULE_STORAGE_BYTES` (default `67108864`).
 
+### Templates and triggers
+
+A template's or a trigger's saved inputs, its trigger settings included, hold at most 256 KiB, measured as JSON, and at most 5,000 values, where every list item, object field and plain value counts as one. Saving one past either is refused with `400`, with a message naming the limit.
+
+- **Counted per:** template or trigger.
+- Not configurable.
+
 ### Generated workflow images
 
 The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.

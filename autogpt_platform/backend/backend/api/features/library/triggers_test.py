@@ -33,6 +33,11 @@ from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFo
 
 _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
+# Past the byte bound, and past the value bound, on a preset's inputs.
+_OVERSIZED_PAYLOADS = [
+    "x" * (db.MAX_PRESET_INPUT_BYTES + 1),
+    [[]] * db.MAX_PRESET_INPUT_VALUES,
+]
 _DELIVERY_VALIDATION_CASES = [
     pytest.param(True, False, id="valid-without-credentials"),
     pytest.param("yes", True, id="event-filter-not-boolean"),
@@ -1024,27 +1029,31 @@ async def test_an_update_with_a_graph_input_read_as_a_trigger_config_is_refused(
 
 
 @pytest.mark.asyncio
-async def test_an_update_with_an_oversized_payload_registers_no_webhook():
+@pytest.mark.parametrize("payload", _OVERSIZED_PAYLOADS, ids=["bytes", "values"])
+async def test_an_update_with_an_oversized_payload_registers_no_webhook(
+    payload: object,
+):
     """A `payload` the caller sends is what is stored, so it is what is measured."""
     with _update_patches(current=_preset(webhook_id="wh-old")) as m:
         with pytest.raises(InvalidInputError, match="inputs hold at most"):
             await update_triggered_preset(
                 user_id=_USER,
                 preset_id="preset-1",
-                inputs={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)},
+                inputs={"payload": payload},
                 credentials={},
             )
     m["setup"].assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_setup_with_an_oversized_payload_registers_no_webhook():
+@pytest.mark.parametrize("payload", _OVERSIZED_PAYLOADS, ids=["bytes", "values"])
+async def test_a_setup_with_an_oversized_payload_registers_no_webhook(
+    payload: object,
+):
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
     with p_graph, p_creds, p_expert, p_create, p_webhook as webhook_mock:
         with pytest.raises(InvalidInputError, match="inputs hold at most"):
-            await _setup(
-                trigger_config={"payload": "x" * (db.MAX_PRESET_INPUT_BYTES + 1)}
-            )
+            await _setup(trigger_config={"payload": payload})
     webhook_mock.assert_not_awaited()
 
 

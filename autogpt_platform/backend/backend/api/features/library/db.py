@@ -51,6 +51,7 @@ from backend.util.exceptions import (
 )
 from backend.util.json import SafeJson
 from backend.util.json import dumps as json_dumps
+from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
 from backend.util.product_analytics import track_listing_added_to_library
 from backend.util.settings import Config
@@ -81,6 +82,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 # inputs a preset holds is bounded by the read cap instead
 # (`check_preset_input_count`), so a stored preset always comes back whole.
 MAX_PRESET_INPUT_BYTES = 256 * 1024
+MAX_PRESET_INPUT_VALUES = 5_000
 MAX_PRESETS_PER_PAGE = 100
 MAX_PRESET_NAME_LENGTH = MAX_LONG_NAME_LENGTH
 MAX_PRESET_DESCRIPTION_LENGTH = MAX_INSTRUCTIONS_LENGTH
@@ -2717,13 +2719,21 @@ def preset_input_rows(
 
 
 def check_preset_inputs(entries: Mapping[str, object]) -> None:
-    """Both bounds on what one preset's inputs may be: how many, and how big."""
+    """The bounds on what one preset's inputs may be: how many, how big, and how
+    many JSON values they hold."""
     check_preset_input_count(entries)
-    payload_bytes = len(json_dumps(entries).encode())
+    payload = json_dumps(entries)
+    payload_bytes = len(payload.encode())
     if payload_bytes > MAX_PRESET_INPUT_BYTES:
         raise InvalidInputError(
             f"A preset's inputs hold at most {MAX_PRESET_INPUT_BYTES} bytes, "
             f"got {payload_bytes}"
+        )
+    values = _json_value_count(json_loads(payload))
+    if values > MAX_PRESET_INPUT_VALUES:
+        raise InvalidInputError(
+            f"A preset's inputs hold at most {MAX_PRESET_INPUT_VALUES} values, "
+            f"got {values}"
         )
 
 
@@ -2734,6 +2744,19 @@ def check_preset_input_count(entries: Mapping[str, object]) -> None:
             f"A preset takes at most {MAX_NODE_INPUT_OUTPUT_FETCH} inputs and "
             f"credentials together; got {len(entries)}"
         )
+
+
+def _json_value_count(data: object) -> int:
+    """How many values JSON data holds, containers included."""
+    count, pending = 0, [data]
+    while pending:
+        value = pending.pop()
+        count += 1
+        if isinstance(value, dict):
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    return count
 
 
 async def check_preset_count(user_id: str, tx: prisma.Prisma | None = None) -> None:
