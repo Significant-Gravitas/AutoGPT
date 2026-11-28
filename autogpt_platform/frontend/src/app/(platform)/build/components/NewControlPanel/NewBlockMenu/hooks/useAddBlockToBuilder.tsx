@@ -1,4 +1,6 @@
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
+import { useContext } from "react";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useReactFlow, useStoreApi } from "@xyflow/react";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Button } from "@/components/atoms/Button/Button";
@@ -16,6 +18,7 @@ const PLACEMENT_MARGIN = 30;
 export function useAddBlockToBuilder() {
   const { getViewport, fitView } = useReactFlow();
   const flowStore = useStoreApi();
+  const providers = useContext(CredentialsProvidersContext);
 
   function addBlockWithPlacement(
     block: BlockInfo,
@@ -36,7 +39,7 @@ export function useAddBlockToBuilder() {
       viewportBounds,
       dimensions.height,
     );
-    const node = addBlock(block, hardcodedValues, position);
+    const node = addBlock(block, hardcodedValues, position, providers);
 
     if (
       viewportBounds &&

@@ -25,6 +25,8 @@ import {
 import { accumulateExecutionData } from "./helpers";
 import { reuseUnchanged } from "@/lib/reuseUnchanged";
 import { NodeResolutionData } from "./types";
+import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
+import { resolveStepCredentials } from "../helpers/resolveStepCredentials";
 
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 const dragStartPositions: Record<string, XYPosition> = {};
@@ -52,6 +54,7 @@ type NodeStore = {
     block: BlockInfo,
     hardcodedValues?: Record<string, any>,
     position?: XYPosition,
+    providers?: CredentialsProvidersContextType | null,
   ) => CustomNode;
   incrementNodeCounter: () => void;
   updateNodeData: (nodeId: string, data: Partial<CustomNode["data"]>) => void;
@@ -220,6 +223,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     block: BlockInfo,
     hardcodedValues?: Record<string, any>,
     position?: XYPosition,
+    providers?: CredentialsProvidersContextType | null,
   ) => {
     const prevState = {
       nodes: get().nodes,
@@ -228,7 +232,13 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
 
     const customNodeData = convertBlockInfoIntoCustomNodeData(
       block,
-      hardcodedValues,
+      providers
+        ? resolveStepCredentials(
+            block.inputSchema,
+            hardcodedValues ?? {},
+            providers,
+          )
+        : hardcodedValues,
     );
     get().incrementNodeCounter();
     const nodeNumber = get().nodeCounter;

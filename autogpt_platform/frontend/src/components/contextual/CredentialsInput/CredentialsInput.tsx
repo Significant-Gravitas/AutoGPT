@@ -132,18 +132,8 @@ export function CredentialsInput({
     selectedCredential && isSystemCredential(selectedCredential);
 
   const explicitSelection = requireExplicitSelection && !readOnly;
-  const allCredentials =
-    explicitSelection && schema.refuses_platform_credentials
-      ? userCredentials
-      : [...userCredentials, ...systemCredentials];
-  const savedKeyUnavailable =
-    explicitSelection &&
-    selectedCredential &&
-    !allCredentials.some(
-      (key) =>
-        key.provider === selectedCredential.provider &&
-        key.id === selectedCredential.id,
-    );
+  const allCredentials = [...userCredentials, ...systemCredentials];
+  const savedKeyUnavailable = explicitSelection && hookData.savedKeyUnavailable;
 
   if (readOnly && selectedCredentialIsSystem) {
     return null;
@@ -151,14 +141,11 @@ export function CredentialsInput({
 
   return (
     <div className={cn("mb-6", className)}>
-      {savedKeyUnavailable && (
+      {savedKeyUnavailable && selectedCredential && (
         <Alert variant="warning">
           <AlertDescription>
             <Text variant="body">
-              {selectedCredential.provider === provider &&
-              !hookData.allProviderCredentials.some(
-                (key) => key.id === selectedCredential.id,
-              )
+              {hookData.savedKeyRemoved
                 ? getRemovedCredentialMessage(
                     selectedCredential.title || displayName,
                     undefined,
@@ -292,7 +279,7 @@ export function CredentialsInput({
             />
           )}
 
-          {removedCredentialTitle && (
+          {!explicitSelection && removedCredentialTitle && (
             <Alert variant="warning" aria-live="polite" className="mt-2">
               <AlertDescription>
                 <Text variant="body">
@@ -306,7 +293,7 @@ export function CredentialsInput({
             </Alert>
           )}
 
-          {hasRefusedPlatformKey && (
+          {!explicitSelection && hasRefusedPlatformKey && (
             <Alert variant="warning" aria-live="polite" className="mt-2">
               <AlertDescription>
                 <Text variant="body">

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
   useGetV1GetExecutionDetails,
@@ -43,6 +44,7 @@ const POLL_INTERVAL_MS = 1_000;
 const RECONCILE_INTERVAL_MS = 10_000;
 
 export const useFlow = () => {
+  const providers = useContext(CredentialsProvidersContext);
   const { isReadOnly } = useIsReadOnlyGraph();
   const { toast } = useToast();
   const router = useRouter();
@@ -370,7 +372,7 @@ export const useFlow = () => {
           x: event.clientX,
           y: event.clientY,
         });
-        addBlock(blockData, {}, position);
+        addBlock(blockData, {}, position, providers);
 
         await new Promise((resolve) => setTimeout(resolve, 200));
         setBlockMenuOpen(true);
@@ -379,7 +381,7 @@ export const useFlow = () => {
         setBlockMenuOpen(true);
       }
     },
-    [screenToFlowPosition, addBlock, setBlockMenuOpen],
+    [screenToFlowPosition, addBlock, setBlockMenuOpen, providers],
   );
 
   // When the graph is read-only, force the canvas locked and ignore unlock

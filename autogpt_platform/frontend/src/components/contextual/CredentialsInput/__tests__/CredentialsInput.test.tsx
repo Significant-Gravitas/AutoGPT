@@ -145,43 +145,59 @@ describe("credential choices on a workflow step", () => {
     type: "oauth2",
   } as const;
 
-  it.each([undefined, { ...key, id: "old", title: "Old key" }])(
-    "waits for an edit after credentials load, including after undo (%j)",
-    async (saved) => {
-      const edit = vi.fn();
-      const picker = (value?: CredentialsMetaInput) => (
-        <CredentialsInput
-          schema={baseSchema}
-          selectedCredentials={value}
-          onSelectCredentials={edit}
-          variant="node"
-          requireExplicitSelection
-        />
-      );
-      mockUseCredentials.mockReturnValue(null);
-      const { rerender } = render(picker(saved));
-      mockUseCredentials.mockReturnValue(
-        makeCredentialsReturn({
-          savedCredentials: [key],
-          allProviderCredentials: [key],
-        }),
-      );
-      rerender(picker(saved));
+  function loadStep(saved?: CredentialsMetaInput) {
+    const edit = vi.fn();
+    const picker = (value?: CredentialsMetaInput) => (
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={value}
+        onSelectCredentials={edit}
+        variant="node"
+        requireExplicitSelection
+      />
+    );
+    mockUseCredentials.mockReturnValue(null);
+    const { rerender } = render(picker(saved));
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        savedCredentials: [key],
+        allProviderCredentials: [key],
+      }),
+    );
+    rerender(picker(saved));
 
-      expect(edit).not.toHaveBeenCalled();
-      if (saved) {
-        expect(screen.getByText(/Old key was removed/)).toBeDefined();
-      }
-      fireEvent.click(
-        screen.getByRole("button", { name: "Use My Google key" }),
-      );
-      expect(edit.mock.calls).toEqual([[key]]);
+    expect(edit).not.toHaveBeenCalled();
+    return {
+      edit,
+      restore: (value?: CredentialsMetaInput) => rerender(picker(value)),
+    };
+  }
 
-      rerender(picker(key));
-      rerender(picker(saved));
-      expect(edit).toHaveBeenCalledTimes(1);
-    },
-  );
+  it("waits for an edit after credentials load and after undo", () => {
+    const { edit, restore } = loadStep();
+    fireEvent.click(screen.getByRole("button", { name: "Use My Google key" }));
+    expect(edit.mock.calls).toEqual([[key]]);
+
+    restore(key);
+    restore(undefined);
+    expect(edit).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a replacement for a removed key without writing it", () => {
+    const { edit } = loadStep({ ...key, id: "old", title: "Old key" });
+    expect(screen.getByText(/Old key was removed/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use My Google key" }));
+    expect(edit.mock.calls).toEqual([[key]]);
+  });
+
+  it("lets the user clear a saved key from a different provider", () => {
+    const { edit } = loadStep({ ...key, provider: "github" });
+    expect(screen.getByText(/saved credential is unavailable/i)).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear saved credential" }),
+    );
+    expect(edit.mock.calls).toEqual([[undefined]]);
+  });
 });
 
 // These cover useCredentialsInput's direct OAuth flow (pre-opened popup,

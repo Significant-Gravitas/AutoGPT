@@ -1,4 +1,8 @@
-import { CredentialsType } from "@/lib/autogpt-server-api/types";
+import type {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaResponse,
+  CredentialsType,
+} from "@/lib/autogpt-server-api/types";
 import {
   DiscordIcon,
   GithubIcon,
@@ -277,6 +281,15 @@ export function getSystemCredentials<
   T extends { title?: string | null; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => isSystemCredential(cred));
+}
+
+export function getUsableKeys(
+  schema: BlockIOCredentialsSubSchema,
+  savedCredentials: CredentialsMetaResponse[],
+) {
+  return schema.refuses_platform_credentials
+    ? filterSystemCredentials(savedCredentials)
+    : savedCredentials;
 }
 
 export type DeleteResult =
