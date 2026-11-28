@@ -408,6 +408,23 @@ class GmailBase(Block, ABC):
         return None
 
 
+# The system labels Gmail's labels guide marks "can't be manually applied":
+# only Gmail puts them on or takes them off, and a modify call naming one
+# fails with "Invalid label".
+_LABELS_GMAIL_MANAGES = {
+    "DRAFT": "A draft keeps it until it is sent or deleted.",
+    "SENT": "Gmail puts it on every message you send.",
+}
+
+
+def _ensure_label_can_change(label_id: str) -> None:
+    reason = _LABELS_GMAIL_MANAGES.get(label_id)
+    if reason:
+        raise ValueError(
+            f'Gmail doesn\'t let you add or remove the "{label_id}" label. {reason}'
+        )
+
+
 class GmailReadBlock(GmailBase):
     class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
@@ -921,6 +938,7 @@ class GmailAddLabelBlock(GmailBase):
 
     async def _add_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_or_create_label(service, label_name)
+        _ensure_label_can_change(label_id)
         result = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -1037,6 +1055,7 @@ class GmailRemoveLabelBlock(GmailBase):
                 "status": "Label already removed or not applied",
                 "label_id": label_id,
             }
+        _ensure_label_can_change(label_id)
         await asyncio.to_thread(
             lambda: service.users()
             .messages()
