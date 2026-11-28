@@ -10,6 +10,7 @@ the share lookups and the allowlist build all run.
 import json
 from contextlib import ExitStack
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -206,6 +207,16 @@ class _Database:
         stack = ExitStack()
         for model, client in tables.items():
             stack.enter_context(patch.object(model, "prisma", return_value=client))
+        stack.enter_context(
+            patch(
+                "backend.copilot.db._newest_rows_within",
+                AsyncMock(
+                    side_effect=lambda _s, limit, *_: SimpleNamespace(
+                        rows=limit, cut=False, size=0
+                    )
+                ),
+            )
+        )
         return stack
 
 
@@ -232,7 +243,10 @@ async def test_a_share_allowlists_and_counts_only_the_users_files():
 
     with database.patched():
         created = await share_db._build_shared_chat_files(
-            SESSION_ID, SHARE_TOKEN, OWNER_ID
+            SESSION_ID,
+            SHARE_TOKEN,
+            OWNER_ID,
+            await share_db._referenced_file_ids(SESSION_ID),
         )
         state = await share_db.get_chat_share_state(SESSION_ID, OWNER_ID)
 

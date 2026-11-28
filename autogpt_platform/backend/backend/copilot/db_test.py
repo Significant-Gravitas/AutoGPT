@@ -13,11 +13,14 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
+    MAX_LOADED_CHAT_MESSAGE_BYTES,
     PaginatedMessages,
+    _Fit,
     add_chat_messages_batch,
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_user_chat_sessions,
+    iter_chat_message_pages,
     set_turn_duration,
     update_chat_message_tool_calls,
     update_chat_session,
@@ -31,6 +34,7 @@ from backend.copilot.model import (
     ChatSessionInfo,
     ChatSessionSaveFields,
     get_chat_session,
+    invalidate_session_cache,
     upsert_chat_session,
 )
 
@@ -184,10 +188,15 @@ def mock_db():
 
     find_first is used for the main query (session + included messages).
     find_many is used only for boundary expansion queries.
+    The byte-budget size query reports that every row fits.
     """
     with (
         patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
         patch.object(PrismaChatMessage, "prisma") as mock_msg_prisma,
+        patch(
+            "backend.copilot.db._newest_rows_within",
+            AsyncMock(side_effect=lambda _session_id, limit, *_: _Fit(limit, False, 0)),
+        ),
     ):
         find_first = AsyncMock()
         mock_session_prisma.return_value.find_first = find_first
@@ -282,6 +291,177 @@ async def test_no_where_on_messages_without_before_sequence(
     call_kwargs = find_first.call_args
     include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
     assert "where" not in include["Messages"]
+
+
+# ---------- Byte budget ----------
+
+
+@pytest.mark.asyncio
+async def test_byte_budget_lowers_limit_and_reports_has_more():
+    """Rows past the byte budget are not fetched; the page says there are more."""
+    size_query = AsyncMock(return_value=[{"fit": 2, "rows": 3, "size": 900}])
+    with (
+        patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
+        patch("backend.copilot.db.db.query_raw_with_schema", size_query),
+    ):
+        find_first = AsyncMock(
+            return_value=_make_session(messages=[_make_msg(9), _make_msg(8)])
+        )
+        mock_session_prisma.return_value.find_first = find_first
+
+        page = await get_chat_messages_paginated(
+            SESSION_ID, limit=50, before_sequence=10
+        )
+
+    assert find_first.call_args.kwargs["include"]["Messages"]["take"] == 2
+    assert page is not None
+    assert [m.sequence for m in page.messages] == [8, 9]
+    assert page.has_more is True
+    assert page.oldest_sequence == 8
+    sql, *params = size_query.call_args.args
+    assert '"sequence" < $2::int' in sql
+    assert params == [SESSION_ID, 10, 51, MAX_LOADED_CHAT_MESSAGE_BYTES]
+
+
+@pytest.mark.asyncio
+async def test_byte_budget_keeps_the_limit_when_no_rows_are_stored():
+    with (
+        patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
+        patch(
+            "backend.copilot.db.db.query_raw_with_schema",
+            AsyncMock(return_value=[{"fit": 0, "rows": 0, "size": 0}]),
+        ),
+    ):
+        find_first = AsyncMock(return_value=_make_session(messages=[]))
+        mock_session_prisma.return_value.find_first = find_first
+
+        await get_chat_messages_paginated(SESSION_ID, limit=50)
+
+    assert find_first.call_args.kwargs["include"]["Messages"]["take"] == 51
+
+
+@pytest.mark.asyncio
+async def test_byte_budget_always_leaves_one_row():
+    """A newest row larger than the whole budget is still returned, so paging
+    never stalls on it."""
+    with (
+        patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
+        patch(
+            "backend.copilot.db.db.query_raw_with_schema",
+            AsyncMock(return_value=[{"fit": 0, "rows": 2, "size": 900}]),
+        ),
+    ):
+        find_first = AsyncMock(return_value=_make_session(messages=[_make_msg(9)]))
+        mock_session_prisma.return_value.find_first = find_first
+
+        page = await get_chat_messages_paginated(SESSION_ID, limit=50)
+
+    assert find_first.call_args.kwargs["include"]["Messages"]["take"] == 1
+    assert page is not None
+    assert [m.sequence for m in page.messages] == [9]
+    assert page.has_more is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_byte_budget_bounds_whole_session_load(setup_test_user, test_user_id):
+    """The eager session load stops at the byte budget, not only at the row
+    cap: content and metadata both count, and the newest rows are kept."""
+    session = ChatSession.new(user_id=test_user_id, dry_run=False)
+    session.messages = [
+        CopilotChatMessage(role="user", content="x" * 1000, metadata={"n": "y" * 1000})
+        for _ in range(20)
+    ]
+    session = await upsert_chat_session(session)
+    await invalidate_session_cache(session.session_id)
+
+    with patch("backend.copilot.db.MAX_LOADED_CHAT_MESSAGE_BYTES", 10_000):
+        loaded = await get_chat_session(session.session_id, test_user_id)
+        page = await get_chat_messages_paginated(
+            session.session_id, limit=3, before_sequence=10, user_id=test_user_id
+        )
+        window = await get_chat_messages_paginated(
+            session.session_id,
+            limit=20,
+            user_id=test_user_id,
+            after_sequence=2,
+            before_sequence=12,
+        )
+        picked = await get_chat_messages_paginated(
+            session.session_id,
+            limit=20,
+            user_id=test_user_id,
+            message_sequences=[3, 5, 7, 9, 11, 13],
+        )
+        pages = [
+            [row.sequence for row in rows]
+            async for rows in iter_chat_message_pages(session.session_id)
+        ]
+    await invalidate_session_cache(session.session_id)
+
+    # Each row stores a little over 2,000 bytes, so four fit in 10,000.
+    assert loaded is not None
+    assert [m.sequence for m in loaded.messages] == [16, 17, 18, 19]
+    # Under the budget the row limit decides, as before.
+    assert page is not None
+    assert [m.sequence for m in page.messages] == [7, 8, 9]
+    assert page.has_more is True
+    # A range keeps its newest rows that fit.
+    assert window is not None
+    assert [m.sequence for m in window.messages] == [8, 9, 10, 11]
+    assert window.has_more is True
+    # So does a selection of exact rows.
+    assert picked is not None
+    assert [m.sequence for m in picked.messages] == [7, 9, 11, 13]
+    assert picked.has_more is True
+    # A whole-chat read sees every row, a budget's worth at a time.
+    assert pages == [
+        [19, 18, 17, 16],
+        [15, 14, 13, 12],
+        [11, 10, 9, 8],
+        [7, 6, 5, 4],
+        [3, 2, 1, 0],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_session_the_caller_cannot_see_is_not_sized():
+    sized = AsyncMock()
+    with (
+        patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
+        patch("backend.copilot.db._newest_rows_within", sized),
+    ):
+        mock_session_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        page = await get_chat_messages_paginated(SESSION_ID, user_id="someone-else")
+
+    assert page is None
+    sized.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expansions_fetch_within_what_the_page_left_of_the_budget(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """The page, the tool-boundary scan and the visibility scan share one
+    budget: each is sized against what the ones before it left."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(messages=[_make_msg(5, role="tool")])
+    find_many.side_effect = [[_make_msg(4, role="tool")], [_make_msg(3, role="user")]]
+    sized = AsyncMock(
+        side_effect=[_Fit(51, False, 3_000), _Fit(1, True, 500), _Fit(1, True, 200)]
+    )
+
+    with patch("backend.copilot.db._newest_rows_within", sized):
+        page = await get_chat_messages_paginated(SESSION_ID, limit=50)
+
+    assert [call.args[3] for call in sized.await_args_list] == [
+        MAX_LOADED_CHAT_MESSAGE_BYTES,
+        MAX_LOADED_CHAT_MESSAGE_BYTES - 3_000,
+        MAX_LOADED_CHAT_MESSAGE_BYTES - 3_500,
+    ]
+    assert [call.kwargs["take"] for call in find_many.await_args_list] == [1, 1]
+    assert page is not None
+    assert [m.sequence for m in page.messages] == [3, 4, 5]
 
 
 # ---------- Visibility guarantee ----------
