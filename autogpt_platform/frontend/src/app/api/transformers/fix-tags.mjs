@@ -53,5 +53,3 @@ export const tagTransformer = (inputSchema) => {
     paths: processedPaths,
   };
 };
-
-export default tagTransformer;
