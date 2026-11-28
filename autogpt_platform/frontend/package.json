@@ -11,7 +11,7 @@
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && pnpm lint:shadcn && prettier --check .",
-    "lint:shadcn": "NODE_OPTIONS=--disable-warning=MODULE_TYPELESS_PACKAGE_JSON oxlint",
+    "lint:shadcn": "cross-env NODE_OPTIONS=--disable-warning=MODULE_TYPELESS_PACKAGE_JSON oxlint",
     "lint:ds-baseline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/eslint-rules/update-design-system-baseline.mts",
     "format": "next lint --fix; prettier --write .",
     "types": "tsc --noEmit",
