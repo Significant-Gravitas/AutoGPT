@@ -71,8 +71,14 @@ class AgentFixer:
     agents are valid and functional.
     """
 
+    # Fix descriptions listed, and the length of each, as in AgentValidator.
+    # Every fix is still applied.
+    MAX_FIXES_LOGGED = 200
+    MAX_FIX_LOG_LENGTH = 2000
+
     def __init__(self):
         self.fixes_applied: list[str] = []
+        self._fixes_omitted = 0
         # Each AI node the last fix moved off a switched-off model, for the
         # note that tells Otto the model the workflow uses now.
         self.retired_models_replaced: list[SwitchedOffMove] = []
@@ -88,7 +94,16 @@ class AgentFixer:
         return {node.get("id", ""): node for node in agent.get("nodes", [])}
 
     def add_fix_log(self, fix_description: str) -> None:
-        """Add a fix description to the applied fixes list."""
+        """Add a fix description to the applied fixes list.
+
+        Past ``MAX_FIXES_LOGGED`` the fix is only counted; ``apply_all_fixes``
+        reports how many were left out.
+        """
+        if len(self.fixes_applied) >= self.MAX_FIXES_LOGGED:
+            self._fixes_omitted += 1
+            return
+        if len(fix_description) > self.MAX_FIX_LOG_LENGTH:
+            fix_description = fix_description[: self.MAX_FIX_LOG_LENGTH] + "..."
         self.fixes_applied.append(fix_description)
 
     def fix_agent_ids(self, agent: AgentDict) -> AgentDict:
@@ -154,6 +169,23 @@ class AgentFixer:
         if not condition_node_ids:
             return agent
 
+        node_lookup = {node.get("id", ""): node for node in nodes}
+
+        def is_storevalue_output(link: dict[str, Any]) -> bool:
+            source_node = node_lookup.get(link.get("source_id", ""))
+            return bool(
+                source_node
+                and source_node.get("block_id") == _STORE_VALUE_BLOCK_ID
+                and link.get("source_name") == "output"
+            )
+
+        # ConditionBlocks whose value2 already comes from a StoreValueBlock.output
+        conditions_with_storevalue = {
+            link.get("sink_id")
+            for link in links
+            if link.get("sink_name") == "value2" and is_storevalue_output(link)
+        }
+
         new_links = []
         nodes_to_add = []
         store_node_counter = 0  # Counter to ensure unique positions
@@ -167,45 +199,14 @@ class AgentFixer:
                 condition_node_id = link.get("sink_id")
 
                 # If the upstream source is already a StoreValueBlock.output, keep as-is
-                source_node = next(
-                    (n for n in nodes if n.get("id") == link.get("source_id")),
-                    None,
-                )
-                if (
-                    source_node
-                    and source_node.get("block_id") == _STORE_VALUE_BLOCK_ID
-                    and link.get("source_name") == "output"
-                ):
+                if is_storevalue_output(link):
                     new_links.append(link)
                     continue
 
                 # Check if there's already a StoreValueBlock connected to this
                 # condition's value2. This prevents duplicates when the fix runs
                 # multiple times.
-                existing_storevalue_for_condition = False
-                for existing_link in links:
-                    if (
-                        existing_link.get("sink_id") == condition_node_id
-                        and existing_link.get("sink_name") == "value2"
-                    ):
-                        existing_source_node = next(
-                            (
-                                n
-                                for n in nodes
-                                if n.get("id") == existing_link.get("source_id")
-                            ),
-                            None,
-                        )
-                        if (
-                            existing_source_node
-                            and existing_source_node.get("block_id")
-                            == _STORE_VALUE_BLOCK_ID
-                            and existing_link.get("source_name") == "output"
-                        ):
-                            existing_storevalue_for_condition = True
-                            break
-
-                if existing_storevalue_for_condition:
+                if condition_node_id in conditions_with_storevalue:
                     self.add_fix_log(
                         f"Skipped adding StoreValueBlock for ConditionBlock "
                         f"{condition_node_id} - already has one connected"
@@ -307,6 +308,14 @@ class AgentFixer:
                         node_prompt_values[sink_id] = []
                     node_prompt_values[sink_id].append(value_name)
 
+        # Nodes whose output is linked to a CodeExecutionBlock
+        node_lookup = {node.get("id", ""): node for node in nodes}
+        linked_to_code_execution: set[str] = set()
+        for link in links:
+            sink_node = node_lookup.get(link.get("sink_id", ""))
+            if sink_node and sink_node.get("block_id") == _CODE_EXECUTION_BLOCK_ID:
+                linked_to_code_execution.add(link.get("source_id"))
+
         # Process nodes that have prompt or format fields
         for node in nodes:
             node_id = node.get("id")
@@ -318,23 +327,8 @@ class AgentFixer:
             if not has_prompt_or_format:
                 continue
 
-            # Check if this block's output is linked to a CodeExecutionBlock
-            is_linked_to_code_execution = False
-            for link in links:
-                if link.get("source_id") == node_id:
-                    sink_node = next(
-                        (n for n in nodes if n.get("id") == link.get("sink_id")),
-                        None,
-                    )
-                    if (
-                        sink_node
-                        and sink_node.get("block_id") == _CODE_EXECUTION_BLOCK_ID
-                    ):
-                        is_linked_to_code_execution = True
-                        break
-
             # Skip fixing if this block's output goes to a CodeExecutionBlock
-            if is_linked_to_code_execution:
+            if node_id in linked_to_code_execution:
                 continue
 
             # Fix single curly braces to double curly braces
@@ -358,9 +352,9 @@ class AgentFixer:
                             f"{original_text} -> {fixed_text}"
                         )
 
-            # Check if this node has prompt_values linked to it
+            # Check if this node has prompt_values linked to it, once per id
             if node_id in node_prompt_values:
-                prompt_values = node_prompt_values[node_id]
+                prompt_values = node_prompt_values.pop(node_id)
 
                 # Determine which field to add missing values to
                 target_field = "prompt" if "prompt" in input_data else "format"
@@ -369,12 +363,13 @@ class AgentFixer:
                     input_data[target_field], str
                 ):
                     current_text = input_data[target_field]
-                    missing_values = []
-
-                    for value_name in prompt_values:
-                        pattern = r"\{\{" + re.escape(value_name) + r"\}\}"
-                        if not re.search(pattern, current_text):
-                            missing_values.append(value_name)
+                    # Read once, not searched again per linked value.
+                    placeholders = set(re.findall(r"\{\{([^{}]*)\}\}", current_text))
+                    missing_values = [
+                        value_name
+                        for value_name in prompt_values
+                        if value_name not in placeholders
+                    ]
 
                     # Add missing values to the text
                     if missing_values:
@@ -421,9 +416,30 @@ class AgentFixer:
         new_links: list[dict[str, Any]] = []
         original_addtolist_node_ids: set[str] = set()
 
+        # The nodes a CreateListBlock feeds, the links into each "list" input,
+        # and the "list" inputs already fed by another AddToList block.
+        fed_by_createlist: set[str] = set()
+        links_to_list_inputs: dict[str, list[dict[str, Any]]] = {}
+        has_prerequisite: set[str] = set()
+        for link in links:
+            source_node = node_lookup.get(link.get("source_id", ""))
+            sink_id = link.get("sink_id")
+            if source_node and source_node.get("block_id") == _CREATE_LIST_BLOCK_ID:
+                fed_by_createlist.add(sink_id)
+            if link.get("sink_name") == "list":
+                links_to_list_inputs.setdefault(sink_id, []).append(link)
+                if (
+                    link.get("source_name") == "updated_list"
+                    and source_node
+                    and source_node.get("block_id") == _ADDTOLIST_BLOCK_ID
+                    and source_node.get("id") != sink_id
+                ):
+                    has_prerequisite.add(sink_id)
+        has_list_input_link = set(links_to_list_inputs)
+
         # First pass: identify CreateListBlock nodes and links to remove
         createlist_nodes_to_remove: set[str] = set()
-        links_to_remove: list[dict[str, Any]] = []
+        links_to_remove: set[int] = set()  # by identity: links aren't hashable
 
         for link in links:
             source_node = node_lookup.get(link.get("source_id", ""))
@@ -437,7 +453,7 @@ class AgentFixer:
                 and sink_node.get("block_id") == _ADDTOLIST_BLOCK_ID
             ):
                 createlist_nodes_to_remove.add(source_node.get("id"))
-                links_to_remove.append(link)
+                links_to_remove.add(id(link))
                 self.add_fix_log(
                     f"Identified CreateListBlock {source_node.get('id')} linked "
                     f"to AddToList block {sink_node.get('id')} for removal"
@@ -451,22 +467,10 @@ class AgentFixer:
                 and sink_node.get("block_id") == _ADDTOLIST_BLOCK_ID
             ):
                 storevalue_id = source_node.get("id")
-                has_createlist_before = False
-                for prev_link in links:
-                    if prev_link.get("sink_id") == storevalue_id:
-                        prev_source_node = node_lookup.get(
-                            prev_link.get("source_id", "")
-                        )
-                        if (
-                            prev_source_node
-                            and prev_source_node.get("block_id")
-                            == _CREATE_LIST_BLOCK_ID
-                        ):
-                            has_createlist_before = True
-                            break
+                has_createlist_before = storevalue_id in fed_by_createlist
 
                 if has_createlist_before:
-                    links_to_remove.append(link)
+                    links_to_remove.add(id(link))
                     self.add_fix_log(
                         f"Identified StoreValueBlock {storevalue_id} (with "
                         f"CreateListBlock before it) linked to AddToList block "
@@ -493,35 +497,14 @@ class AgentFixer:
                     original_node_position_y = 0
 
                 # Check if there's already a prerequisite AddToList block
-                has_prerequisite_block = False
-                for link in links:
-                    if (
-                        link.get("sink_id") == original_node_id
-                        and link.get("sink_name") == "list"
-                        and link.get("source_name") == "updated_list"
-                    ):
-                        source_node = next(
-                            (n for n in nodes if n.get("id") == link.get("source_id")),
-                            None,
-                        )
-                        if (
-                            source_node
-                            and source_node.get("block_id") == _ADDTOLIST_BLOCK_ID
-                            and source_node.get("id") != original_node_id
-                        ):
-                            has_prerequisite_block = True
-                            break
+                has_prerequisite_block = original_node_id in has_prerequisite
 
                 # Check if this node is already a prerequisite block
                 is_prerequisite_block = (
                     node.get("input_default", {}).get("list") == []
                     and node.get("input_default", {}).get("entry") is None
                     and node.get("input_default", {}).get("entries") == []
-                    and not any(
-                        link.get("sink_id") == original_node_id
-                        and link.get("sink_name") == "list"
-                        for link in links
-                    )
+                    and original_node_id not in has_list_input_link
                 )
 
                 if is_prerequisite_block:
@@ -538,19 +521,16 @@ class AgentFixer:
                     )
                 else:
                     # Before adding prerequisite block, remove all links to
-                    # the "list" input (except self-referencing)
-                    links_to_list_input = []
-                    for link in links:
-                        if (
-                            link.get("sink_id") == original_node_id
-                            and link.get("sink_name") == "list"
-                            and link.get("source_id") != original_node_id
-                        ):
-                            links_to_list_input.append(link)
+                    # the "list" input (except self-referencing), once per id.
+                    links_to_list_input = [
+                        link
+                        for link in links_to_list_inputs.pop(original_node_id, [])
+                        if link.get("source_id") != original_node_id
+                    ]
 
                     for link in links_to_list_input:
-                        if link not in links_to_remove:
-                            links_to_remove.append(link)
+                        if id(link) not in links_to_remove:
+                            links_to_remove.add(id(link))
                             self.add_fix_log(
                                 f"Removed link from "
                                 f"{link.get('source_id')}:"
@@ -601,10 +581,22 @@ class AgentFixer:
             new_nodes.append(node)
 
         # Add all existing links except those marked for removal
-        new_links.extend([link for link in links if link not in links_to_remove])
+        new_links.extend([link for link in links if id(link) not in links_to_remove])
 
         # Check for original AddToList blocks and ensure they have
-        # self-referencing links
+        # self-referencing links. The links changed, so index the new ones.
+        has_list_input_link = set()
+        has_self_reference_link = set()
+        for link in new_links:
+            sink_id = link.get("sink_id")
+            if link.get("sink_name") == "list":
+                has_list_input_link.add(sink_id)
+                if (
+                    link.get("source_name") == "updated_list"
+                    and link.get("source_id") == sink_id
+                ):
+                    has_self_reference_link.add(sink_id)
+
         for node in new_nodes:
             if (
                 node.get("block_id") == _ADDTOLIST_BLOCK_ID
@@ -616,11 +608,7 @@ class AgentFixer:
                     node.get("input_default", {}).get("list") == []
                     and node.get("input_default", {}).get("entry") is None
                     and node.get("input_default", {}).get("entries") == []
-                    and not any(
-                        link.get("sink_id") == node_id
-                        and link.get("sink_name") == "list"
-                        for link in new_links
-                    )
+                    and node_id not in has_list_input_link
                 )
 
                 if is_prerequisite_block:
@@ -630,13 +618,7 @@ class AgentFixer:
                     )
                     continue
 
-                has_self_reference = any(
-                    link.get("source_id") == node_id
-                    and link.get("sink_id") == node_id
-                    and link.get("source_name") == "updated_list"
-                    and link.get("sink_name") == "list"
-                    for link in new_links
-                )
+                has_self_reference = node_id in has_self_reference_link
 
                 if not has_self_reference:
                     self_reference_link = {
@@ -647,6 +629,8 @@ class AgentFixer:
                         "sink_name": "list",
                     }
                     new_links.append(self_reference_link)
+                    has_list_input_link.add(node_id)
+                    has_self_reference_link.add(node_id)
                     self.add_fix_log(
                         f"Added self-referencing link for original "
                         f"AddToList block {node_id}"
@@ -682,7 +666,7 @@ class AgentFixer:
         # First pass: identify CreateDictionaryBlock nodes linked to
         # AddToDictionary blocks
         create_dict_nodes_to_remove: set[str] = set()
-        links_to_remove: list[dict[str, Any]] = []
+        links_to_remove: set[int] = set()  # by identity: links aren't hashable
 
         for link in links:
             source_node = node_lookup.get(link.get("source_id", ""))
@@ -695,7 +679,7 @@ class AgentFixer:
                 and sink_node.get("block_id") == _ADDTODICTIONARY_BLOCK_ID
             ):
                 create_dict_nodes_to_remove.add(source_node.get("id"))
-                links_to_remove.append(link)
+                links_to_remove.add(id(link))
                 self.add_fix_log(
                     f"Identified CreateDictionaryBlock "
                     f"{source_node.get('id')} linked to AddToDictionary "
@@ -710,7 +694,7 @@ class AgentFixer:
             new_nodes.append(node)
 
         # Remove the links that were marked for removal
-        new_links = [link for link in links if link not in links_to_remove]
+        new_links = [link for link in links if id(link) not in links_to_remove]
 
         # Update the agent with new nodes and links
         agent["nodes"] = new_nodes
@@ -815,27 +799,29 @@ class AgentFixer:
 
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
-        links_to_remove: list[dict[str, Any]] = []
+        links_to_remove: set[int] = set()  # by identity: links aren't hashable
+
+        # The links into each node's sample_size field
+        sample_size_links: dict[str, list[dict[str, Any]]] = {}
+        for link in links:
+            if link.get("sink_name") == "sample_size":
+                sample_size_links.setdefault(link.get("sink_id"), []).append(link)
 
         for node in nodes:
             if node.get("block_id") == _DATA_SAMPLING_BLOCK_ID:
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
 
-                # Check if there's a link to the sample_size field
+                # Check if there's a link to the sample_size field, once per id
                 has_sample_size_link = False
-                for link in links:
-                    if (
-                        link.get("sink_id") == node_id
-                        and link.get("sink_name") == "sample_size"
-                    ):
-                        has_sample_size_link = True
-                        links_to_remove.append(link)
-                        self.add_fix_log(
-                            f"Removed link {link.get('id')} to "
-                            f"DataSamplingBlock {node_id} sample_size "
-                            f"field (will set default to 1)"
-                        )
+                for link in sample_size_links.pop(node_id, []):
+                    has_sample_size_link = True
+                    links_to_remove.add(id(link))
+                    self.add_fix_log(
+                        f"Removed link {link.get('id')} to "
+                        f"DataSamplingBlock {node_id} sample_size "
+                        f"field (will set default to 1)"
+                    )
 
                 # Set sample_size to 1 as default
                 old_value = input_default.get("sample_size", None)
@@ -854,7 +840,7 @@ class AgentFixer:
 
         # Remove the links that were marked for removal
         if links_to_remove:
-            agent["links"] = [link for link in links if link not in links_to_remove]
+            agent["links"] = [link for link in links if id(link) not in links_to_remove]
 
         return agent
 
@@ -1323,19 +1309,14 @@ class AgentFixer:
         """
         nodes = agent.get("nodes", [])
         links = agent.get("links", [])
+        node_lookup = {node.get("id", ""): node for node in nodes}
 
         # Find AddToList blocks that are connected to GmailSendBlock
         addtolist_nodes_linked_to_gmail: set[str] = set()
 
         for link in links:
-            source_node = next(
-                (node for node in nodes if node.get("id") == link.get("source_id")),
-                None,
-            )
-            sink_node = next(
-                (node for node in nodes if node.get("id") == link.get("sink_id")),
-                None,
-            )
+            source_node = node_lookup.get(link.get("source_id", ""))
+            sink_node = node_lookup.get(link.get("sink_id", ""))
 
             if (
                 source_node
@@ -1351,7 +1332,7 @@ class AgentFixer:
 
         # Remove self-referencing links from identified AddToList blocks
         if addtolist_nodes_linked_to_gmail:
-            links_to_remove = []
+            links_to_remove: set[int] = set()  # by identity: links aren't hashable
 
             for link in links:
                 if (
@@ -1361,7 +1342,7 @@ class AgentFixer:
                     and link.get("source_name") == "updated_list"
                     and link.get("sink_name") == "list"
                 ):
-                    links_to_remove.append(link)
+                    links_to_remove.add(id(link))
                     self.add_fix_log(
                         f"Removed self-referencing link {link.get('id')} "
                         f"from AddToList block {link.get('source_id')} "
@@ -1369,7 +1350,9 @@ class AgentFixer:
                     )
 
             if links_to_remove:
-                agent["links"] = [link for link in links if link not in links_to_remove]
+                agent["links"] = [
+                    link for link in links if id(link) not in links_to_remove
+                ]
 
         return agent
 
@@ -1465,6 +1448,13 @@ class AgentFixer:
             f"fix_agent_executor_blocks: library_agent_lookup keys = "
             f"{list(library_agent_lookup.keys())}"
         )
+
+        # Linked inputs per node id and sub-agent, found once even when nodes
+        # share both.
+        links_by_sink: dict[str, list[dict[str, Any]]] = {}
+        for link in links:
+            links_by_sink.setdefault(link.get("sink_id"), []).append(link)
+        linked_inputs: dict[tuple[str | None, str], set[str]] = {}
 
         for node in nodes:
             if node.get("block_id") != AGENT_EXECUTOR_BLOCK_ID:
@@ -1599,9 +1589,11 @@ class AgentFixer:
 
             # Get all linked inputs to this node
             sub_agent_properties = sub_agent_input_schema.get("properties", {})
-            linked_sub_agent_inputs: set[str] = set()
-            for link in links:
-                if link.get("sink_id") == node_id:
+            linked_sub_agent_inputs = linked_inputs.get((node_id, graph_id))
+            if linked_sub_agent_inputs is None:
+                linked_sub_agent_inputs = set()
+                linked_inputs[(node_id, graph_id)] = linked_sub_agent_inputs
+                for link in links_by_sink.get(node_id, []):
                     sink_name = link.get("sink_name", "")
                     # Fix: Convert "inputs_#_<field>" to direct property
                     # name "<field>"
@@ -1675,7 +1667,7 @@ class AgentFixer:
             node_lookup = self._build_node_lookup(agent)
 
         links = agent.get("links", [])
-        links_to_remove: list[str] = []
+        links_to_remove: set[str] = set()
 
         for link in links:
             sink_name = link.get("sink_name", "")
@@ -1695,7 +1687,7 @@ class AgentFixer:
                             f"Array indices (like '{child}') are not "
                             f"valid with _#_ notation"
                         )
-                        links_to_remove.append(link.get("id", ""))
+                        links_to_remove.add(link.get("id", ""))
                     continue
 
                 # Check if parent property exists and child is valid
@@ -1717,7 +1709,7 @@ class AgentFixer:
                                 f"array type, _#_ notation not "
                                 f"applicable"
                             )
-                            links_to_remove.append(link.get("id", ""))
+                            links_to_remove.add(link.get("id", ""))
 
         # Remove invalid links
         if links_to_remove:
@@ -1882,6 +1874,7 @@ class AgentFixer:
             The fixed agent dictionary
         """
         self.fixes_applied = []
+        self._fixes_omitted = 0
         self.retired_models_replaced = []
         # Read once before any fix runs, for the pipeline to run the model fix
         # with if a fix before it raises, and again just before the model fix.
@@ -1941,6 +1934,11 @@ class AgentFixer:
         # Apply fixes for AgentExecutorBlock nodes (sub-agents)
         if library_agents:
             agent = self.fix_agent_executor_blocks(agent, library_agents)
+
+        if self._fixes_omitted:
+            self.fixes_applied.append(
+                f"... and {self._fixes_omitted} more fix(es) not listed."
+            )
 
         logger.debug(f"Applied {len(self.fixes_applied)} fixes to agent")
         for fix in self.fixes_applied:

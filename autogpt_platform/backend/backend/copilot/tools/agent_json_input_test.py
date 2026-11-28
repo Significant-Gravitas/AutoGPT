@@ -204,6 +204,57 @@ async def test_or_error_refuses_nodes_or_links_that_are_not_objects(agent_json, 
     assert err.message == f"The agent JSON's '{key}' must be a list of objects."
 
 
+@pytest.mark.parametrize(
+    "agent_json",
+    [
+        pytest.param({"nodes": [{} for _ in range(400_000)], "links": []}, id="object"),
+        # Also the form a file the tool was pointed at arrives in.
+        pytest.param('{"nodes": [' + "{}," * 400_000 + "{}]}", id="string"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_or_error_refuses_a_graph_over_the_size_limit(agent_json):
+    """Every graph tool takes no more than the save pipeline does."""
+    session = make_session(_USER_ID)
+    graph, err = await resolve_agent_json_or_error(
+        agent_json=agent_json,
+        agent_json_ref=None,
+        user_id=_USER_ID,
+        session=session,
+        session_id="s1",
+        missing_message="missing",
+    )
+    assert graph is None
+    assert isinstance(err, ErrorResponse)
+    assert err.error == "agent_json_too_large"
+    assert "max 1,000,000" in err.message
+    assert err.session_id == "s1"
+
+
+@pytest.mark.parametrize(
+    "agent_json, key",
+    [
+        ({"nodes": [{"id": "n" * 257}], "links": []}, "nodes"),
+        ({"nodes": [], "links": [{"id": ["l1"]}]}, "links"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_or_error_refuses_ids_that_are_not_short_strings(agent_json, key):
+    session = make_session(_USER_ID)
+    graph, err = await resolve_agent_json_or_error(
+        agent_json=agent_json,
+        agent_json_ref=None,
+        user_id=_USER_ID,
+        session=session,
+        session_id="s1",
+        missing_message="missing",
+    )
+    assert graph is None
+    assert isinstance(err, ErrorResponse)
+    assert err.error == "invalid_agent_json"
+    assert f"'{key}' must be a string of at most 256 characters" in err.message
+
+
 @pytest.mark.asyncio
 async def test_or_error_builds_missing_error_response():
     session = make_session(_USER_ID)

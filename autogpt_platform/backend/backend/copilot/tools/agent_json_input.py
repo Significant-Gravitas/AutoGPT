@@ -35,9 +35,13 @@ from backend.copilot.sdk.file_ref import (
 )
 from backend.data.workspace_internal import WORKING_FILE_METADATA
 
+from .agent_generator.pipeline import MAX_AGENT_JSON_SIZE
 from .models import ErrorResponse
 
 logger = logging.getLogger(__name__)
+
+# The fixer and validator repeat a node's id in a message per input or link.
+MAX_GRAPH_ID_LENGTH = 256
 
 # Structured (not bare ``{"type": "object"}``) so constrained tool-arg decoders
 # have keys to follow instead of collapsing the value to ``{}``. Nested props are
@@ -148,6 +152,17 @@ async def resolve_agent_json_or_error(
         return None, ErrorResponse(
             message=missing_message, error=missing_error, session_id=session_id
         )
+    # Every graph tool takes no more than the save pipeline accepts.
+    json_size = len(json.dumps(graph))
+    if json_size > MAX_AGENT_JSON_SIZE:
+        return None, ErrorResponse(
+            message=(
+                f"Agent JSON is too large ({json_size:,} bytes, "
+                f"max {MAX_AGENT_JSON_SIZE:,}). Reduce the number of nodes."
+            ),
+            error="agent_json_too_large",
+            session_id=session_id,
+        )
     if shape_error := _shape_error(graph):
         return None, ErrorResponse(
             message=shape_error, error=invalid_error, session_id=session_id
@@ -165,7 +180,18 @@ def _shape_error(graph: dict[str, Any]) -> str | None:
         items = graph.get(key, [])
         if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
             return f"The agent JSON's '{key}' must be a list of objects."
+        if not all(_is_short_id(i.get("id")) for i in items):
+            return (
+                f"Each id in the agent JSON's '{key}' must be a string of at most "
+                f"{MAX_GRAPH_ID_LENGTH} characters."
+            )
     return None
+
+
+def _is_short_id(value: Any) -> bool:
+    return value is None or (
+        isinstance(value, str) and len(value) <= MAX_GRAPH_ID_LENGTH
+    )
 
 
 def _coerce_to_graph(value: Any) -> dict[str, Any] | None:
