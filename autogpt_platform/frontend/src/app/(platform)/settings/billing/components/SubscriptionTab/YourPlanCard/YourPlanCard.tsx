@@ -24,9 +24,14 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 interface Props {
   index?: number;
   showUsage?: boolean;
+  hideUpgradeActions?: boolean;
 }
 
-export function YourPlanCard({ index = 0, showUsage = false }: Props) {
+export function YourPlanCard({
+  index = 0,
+  showUsage = false,
+  hideUpgradeActions = false,
+}: Props) {
   const reduceMotion = useReducedMotion();
   const controller = useYourPlanCard();
   const {
@@ -203,7 +208,8 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               Manage subscription
             </Button>
           ) : null}
-          {canUpgrade &&
+          {!hideUpgradeActions &&
+          canUpgrade &&
           plan.nextTierLabel &&
           (!showUsage || !plan.isPaidPlan) ? (
             <Button
@@ -229,9 +235,17 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
       </div>
 
       {showUsage ? (
-        <div className="grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]">
+        <div
+          className={
+            hideUpgradeActions
+              ? "grid gap-4"
+              : "grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]"
+          }
+        >
           <AutopilotUsageCard index={1} />
-          <BillingOffer controller={controller} />
+          {!hideUpgradeActions ? (
+            <BillingOffer controller={controller} />
+          ) : null}
         </div>
       ) : null}
 

@@ -31,9 +31,12 @@ export function useSubscriptionTab(isPlanCheckoutReturn: boolean) {
       hasPaidPlan,
   );
   const cancelPendingOffer = getCancelPendingOffer(trial);
+  const isTrialUnavailable =
+    !hasPaidPlan && !trial && (trialStatus.isError || trialStatus.isFetching);
 
   return {
     isLoading,
+    isTrialUnavailable,
     paymentFailed,
     payment,
     hasPlanChoices: Boolean(cancelPendingOffer),
