@@ -11,6 +11,10 @@ from backend.executor.scheduler import GraphExecutionJobInfo
 
 from .models import HomeExpert
 
+# Enough of a user id to correlate log lines for one user without writing the
+# whole identifier into logs that are retained and widely readable.
+LOG_ID_CHARS = 12
+
 
 def to_home_expert(expert: Expert) -> HomeExpert:
     return HomeExpert(

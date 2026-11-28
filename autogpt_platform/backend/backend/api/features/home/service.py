@@ -17,12 +17,11 @@ from backend.copilot.briefing.models import BriefingContent
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
-from backend.data import activity_event as activity_db
 from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
-from backend.data import workspace as workspace_db
+from backend.data.activity_event import ActivityEvent
 from backend.data.credit import get_credit_model
 from backend.data.execution import GraphExecutionMeta
 from backend.data.execution_cost_summary import (
@@ -35,17 +34,16 @@ from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .compose import compose_home_dashboard
+from .helpers import LOG_ID_CHARS
 from .models import HomeDashboardResponse
+from .recent_work import scheduled_workflow_id
+from .work_events import get_work_events as _get_work_events
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
-_WORK_EVENT_LIMIT = 200
-# Enough of a user id to correlate log lines for one user without writing the
-# whole identifier into logs that are retained and widely readable.
-_LOG_ID_CHARS = 12
 
 
 class HomeSourceData(BaseModel):
@@ -57,7 +55,7 @@ class HomeSourceData(BaseModel):
     schedules_unavailable: bool = False
     credits_balance: int | None
     questions: list[ChatSessionInfo]
-    work_events: list[activity_db.ActivityEvent]
+    work_events: list[ActivityEvent]
     paused_chats: list[PausedScheduledChat]
     timezone_name: str
 
@@ -78,6 +76,11 @@ async def build_home_dashboard(
     graph_ids = list(
         {execution.graph_id for execution in data.executions}
         | {review.graph_id for review in data.reviews if review.graph_id}
+        | {
+            graph_id
+            for event in data.work_events
+            if (graph_id := scheduled_workflow_id(event))
+        }
     )
     work_session_ids = list(
         {event.session_id for event in data.work_events if event.session_id}
@@ -139,7 +142,7 @@ async def _persisted_briefing(
         record = await briefing_db.get_briefing_for_date(user_id, briefing_date)
     except Exception:
         logger.warning(
-            "Home could not load the briefing for user %s", user_id[:_LOG_ID_CHARS]
+            "Home could not load the briefing for user %s", user_id[:LOG_ID_CHARS]
         )
         return None
     if record is None:
@@ -184,11 +187,13 @@ async def _load_home_source_data(
         )
     )
     schedules_task = asyncio.create_task(_get_schedules(user_id=user_id))
+    work_events_task = asyncio.create_task(
+        _get_work_events(
+            user_id=user_id, since=week_start, until=now, schedules_task=schedules_task
+        )
+    )
     credits_task = asyncio.create_task(_get_credits(user_id=user_id, ctx=ctx))
     questions_task = asyncio.create_task(_get_pending_questions(user_id=user_id))
-    work_events_task = asyncio.create_task(
-        _get_work_events(user_id=user_id, since=week_start)
-    )
     paused_chats_task = asyncio.create_task(_get_paused_chats(user_id=user_id))
     user_task = asyncio.create_task(user_db.get_user_by_id(user_id))
     # Gather rather than awaiting one by one: a failure in the first task would
@@ -199,9 +204,9 @@ async def _load_home_source_data(
         reviews_task,
         cost_summary_task,
         schedules_task,
+        work_events_task,
         credits_task,
         questions_task,
-        work_events_task,
         paused_chats_task,
         user_task,
     ]
@@ -213,7 +218,7 @@ async def _load_home_source_data(
         executions=executions_task.result(),
         reviews=reviews_task.result(),
         cost_summary=cost_summary_task.result(),
-        schedules=schedules or [],
+        schedules=[job for job in schedules or [] if job.next_run_time],
         schedules_unavailable=schedules is None,
         credits_balance=credits_task.result(),
         questions=questions_task.result(),
@@ -224,8 +229,7 @@ async def _load_home_source_data(
 
 
 async def _get_schedules(
-    *,
-    user_id: str,
+    *, user_id: str
 ) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo] | None:
     # Deliberately owner-scoped: executions, reviews and cost totals on this page
     # are all personal, so org/team schedules would surface upcoming runs whose
@@ -235,12 +239,14 @@ async def _get_schedules(
     # the rows are unknown, not absent.
     try:
         return await asyncio.wait_for(
-            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            get_scheduler_client().get_execution_schedules(
+                user_id=user_id, include_paused=True
+            ),
             timeout=settings.config.schedule_read_timeout_seconds,
         )
     except Exception:
         logger.warning(
-            "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]
+            "Home could not load schedules for user %s", user_id[:LOG_ID_CHARS]
         )
         return None
 
@@ -252,7 +258,7 @@ async def _get_paused_chats(*, user_id: str) -> list[PausedScheduledChat]:
     except Exception:
         logger.warning(
             "Home could not load paused scheduled chats for user %s",
-            user_id[:_LOG_ID_CHARS],
+            user_id[:LOG_ID_CHARS],
         )
         return []
 
@@ -265,51 +271,9 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
     except Exception:
         logger.warning(
             "Home could not load pending questions for user %s",
-            user_id[:_LOG_ID_CHARS],
+            user_id[:LOG_ID_CHARS],
         )
         return []
-
-
-async def _get_work_events(
-    *, user_id: str, since: datetime
-) -> list[activity_db.ActivityEvent]:
-    # Fail-soft like schedules and credits: a broken audit read costs the
-    # Recent work card, not the page.
-    try:
-        events = await activity_db.list_activity_events(
-            user_id,
-            since=since,
-            categories=["FILE", "INTEGRATION", "SCHEDULE"],
-            limit=_WORK_EVENT_LIMIT,
-        )
-    except Exception:
-        logger.warning(
-            "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
-        )
-        return []
-    try:
-        return await _without_working_files(user_id, events)
-    except Exception:
-        logger.warning(
-            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
-        )
-        # An unchecked file row may be one of Otto's own; the rest still show.
-        return [event for event in events if event.category != "FILE"]
-
-
-async def _without_working_files(
-    user_id: str, events: list[activity_db.ActivityEvent]
-) -> list[activity_db.ActivityEvent]:
-    """Drop the FILE rows logged for Otto's own working files before writes
-    stopped logging them. The migration marks the files (``isInternal``), not
-    these log rows, so the mark is read through each row's file id."""
-    file_ids = [e.object_id for e in events if e.category == "FILE" and e.object_id]
-    internal = await workspace_db.list_internal_file_ids(user_id, file_ids)
-    return [
-        event
-        for event in events
-        if not (event.category == "FILE" and event.object_id in internal)
-    ]
 
 
 async def _get_session_titles(
@@ -319,7 +283,7 @@ async def _get_session_titles(
         return await chat_db.get_session_titles(user_id, session_ids)
     except Exception:
         logger.warning(
-            "Home could not load session titles for user %s", user_id[:_LOG_ID_CHARS]
+            "Home could not load session titles for user %s", user_id[:LOG_ID_CHARS]
         )
         return {}
 
@@ -336,6 +300,6 @@ async def _get_credits(*, user_id: str, ctx: RequestContext | None) -> int | Non
         return await model.get_credits(user_id, organization_id)
     except Exception:
         logger.warning(
-            "Home could not load credits for user %s", user_id[:_LOG_ID_CHARS]
+            "Home could not load credits for user %s", user_id[:LOG_ID_CHARS]
         )
         return None

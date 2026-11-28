@@ -7,103 +7,8 @@ from pytest_mock import MockerFixture
 
 from backend.copilot.briefing.models import BriefingContent, BriefingRunItem
 from backend.copilot.scheduled_chats.service import PausedScheduledChat
-from backend.data.activity_event import ActivityEvent
-from backend.data.execution import ExecutionStatus, GraphExecutionMeta
-from backend.data.execution_cost_summary import UserExecutionCostSummary
 
-from .service import _get_pending_questions, _get_work_events, build_home_dashboard
-
-
-def _execution() -> GraphExecutionMeta:
-    # `build_home_dashboard` reads the live clock, so anchor the run to now — a
-    # fixed timestamp would drop out of the 24h briefing window over time.
-    ran_at = datetime.now(timezone.utc) - timedelta(minutes=5)
-    return GraphExecutionMeta(
-        id="exec-1",
-        user_id="user-1",
-        graph_id="graph-1",
-        graph_version=1,
-        inputs=None,
-        credential_inputs=None,
-        nodes_input_masks=None,
-        preset_id=None,
-        status=ExecutionStatus.COMPLETED,
-        started_at=ran_at,
-        ended_at=ran_at,
-        stats=GraphExecutionMeta.Stats(activity_status="Booked the flight."),
-    )
-
-
-def _cost_summary() -> UserExecutionCostSummary:
-    return UserExecutionCostSummary(
-        total_cents=0,
-        run_count=0,
-        billable_run_count=0,
-        failed_cost_cents=0,
-        by_agent=[],
-        top_runs=[],
-        daily=[],
-    )
-
-
-@pytest.fixture
-def home_dependencies(mocker: MockerFixture):
-    mocker.patch(
-        "backend.api.features.home.service.experts_db.list_experts",
-        AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.execution_db.get_graph_executions",
-        AsyncMock(return_value=[_execution()]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.review_db.get_pending_reviews_for_user",
-        AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.get_user_cost_summary",
-        AsyncMock(return_value=_cost_summary()),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.library_db.get_library_agent_refs_by_graph_ids",
-        AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.user_db.get_user_by_id",
-        AsyncMock(return_value=None),
-    )
-    scheduler = MagicMock()
-    scheduler.get_execution_schedules = AsyncMock(return_value=[])
-    mocker.patch(
-        "backend.api.features.home.service.get_scheduler_client", return_value=scheduler
-    )
-    credit_model = MagicMock()
-    credit_model.get_credits = AsyncMock(return_value=100)
-    mocker.patch(
-        "backend.api.features.home.service.get_credit_model",
-        AsyncMock(return_value=credit_model),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.briefing_db.get_briefing_for_date",
-        AsyncMock(return_value=None),
-    )
-    # Keep owner-scoped Home sources on the same fake database boundary.
-    mocker.patch(
-        "backend.api.features.home.service.chat_db.get_sessions_with_pending_question",
-        AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.chat_db.get_session_titles",
-        AsyncMock(return_value={}),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.activity_db.list_activity_events",
-        AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.scheduled_chats.list_paused_scheduled_chats",
-        AsyncMock(return_value=[]),
-    )
+from .service import _get_pending_questions, build_home_dashboard
 
 
 def _stored_briefing(**overrides) -> BriefingContent:
@@ -296,7 +201,9 @@ async def test_schedules_stay_owner_scoped_inside_an_organization(
 
     # Executions, reviews and cost totals are personal, so a teammate's schedule
     # would show an upcoming run whose outcome never lands anywhere else.
-    scheduler.get_execution_schedules.assert_awaited_once_with(user_id="user-1")
+    scheduler.get_execution_schedules.assert_awaited_once_with(
+        user_id="user-1", include_paused=True
+    )
     get_credit_model.assert_awaited_once_with("user-1", "org-1")
 
 
@@ -483,61 +390,3 @@ class TestPooledOrgBalanceGate:
 
         assert dashboard.week.credits_balance == 100
         get_credit_model.assert_awaited_once_with("user-1", "personal-org")
-
-
-def _file_event(event_id: str, name: str, file_id: str) -> ActivityEvent:
-    return ActivityEvent(
-        id=event_id,
-        user_id="user-1",
-        created_at=datetime(2026, 10, 23, 11, 0, tzinfo=timezone.utc),
-        category="FILE",
-        event_type="file.created",
-        title=name,
-        object_id=file_id,
-    )
-
-
-@pytest.mark.asyncio
-async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture):
-    """FILE rows logged before working-file writes stopped being logged: the
-    migration marks the file, and the row is dropped through its file id."""
-    sticker = _file_event("e1", "sticker-01.png", "file-sticker")
-    scratchpad = _file_event("e2", "build_state.json", "file-state")
-    mocker.patch(
-        "backend.api.features.home.service.activity_db.list_activity_events",
-        AsyncMock(return_value=[sticker, scratchpad]),
-    )
-    internal = mocker.patch(
-        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
-        AsyncMock(return_value={"file-state"}),
-    )
-
-    events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
-    )
-
-    assert [event.title for event in events] == ["sticker-01.png"]
-    internal.assert_awaited_once_with("user-1", ["file-sticker", "file-state"])
-
-
-@pytest.mark.asyncio
-async def test_recent_work_keeps_actions_when_the_file_check_fails(
-    mocker: MockerFixture,
-):
-    action = _file_event("e1", "Airtable Create Table", "block-1").model_copy(
-        update={"category": "INTEGRATION", "event_type": "integration.action"}
-    )
-    mocker.patch(
-        "backend.api.features.home.service.activity_db.list_activity_events",
-        AsyncMock(return_value=[action, _file_event("e2", "sticker-01.png", "f1")]),
-    )
-    mocker.patch(
-        "backend.api.features.home.service.workspace_db.list_internal_file_ids",
-        AsyncMock(side_effect=RuntimeError("database unavailable")),
-    )
-
-    events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
-    )
-
-    assert [event.title for event in events] == ["Airtable Create Table"]
