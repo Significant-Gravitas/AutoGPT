@@ -21,7 +21,7 @@ bot via their DM link — enforced bridge-side.
 
 import logging
 from functools import lru_cache
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from backend.copilot.model import ChatSession
 from backend.platform_linking.models import Platform
@@ -225,7 +225,21 @@ def _resolve_platform(value: str | None) -> tuple[Platform | None, str]:
     return Platform(name.upper()), name
 
 
-class PostToChatPlatformTool(BaseTool):
+# A validated post or edit's platform, its name and its target.
+_PlatformTarget = tuple[Platform, str, Literal["channel", "dm"]]
+
+
+class _ChatPlatformTool(BaseTool):
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def is_available(self) -> bool:
+        return _any_chat_platform_configured()
+
+
+class PostToChatPlatformTool(_ChatPlatformTool):
     """Post a message or open a thread in a linked chat-platform channel."""
 
     @property
@@ -253,14 +267,6 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def search_keywords(self) -> tuple[str, ...]:
         return _PLATFORM_KEYWORDS
-
-    @property
-    def requires_auth(self) -> bool:
-        return True
-
-    @property
-    def is_available(self) -> bool:
-        return _any_chat_platform_configured()
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -304,22 +310,14 @@ class PostToChatPlatformTool(BaseTool):
         }
 
     @staticmethod
-    def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
-        """Return an ``ErrorResponse`` for the first invalid param, else None."""
-        _platform, platform_name = _resolve_platform(kwargs.get("platform"))
-        if _platform is None:
-            return ErrorResponse(
-                message=f"Unsupported platform '{platform_name}'.",
-                error="unsupported_platform",
-                session_id=session_id,
-            )
-        target: str = kwargs.get("target") or _default_target(platform_name)
-        if target not in ("channel", "dm"):
-            return ErrorResponse(
-                message="`target` must be 'channel' or 'dm'.",
-                error="invalid_target",
-                session_id=session_id,
-            )
+    def _validate_params(
+        session_id: str | None, **kwargs
+    ) -> _PlatformTarget | ErrorResponse:
+        """The call's platform and target, or the first invalid param's error."""
+        resolved = _resolve_platform_target(session_id, **kwargs)
+        if isinstance(resolved, ErrorResponse):
+            return resolved
+        _platform, platform_name, target = resolved
         if platform_name == "teams" and target != "dm":
             return ErrorResponse(
                 message=_TEAMS_TARGETING_HINT,
@@ -361,7 +359,7 @@ class PostToChatPlatformTool(BaseTool):
                     error="missing_thread_name",
                     session_id=session_id,
                 )
-        return None
+        return resolved
 
     async def _execute(
         self,
@@ -376,18 +374,11 @@ class PostToChatPlatformTool(BaseTool):
                 error="auth_required",
                 session_id=session_id,
             )
-        invalid = self._validate_params(session_id, **kwargs)
-        if invalid is not None:
-            return invalid
+        resolved = self._validate_params(session_id, **kwargs)
+        if isinstance(resolved, ErrorResponse):
+            return resolved
 
-        platform, platform_name = _resolve_platform(kwargs.get("platform"))
-        if platform is None:  # already validated; narrows the type
-            return ErrorResponse(
-                message=f"Unsupported platform '{platform_name}'.",
-                error="unsupported_platform",
-                session_id=session_id,
-            )
-        target: str = kwargs.get("target") or _default_target(platform_name)
+        platform, platform_name, target = resolved
         channel: str = kwargs.get("channel") or ""
         content: str = kwargs["content"]
         mode: str = kwargs.get("mode") or "message"
@@ -437,7 +428,7 @@ class PostToChatPlatformTool(BaseTool):
         )
 
 
-class EditChatPlatformMessageTool(BaseTool):
+class EditChatPlatformMessageTool(_ChatPlatformTool):
     """Edit a message the bot previously posted via ``post_to_chat_platform``."""
 
     @property
@@ -458,14 +449,6 @@ class EditChatPlatformMessageTool(BaseTool):
             "(message too old, deleted, not yours, or the platform rejecting "
             "the edit) returns an error, never silent."
         )
-
-    @property
-    def requires_auth(self) -> bool:
-        return True
-
-    @property
-    def is_available(self) -> bool:
-        return _any_chat_platform_configured()
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -508,21 +491,12 @@ class EditChatPlatformMessageTool(BaseTool):
         }
 
     @staticmethod
-    def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
-        _platform, platform_name = _resolve_platform(kwargs.get("platform"))
-        if _platform is None:
-            return ErrorResponse(
-                message=f"Unsupported platform '{platform_name}'.",
-                error="unsupported_platform",
-                session_id=session_id,
-            )
-        target: str = kwargs.get("target") or _default_target(platform_name)
-        if target not in ("channel", "dm"):
-            return ErrorResponse(
-                message="`target` must be 'channel' or 'dm'.",
-                error="invalid_target",
-                session_id=session_id,
-            )
+    def _validate_params(
+        session_id: str | None, **kwargs
+    ) -> _PlatformTarget | ErrorResponse:
+        resolved = _resolve_platform_target(session_id, **kwargs)
+        if isinstance(resolved, ErrorResponse):
+            return resolved
         channel_id = kwargs.get("channel_id")
         if not channel_id or not str(channel_id).strip():
             return ErrorResponse(
@@ -544,7 +518,7 @@ class EditChatPlatformMessageTool(BaseTool):
                 error="missing_content",
                 session_id=session_id,
             )
-        return None
+        return resolved
 
     async def _execute(
         self,
@@ -559,20 +533,11 @@ class EditChatPlatformMessageTool(BaseTool):
                 error="auth_required",
                 session_id=session_id,
             )
-        invalid = self._validate_params(session_id, **kwargs)
-        if invalid is not None:
-            return invalid
+        resolved = self._validate_params(session_id, **kwargs)
+        if isinstance(resolved, ErrorResponse):
+            return resolved
 
-        platform, platform_name = _resolve_platform(kwargs.get("platform"))
-        if platform is None:  # already validated; narrows the type
-            return ErrorResponse(
-                message=f"Unsupported platform '{platform_name}'.",
-                error="unsupported_platform",
-                session_id=session_id,
-            )
-        target_value: str = kwargs.get("target") or _default_target(platform_name)
-        # Already validated to be one of these two literals above.
-        target = cast(Literal["channel", "dm"], target_value)
+        platform, platform_name, target = resolved
         channel_id = str(kwargs["channel_id"])
         ref_id = str(kwargs["ref_id"])
         content: str = kwargs["content"]
@@ -602,7 +567,7 @@ class EditChatPlatformMessageTool(BaseTool):
         )
 
 
-class ListChatPlatformChannelsTool(BaseTool):
+class ListChatPlatformChannelsTool(_ChatPlatformTool):
     """List channels the bot can post to across the user's linked servers."""
 
     @property
@@ -619,14 +584,6 @@ class ListChatPlatformChannelsTool(BaseTool):
             "target='dm'). The user's own DMs never appear here — use "
             "target='dm' instead."
         )
-
-    @property
-    def requires_auth(self) -> bool:
-        return True
-
-    @property
-    def is_available(self) -> bool:
-        return _any_chat_platform_configured()
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -689,3 +646,23 @@ class ListChatPlatformChannelsTool(BaseTool):
             count=len(summaries),
             session_id=session_id,
         )
+
+
+def _resolve_platform_target(
+    session_id: str | None, **kwargs
+) -> _PlatformTarget | ErrorResponse:
+    platform, platform_name = _resolve_platform(kwargs.get("platform"))
+    if platform is None:
+        return ErrorResponse(
+            message=f"Unsupported platform '{platform_name}'.",
+            error="unsupported_platform",
+            session_id=session_id,
+        )
+    target: str = kwargs.get("target") or _default_target(platform_name)
+    if target not in ("channel", "dm"):
+        return ErrorResponse(
+            message="`target` must be 'channel' or 'dm'.",
+            error="invalid_target",
+            session_id=session_id,
+        )
+    return platform, platform_name, target
