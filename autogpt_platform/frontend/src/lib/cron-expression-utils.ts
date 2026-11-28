@@ -232,11 +232,9 @@ export function humanizeCronExpression(cronExpression: string): string {
     return `On day ${dayList} of every month at ${formatTime(hour, minute)}`;
   }
 
-  // Handle yearly (e.g., 30 14 1 1,6,12 *)
-  // Check that dayOfMonth doesn't start with */ to avoid matching day intervals
+  // Handle yearly schedules on the first day (e.g., 30 14 1 1,6,12 *)
   if (
-    dayOfMonth !== "*" &&
-    !dayOfMonth.startsWith("*/") &&
+    /^0*1$/.test(dayOfMonth) &&
     month !== "*" &&
     dayOfWeek === "*" &&
     !minute.includes("/") &&

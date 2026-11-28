@@ -39,6 +39,19 @@ describe("humanizeCronExpression", () => {
       "Every year on the 1st day of March, April, May at 12:00",
     );
   });
+
+  it("renders a zero-padded first day of the month", () => {
+    expect(humanizeCronExpression("0 9 01 1 *")).toBe(
+      "Every year on the 1st day of January at 09:00",
+    );
+  });
+
+  it.each(["0 9 15 1 *", "0 9 1,15 1 *"])(
+    "preserves yearly schedules that include days other than the first: %s",
+    (cron) => {
+      expect(humanizeCronExpression(cron)).toBe(`Cron Expression: ${cron}`);
+    },
+  );
 });
 
 describe("safeHumanizeCronExpression", () => {
