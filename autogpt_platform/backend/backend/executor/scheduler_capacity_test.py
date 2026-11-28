@@ -1,10 +1,12 @@
 """The limits on how many schedules one user holds and how large each is."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
+from backend.data.model import CredentialsMetaInput
 from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH
 from backend.executor import scheduler as scheduler_module
 from backend.executor.schedule_index_test_helpers import (
@@ -19,6 +21,8 @@ from backend.executor.scheduler import (
     Scheduler,
     _index_entry,
 )
+from backend.integrations.providers import ProviderName
+from backend.util.json import dumps as json_dumps
 
 
 @pytest.fixture
@@ -191,6 +195,51 @@ def test_editing_a_schedules_inputs_past_a_size_limit_is_refused(
     full_scheduler.scheduler.modify_job.assert_not_called()
 
 
+@pytest.mark.parametrize("edit", ["rename", "credentials"])
+def test_an_edit_is_stored_only_within_the_size_limit(
+    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch, edit: str
+):
+    """The limit holds for the job an edit writes: one renamed, or one whose
+    inputs another edit changed after this edit's were checked."""
+    topic = "x" * 3_000
+    stored = _args("held-1", "u1", topic=topic).model_dump(mode="json")
+    limit = _stored_bytes(stored) + 100
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_bytes", limit)
+    held = full_scheduler.scheduler.get_job("held-1")
+    full_scheduler.scheduler.modify_job.side_effect = (
+        lambda job_id, jobstore, **changes: _rewritten(held, changes["kwargs"])
+    )
+    landed: list[bool] = []
+
+    def an_input_edit_lands(*_: Any) -> None:
+        if not landed:
+            landed.append(True)
+            full_scheduler.update_graph_execution_schedule(
+                schedule_id="held-1", user_id="u1", input_data={"topic": topic}
+            )
+
+    monkeypatch.setattr(scheduler_module, "run_async", an_input_edit_lands)
+    if edit == "rename":
+        held.kwargs = stored
+        change: dict[str, Any] = {"name": "n" * MAX_SCHEDULE_NAME_LENGTH}
+    else:
+        credentials = CredentialsMetaInput(
+            id="cred-1",
+            title="t" * 200,
+            provider=ProviderName("github"),
+            type="api_key",
+        )
+        change = {"input_credentials": {"credentials": credentials}}
+
+    with pytest.raises(ValueError, match="too large to save"):
+        full_scheduler.update_graph_execution_schedule(
+            schedule_id="held-1", user_id="u1", **change
+        )
+    assert len(landed) == (edit == "credentials")
+    assert full_scheduler.scheduler.modify_job.call_count == len(landed)
+    assert _stored_bytes(held.kwargs) <= limit
+
+
 def test_a_job_name_is_stored_no_longer_than_a_schedule_name(
     full_scheduler: Scheduler,
 ):
@@ -304,6 +353,15 @@ def _persist(
         name="n",
         replaces=replaces,
     )
+
+
+def _rewritten(job: MagicMock, kwargs: dict[str, Any]) -> MagicMock:
+    job.kwargs = kwargs
+    return job
+
+
+def _stored_bytes(kwargs: dict[str, Any]) -> int:
+    return len(json_dumps(kwargs).encode())
 
 
 def _held(scheduler: Scheduler) -> list[MagicMock]:

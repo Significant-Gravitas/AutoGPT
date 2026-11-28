@@ -4036,7 +4036,7 @@ class Scheduler(AppService):
         taken, since the check reads the database. The job is then read again
         under the lock and the write built from that read, so a pause or
         resume landing in between keeps its next run time and its archive
-        mark.
+        mark, and that write is what the size limits are checked against.
         """
         if input_data is not None or input_credentials is not None:
             self._validate_schedule_inputs(
@@ -4067,6 +4067,7 @@ class Scheduler(AppService):
                     input_credentials=input_credentials,
                 )
                 changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+                _check_schedule_size(changes["kwargs"])
                 if name:
                     changes["name"] = job_args.agent_name
                 if cron is not None or user_timezone:

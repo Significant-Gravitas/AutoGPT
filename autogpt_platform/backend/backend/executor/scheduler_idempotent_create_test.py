@@ -411,8 +411,10 @@ def test_two_writes_racing_for_the_accounts_last_storage_leave_it_in_budget(
 
     def measure_and_hold_the_first(*args: Any, **kwargs: Any) -> None:
         if first_measured.is_set():
-            second_reached_the_measure.set()
-            return measure(*args, **kwargs)
+            try:
+                return measure(*args, **kwargs)
+            finally:
+                second_reached_the_measure.set()
         measure(*args, **kwargs)
         first_measured.set()
         release_first.wait(30)

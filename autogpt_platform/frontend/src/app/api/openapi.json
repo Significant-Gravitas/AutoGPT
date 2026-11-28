@@ -36447,7 +36447,7 @@
           },
           "name": {
             "type": "string",
-            "maxLength": 1000,
+            "maxLength": 200,
             "minLength": 1,
             "pattern": "\\S",
             "title": "Name"
@@ -36706,7 +36706,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 1000,
+                "maxLength": 200,
                 "minLength": 1,
                 "pattern": "\\S"
               },

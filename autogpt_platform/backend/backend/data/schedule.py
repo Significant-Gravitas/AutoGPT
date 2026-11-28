@@ -2,8 +2,7 @@ from typing import Annotated
 
 from pydantic import StringConstraints, TypeAdapter
 
-# Room for the editor's default name, "Run " and the workflow's name.
-MAX_SCHEDULE_NAME_LENGTH = 1_000
+MAX_SCHEDULE_NAME_LENGTH = 200
 
 ScheduleName = Annotated[
     str,
