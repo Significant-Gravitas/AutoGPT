@@ -338,6 +338,20 @@ class TestGmailReadBlock:
         assert result == "Grüße"
 
     @pytest.mark.asyncio
+    async def test_mixed_rfc2231_charset_continuations_fall_back_to_utf8(self):
+        msg = {
+            "id": "test_msg_rfc2231_continuations",
+            "payload": self._part(
+                "text/plain",
+                "Grüße".encode("utf-8"),
+                "text/plain; charset*=utf-8''utf-8; charset*0*=utf-8''utf-8",
+            ),
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == "Grüße"
+
+    @pytest.mark.asyncio
     async def test_overlong_content_type_is_not_parsed(self):
         content_type = "text/plain; charset=windows-1252; " + "x=y; " * 400
         msg = {

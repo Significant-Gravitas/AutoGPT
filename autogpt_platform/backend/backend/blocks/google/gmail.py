@@ -352,8 +352,10 @@ class GmailBase(Block, ABC):
                 message["Content-Type"] = value
                 try:
                     return message.get_content_charset()
-                except ValueError:
-                    return None  # e.g. an RFC 2231 charset* holding a NUL
+                except (TypeError, ValueError):
+                    # e.g. an RFC 2231 charset* holding a NUL, or one mixing
+                    # charset* and charset*0* (TypeError on Python 3.11)
+                    return None
         return None
 
     def _decode_base64(self, data, charset: str | None = None):
