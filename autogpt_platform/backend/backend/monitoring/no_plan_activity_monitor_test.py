@@ -13,6 +13,7 @@ from prisma.models import AuthIPEvent, AuthUser, User
 from backend.data import api_activity
 from backend.data.redis_client import HOST, PORT
 from backend.monitoring import no_plan_activity_monitor as monitor
+from backend.util.metrics import DiscordChannel
 from backend.util.test import SpinTestServer
 from backend.util.testing import is_tcp_port_reachable
 
@@ -110,7 +111,8 @@ async def test_reports_a_busy_account_without_a_plan_but_not_a_paying_one(
     await monitor.report_no_plan_api_activity()
 
     alerts.assert_called_once()
-    message = alerts.call_args.args[0]
+    message, channel = alerts.call_args.args
+    assert channel == DiscordChannel.SECURITY
     assert (
         f"`{split}`: 600 requests (300 internal, 300 external), 2d old, "
         f"<{monitor._admin_users_url(split)}>"
@@ -160,6 +162,18 @@ async def test_sends_nothing_when_nothing_crosses_a_threshold(account, clock, al
 
     alerts.assert_not_called()
     assert "No account without a plan crossed a threshold" in result
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reads_nothing_where_payment_is_off(mocker, set_platform_payment, alerts):
+    set_platform_payment(False)
+    find = mocker.patch.object(monitor, "find_no_plan_activity")
+
+    result = await monitor.report_no_plan_api_activity()
+
+    assert result == "The no-plan API activity report is disabled."
+    find.assert_not_called()
+    alerts.assert_not_called()
 
 
 async def _requests(user_id: str, internal: int = 0, external: int = 0) -> None:

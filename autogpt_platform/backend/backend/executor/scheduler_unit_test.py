@@ -2232,8 +2232,27 @@ def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
     assert ids.count("report_orphaned_auth_identities") == int(enabled)
 
 
-def test_no_plan_activity_report_fires_daily_at_a_fixed_utc_time(monkeypatch):
+@pytest.mark.parametrize(
+    "report, payment", [(True, True), (True, False), (False, True)]
+)
+def test_no_plan_activity_report_registered_only_where_it_can_list_anyone(
+    monkeypatch, set_platform_payment, report, payment
+):
+    monkeypatch.setattr(
+        "backend.data.api_activity.config.no_plan_activity_report_enabled", report
+    )
+    set_platform_payment(payment)
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    ids = [c.kwargs.get("id") for c in calls]
+    assert ids.count("report_no_plan_api_activity") == int(report and payment)
+
+
+def test_no_plan_activity_report_fires_daily_at_a_fixed_utc_time(
+    monkeypatch, set_platform_payment
+):
     """A cron, so the report runs just after the UTC day it covers ends."""
+    set_platform_payment(True)
     calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
     (job,) = [c for c in calls if c.kwargs.get("id") == "report_no_plan_api_activity"]
     trigger = job.args[1]

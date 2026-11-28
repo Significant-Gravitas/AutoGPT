@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from backend.data.redis_client import get_redis_async
+from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,15 @@ class APIRequestCounts(BaseModel):
 
 def record_api_request(user_id: str, surface: APISurface) -> None:
     """Add one authenticated request to this process's tally, without waiting."""
-    if not config.no_plan_activity_report_enabled:
+    if not no_plan_report_enabled():
         return
     _tally.add(_day_key(surface, datetime.now(UTC).date()), user_id)
+
+
+def no_plan_report_enabled() -> bool:
+    """Whether requests are counted and the daily report runs: only where an
+    account can be without a plan, which needs platform payment on."""
+    return config.no_plan_activity_report_enabled and is_platform_payment_enabled()
 
 
 async def flush() -> None:

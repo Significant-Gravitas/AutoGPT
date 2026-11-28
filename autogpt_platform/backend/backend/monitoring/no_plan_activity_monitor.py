@@ -18,9 +18,11 @@ from backend.data.api_activity import (
     APIRequestCounts,
     find_busy_accounts,
     get_request_counts,
+    no_plan_report_enabled,
 )
 from backend.data.db_accessors import auth_ip_events_db, user_db
 from backend.util.clients import get_notification_manager_client
+from backend.util.metrics import DiscordChannel
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,7 @@ class NoPlanActivity(BaseModel):
 
 async def report_no_plan_api_activity() -> str:
     """Post yesterday's report, or nothing when no account crossed a threshold."""
-    if not settings.config.no_plan_activity_report_enabled:
+    if not no_plan_report_enabled():
         return "The no-plan API activity report is disabled."
     day = datetime.now(UTC).date() - timedelta(days=1)
     activity = await find_no_plan_activity(day)
@@ -53,7 +55,9 @@ async def report_no_plan_api_activity() -> str:
         return f"No account without a plan crossed a threshold on {day}."
     message = _format_report(day, activity)
     alerts = get_notification_manager_client()
-    await asyncio.to_thread(alerts.discord_system_alert, message)
+    await asyncio.to_thread(
+        alerts.discord_system_alert, message, DiscordChannel.SECURITY
+    )
     return message
 
 

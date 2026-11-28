@@ -475,7 +475,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description=(
             "Count each account's authenticated API requests per day, and post a "
-            "daily system alert listing what accounts without an active plan did."
+            "daily system alert listing what accounts without an active plan did. "
+            "Needs ENABLE_PLATFORM_PAYMENT: with payment off it does nothing."
         ),
     )
     no_plan_activity_min_requests: int = Field(
@@ -1064,6 +1065,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     product_alert_discord_channel: str = Field(
         default="product-alerts",
         description="The Discord channel for product alerts (low balance, zero balance, etc.)",
+    )
+    security_alert_discord_channel: str = Field(
+        default="",
+        description="The Discord channel for security alerts; empty sends them to "
+        "the platform channel",
     )
 
     clamav_service_host: str = Field(

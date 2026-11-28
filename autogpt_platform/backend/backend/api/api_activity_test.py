@@ -63,6 +63,11 @@ def tally(mocker):
         tally._flusher.cancel()
 
 
+@pytest.fixture(autouse=True)
+def payments_on(set_platform_payment):
+    set_platform_payment(True)
+
+
 @pytest.fixture
 async def user_id(server: SpinTestServer, mocker):
     user_id = str(uuid4())
@@ -92,6 +97,29 @@ async def test_a_session_request_counts_once_as_internal(user_id, day):
     assert response.status_code == 200
     counts = await api_activity.get_request_counts(day, [user_id])
     assert counts[user_id].model_dump() == {"internal": 1, "external": 0}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "report, payment",
+    [(True, True), (True, False), (False, True)],
+    ids=["on", "payment-off", "report-off"],
+)
+async def test_requests_are_counted_only_where_the_report_can_list_anyone(
+    monkeypatch, set_platform_payment, tally, user_id, day, report, payment
+):
+    # With payment off no account is paywalled, so the report would list no one.
+    monkeypatch.setattr(api_activity.config, "no_plan_activity_report_enabled", report)
+    set_platform_payment(payment)
+
+    async with _client() as client:
+        response = await client.get(SESSION_PATH)
+    await api_activity.flush()
+
+    assert response.status_code == 200
+    counts = await api_activity.get_request_counts(day, [user_id])
+    assert counts[user_id].total == int(report and payment)
+    assert (tally._flusher is not None) == (report and payment)
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -114,6 +114,7 @@ from backend.copilot.scheduled_chats.notices import (
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
+from backend.data.api_activity import no_plan_report_enabled
 from backend.data.db_accessors import experts_db, orgs_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
@@ -3311,7 +3312,7 @@ class Scheduler(AppService):
 
             # No-plan API activity - daily, for the UTC day just ended. A cron, so
             # it fires just after that day ends, not at the hour it was first added.
-            if config.no_plan_activity_report_enabled:
+            if no_plan_report_enabled():
                 self.scheduler.add_job(
                     no_plan_api_activity_report,
                     CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC")),

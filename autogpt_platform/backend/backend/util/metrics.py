@@ -43,6 +43,7 @@ settings = Settings()
 class DiscordChannel(str, Enum):
     PLATFORM = "platform"  # For platform/system alerts
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
+    SECURITY = "security"  # For security alerts
 
 
 _USER_AUTH_KEYWORDS = [
@@ -859,6 +860,11 @@ async def discord_send_alert(
         channel_name = settings.config.platform_alert_discord_channel
     elif channel == DiscordChannel.PRODUCT:
         channel_name = settings.config.product_alert_discord_channel
+    elif channel == DiscordChannel.SECURITY:
+        channel_name = (
+            settings.config.security_alert_discord_channel
+            or settings.config.platform_alert_discord_channel
+        )
     else:
         channel_name = settings.config.platform_alert_discord_channel
 

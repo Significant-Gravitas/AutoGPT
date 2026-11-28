@@ -14,6 +14,7 @@ import json
 import sys
 import time
 from collections.abc import Callable
+from unittest.mock import AsyncMock
 
 import pytest
 import sentry_sdk
@@ -33,6 +34,7 @@ from backend.util.metrics import (
     _FALKORDB_TEARDOWN_SIGNATURES,
     _PIKA_RECONNECT_LOGGERS,
     _PIKA_RECONNECT_SIGNATURES,
+    DiscordChannel,
     _before_send,
 )
 from backend.util.request import http_status_error
@@ -1326,3 +1328,25 @@ def test_before_send_transaction_drops_the_visitors_ip_and_location_headers() ->
     event = metrics._before_send_transaction(_event_with_ip_headers(), hint={})
 
     assert event["request"]["headers"] == _KEPT_HEADERS
+
+
+@pytest.mark.parametrize(
+    "configured, sent_to",
+    [("security", "security"), ("", "platform-alerts")],
+    ids=["set", "empty"],
+)
+async def test_a_security_alert_goes_to_its_channel_or_else_the_platform_one(
+    mocker, monkeypatch, configured, sent_to
+):
+    from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+
+    config = metrics.settings.config
+    monkeypatch.setattr(config, "platform_alert_discord_channel", "platform-alerts")
+    monkeypatch.setattr(config, "security_alert_discord_channel", configured)
+    send = mocker.patch.object(
+        SendDiscordMessageBlock, "run_once", new_callable=AsyncMock
+    )
+
+    await metrics.discord_send_alert("alert", DiscordChannel.SECURITY)
+
+    assert send.await_args.args[0].channel_name == sent_to
