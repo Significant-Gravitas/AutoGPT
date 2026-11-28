@@ -44,13 +44,13 @@ async def stop_work(subject: Subject, *, dry_run: bool) -> StepReport:
     schedules = await get_scheduler_client().get_execution_schedules(
         user_id=subject.user_id, include_paused=True
     )
-    runs = await execution_db.get_graph_executions(
+    runs = await execution_db.get_graph_executions_count(
         user_id=subject.user_id, statuses=_UNFINISHED
     )
     return StepReport(
         name="stop_work",
         status=StepStatus.WOULD_DO,
-        counts={"schedules": len(schedules), "unfinished_runs": len(runs)},
+        counts={"schedules": len(schedules), "unfinished_runs": runs},
         note="the apply reruns stop_user_work (schedules, triggers, chat "
         "links, AutoPilot turns and runs) and removes the memory crons",
     )

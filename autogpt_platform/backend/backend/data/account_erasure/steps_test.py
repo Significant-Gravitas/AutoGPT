@@ -30,8 +30,8 @@ def work_calls(monkeypatch):
         side_effect=lambda scope: [f"job_{scope.scope_key}"]
     )
     monkeypatch.setattr(work, "get_scheduler_client", lambda: scheduler)
-    runs = AsyncMock(return_value=[SimpleNamespace(id="e1")])
-    monkeypatch.setattr(work.execution_db, "get_graph_executions", runs)
+    runs = AsyncMock(return_value=1)
+    monkeypatch.setattr(work.execution_db, "get_graph_executions_count", runs)
 
     async def stop_everything(user_id):
         scheduler.get_execution_schedules.return_value = []

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
@@ -870,28 +871,11 @@ def test_list_orphaned_schedules(mocker: pytest_mock.MockFixture):
 
 
 def test_stop_multiple_executions(mocker: pytest_mock.MockFixture):
-    mock_exec_metas = [
-        GraphExecutionMeta(
-            id=f"exec-{i}",
-            user_id=f"user-{i}",
-            graph_id="graph-123",
-            graph_version=1,
-            inputs=None,
-            credential_inputs=None,
-            nodes_input_masks=None,
-            preset_id=None,
-            status=AgentExecutionStatus.RUNNING,
-            started_at=datetime.now(timezone.utc),
-            ended_at=None,
-            stats=None,
-        )
-        for i in range(2)
-    ]
-    mocker.patch(
-        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
-        return_value=mock_exec_metas,
+    owners = mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_execution_owners",
+        return_value={"exec-0": "user-0", "exec-1": "user-1"},
     )
-    mocker.patch(
+    stop = mocker.patch(
         "backend.api.features.admin.diagnostics_admin_routes.stop_graph_execution",
         return_value=AsyncMock(),
     )
@@ -905,12 +889,50 @@ def test_stop_multiple_executions(mocker: pytest_mock.MockFixture):
     data = response.json()
     assert data["success"] is True
     assert data["stopped_count"] == 2
+    owners.assert_awaited_once_with(["exec-0", "exec-1"])
+    assert sorted(
+        (call.kwargs["graph_exec_id"], call.kwargs["user_id"])
+        for call in stop.await_args_list
+    ) == [("exec-0", "user-0"), ("exec-1", "user-1")]
+
+
+def test_stop_multiple_executions_stops_a_few_at_a_time(
+    mocker: pytest_mock.MockFixture,
+):
+    ids = [f"exec-{n}" for n in range(3 * diagnostics_admin_routes.STOP_CONCURRENCY)]
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_execution_owners",
+        return_value={exec_id: "user-1" for exec_id in ids},
+    )
+    stopping = 0
+    most_at_once = 0
+
+    async def stop(
+        user_id: str, graph_exec_id: str, wait_timeout: float, cascade: bool
+    ) -> None:
+        nonlocal stopping, most_at_once
+        stopping += 1
+        most_at_once = max(most_at_once, stopping)
+        await asyncio.sleep(0)
+        stopping -= 1
+
+    mocker.patch(
+        "backend.api.features.admin.diagnostics_admin_routes.stop_graph_execution",
+        side_effect=stop,
+    )
+
+    response = client.post(
+        "/admin/diagnostics/executions/stop-bulk", json={"execution_ids": ids}
+    )
+
+    assert response.json()["stopped_count"] == len(ids)
+    assert most_at_once == diagnostics_admin_routes.STOP_CONCURRENCY
 
 
 def test_stop_multiple_executions_none_found(mocker: pytest_mock.MockFixture):
     mocker.patch(
-        "backend.api.features.admin.diagnostics_admin_routes.get_graph_executions",
-        return_value=[],
+        "backend.api.features.admin.diagnostics_admin_routes.get_graph_execution_owners",
+        return_value={},
     )
 
     response = client.post(

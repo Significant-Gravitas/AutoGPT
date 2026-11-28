@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # running one that needs longer has already been told to stop. Stops run with
 # cascade off, since a child run belongs to the same user and is in the list
 # itself.
-STOP_WAIT_TIMEOUT_SECONDS = 5.0
+STOP_WAIT_TIMEOUT_SECONDS = 1.0
 # How many of the user's runs are stopped at a time.
 STOP_CONCURRENCY = 4
 
@@ -61,8 +61,9 @@ async def stop_user_work(user_id: str) -> None:
     Best effort: each call that fails is logged and the rest still run, and
     this never raises, so the account can still be closed. Every call is
     bounded in time: it waits up to 5 s for running AutoPilot turns to end,
-    and with every service hung it returns in about a minute, plus up to
-    ``STEP_TIMEOUT_SECONDS`` for every ``STOP_CONCURRENCY`` unfinished runs.
+    and with every service hung it returns in about a minute, plus about
+    ``STOP_WAIT_TIMEOUT_SECONDS`` for every ``STOP_CONCURRENCY`` running runs,
+    each stop cut off at ``STEP_TIMEOUT_SECONDS``.
     """
     if not user_id:
         # An empty id would turn the run listing into "every user's runs".

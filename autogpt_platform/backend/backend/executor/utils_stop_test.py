@@ -67,17 +67,18 @@ def _a_stop_that_reads_the_run_as(
         "backend.executor.utils.human_review_db"
     ).cancel_pending_reviews_for_execution = mocker.AsyncMock(return_value=0)
 
-    runs = []
-    for status in reads:
-        run = mocker.MagicMock(spec=GraphExecutionMeta)
-        run.id = RUN_ID
-        run.status = status
-        runs.append(run)
+    def write_terminated(**_: object) -> bool:
+        events.append("terminated")
+        return True
+
+    run = mocker.MagicMock(spec=GraphExecutionMeta)
+    run.id = RUN_ID
     execution_db = mocker.patch("backend.executor.utils.execution_db")
-    execution_db.get_graph_execution_meta = mocker.AsyncMock(side_effect=runs)
-    execution_db.update_graph_execution_stats = mocker.AsyncMock(
-        side_effect=lambda **_: events.append("terminated")
+    execution_db.get_graph_execution_status = mocker.AsyncMock(side_effect=reads)
+    execution_db.update_graph_execution_status = mocker.AsyncMock(
+        side_effect=write_terminated
     )
+    execution_db.get_graph_execution_meta = mocker.AsyncMock(return_value=run)
     return events, queue.publish_message
 
 

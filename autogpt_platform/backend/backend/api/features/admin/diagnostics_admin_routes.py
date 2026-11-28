@@ -38,14 +38,18 @@ from backend.data.diagnostics import (
     get_stuck_queued_executions_details,
     stop_all_long_running_executions,
 )
-from backend.data.execution import get_graph_executions
+from backend.data.execution import get_graph_execution_owners, get_graph_executions
 from backend.executor.utils import (
     ExecutionNotRequeuedError,
     add_graph_execution,
     stop_graph_execution,
 )
+from backend.util.concurrency import gather_bounded
 
 logger = logging.getLogger(__name__)
+
+# How many runs the bulk stop stops at a time.
+STOP_CONCURRENCY = 4
 
 router = APIRouter(
     prefix="/admin",
@@ -595,34 +599,31 @@ async def stop_multiple_executions(
         f"Admin {user.user_id} stopping {len(request.execution_ids)} executions"
     )
 
-    # Get executions by ID list
-    executions = await get_graph_executions(
-        execution_ids=request.execution_ids,
-    )
+    owners = await get_graph_execution_owners(request.execution_ids)
 
-    if not executions:
+    if not owners:
         return StopExecutionResponse(
             success=False,
             stopped_count=0,
             message="No executions found",
         )
 
-    # Stop all executions in parallel using robust stop_graph_execution
-    async def stop_one(exec) -> bool:
+    async def stop_one(exec_id: str, user_id: str) -> bool:
         try:
             await stop_graph_execution(
-                user_id=exec.user_id,
-                graph_exec_id=exec.id,
+                user_id=user_id,
+                graph_exec_id=exec_id,
                 wait_timeout=15.0,
                 cascade=True,
             )
             return True
         except Exception as e:
-            logger.error(f"Failed to stop execution {exec.id}: {e}")
+            logger.error(f"Failed to stop execution {exec_id}: {e}")
             return False
 
-    results = await asyncio.gather(
-        *[stop_one(exec) for exec in executions], return_exceptions=False
+    results = await gather_bounded(
+        (stop_one(exec_id, user_id) for exec_id, user_id in owners.items()),
+        STOP_CONCURRENCY,
     )
 
     stopped_count = sum(1 for success in results if success)

@@ -165,7 +165,7 @@ def _a_stop_held_after_its_read(
     event_bus.publish = mocker.AsyncMock(side_effect=on_update)
 
     read, write = asyncio.Event(), asyncio.Event()
-    real_read: Callable[..., Awaitable[Any]] = execution_db.get_graph_execution_meta
+    real_read: Callable[..., Awaitable[Any]] = execution_db.get_graph_execution_status
 
     async def held_read(**kwargs: Any) -> Any:
         run = await real_read(**kwargs)
@@ -174,7 +174,9 @@ def _a_stop_held_after_its_read(
             await write.wait()
         return run
 
-    mocker.patch.object(execution_db, "get_graph_execution_meta", side_effect=held_read)
+    mocker.patch.object(
+        execution_db, "get_graph_execution_status", side_effect=held_read
+    )
     stop = asyncio.create_task(
         stop_graph_execution(
             user_id=entry.user_id, graph_exec_id=entry.graph_exec_id, cascade=False
