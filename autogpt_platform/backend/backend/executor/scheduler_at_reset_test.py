@@ -40,7 +40,7 @@ from backend.executor.scheduler import (
 
 _SCHEDULER = "backend.executor.scheduler"
 _AT_RESET = "backend.copilot.at_reset"
-_LOCK = "backend.copilot.at_reset_lock"
+_LOCK = "backend.copilot.scheduler_write_lock"
 # Only stops a hung test; a passing run ends at its own short deadline.
 _HANG_SECONDS = 10
 USER = "user-1"

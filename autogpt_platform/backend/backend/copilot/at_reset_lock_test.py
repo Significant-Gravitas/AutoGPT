@@ -13,7 +13,7 @@ import pytest_mock
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import LockNotOwnedError
 
-from backend.copilot import at_reset_lock
+from backend.copilot import scheduler_write_lock
 from backend.copilot.at_reset_lock import at_reset_job_lock
 from backend.copilot.at_reset_lock_fixtures import FakeAtResetRedis
 
@@ -24,13 +24,15 @@ KEY = f"copilot:at_reset_lock:{JOB}"
 @pytest.fixture
 def redis(mocker: pytest_mock.MockerFixture) -> FakeAtResetRedis:
     fake = FakeAtResetRedis()
-    mocker.patch.object(at_reset_lock, "get_redis_async", AsyncMock(return_value=fake))
+    mocker.patch.object(
+        scheduler_write_lock, "get_redis_async", AsyncMock(return_value=fake)
+    )
     return fake
 
 
 @pytest.fixture
 def renew_often(mocker: pytest_mock.MockerFixture) -> None:
-    mocker.patch.object(at_reset_lock, "_LOCK_RENEW_EVERY_SECONDS", 0.01)
+    mocker.patch.object(scheduler_write_lock, "_LOCK_RENEW_EVERY_SECONDS", 0.01)
 
 
 @pytest.mark.asyncio
@@ -55,7 +57,7 @@ async def test_it_lets_go_when_the_write_fails(redis):
 @pytest.mark.asyncio
 async def test_without_redis_it_is_not_held(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(
-        at_reset_lock,
+        scheduler_write_lock,
         "get_redis_async",
         AsyncMock(side_effect=RedisConnectionError("down")),
     )
@@ -142,8 +144,8 @@ async def test_a_redis_that_never_answers_leaves_it_unheld(
     redis, mocker: pytest_mock.MockerFixture
 ):
     # Its client retries for far longer than a writer should wait.
-    mocker.patch.object(at_reset_lock, "_LOCK_WAIT_SECONDS", 0.01)
-    mocker.patch.object(at_reset_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
+    mocker.patch.object(scheduler_write_lock, "_LOCK_WAIT_SECONDS", 0.01)
+    mocker.patch.object(scheduler_write_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
     never = asyncio.Event()
     lock = MagicMock(acquire=AsyncMock(side_effect=never.wait), release=AsyncMock())
     mocker.patch.object(redis, "lock", return_value=lock)
@@ -160,7 +162,7 @@ async def test_a_redis_that_never_answers_leaves_it_unheld(
 async def test_a_release_redis_never_answers_doesnt_hold_up_the_writer(
     redis, mocker: pytest_mock.MockerFixture
 ):
-    mocker.patch.object(at_reset_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
+    mocker.patch.object(scheduler_write_lock, "_REDIS_DEADLINE_SECONDS", 0.02)
     never = asyncio.Event()
     lock = MagicMock(
         acquire=AsyncMock(return_value=True),

@@ -8,6 +8,8 @@ schedule's jobs, persist the streak, and tell the owner in the chat.
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from prisma.errors import UniqueViolationError
@@ -35,6 +37,7 @@ from backend.copilot.scheduled_chats.jobs import (
 from backend.copilot.scheduled_chats.notices import ScheduledChatNotice, post_notice
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.streaks import Streak, StreakStep, advance
+from backend.copilot.scheduler_write_lock import scheduler_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,11 @@ class PausedScheduledChat(BaseModel):
 
 
 async def record_scheduled_run(run: ScheduledRun) -> None:
+    async with _scheduled_chat_write_lock(run.user_id, run.schedule_key):
+        await _record_scheduled_run(run)
+
+
+async def _record_scheduled_run(run: ScheduledRun) -> None:
     where = _key(run.user_id, run.schedule_key)
     row = await ScheduledChatStreak.prisma().find_unique(where=where)
     current = _streak_of(row)
@@ -142,31 +150,43 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
     a failure keeps the row, so the chat still reads as paused and Resume can
     be tried again.
     """
-    row = await ScheduledChatStreak.prisma().find_unique(
-        where=_key(user_id, schedule_key)
-    )
-    if row is None or row.pausedAt is None:
-        return False
-    await resume_jobs(user_id, row.scheduleIds)
-    await ScheduledChatStreak.prisma().delete(where={"id": row.id})
-    await resolve_alert(user_id, schedule_key)
-    if row.sessionId is not None:
-        try:
-            await post_notice(
-                resumed_notice(title=row.title, streak_id=row.id),
-                user_id=user_id,
-                schedule_key=schedule_key,
-                title=row.title,
-                session_id=row.sessionId,
-                expert_id=None,
+    where = _key(user_id, schedule_key)
+    observed = await ScheduledChatStreak.prisma().find_unique(where=where)
+    async with _scheduled_chat_write_lock(user_id, schedule_key):
+        row = await ScheduledChatStreak.prisma().find_unique(where=where)
+        if (
+            observed is not None
+            and observed.pausedAt is not None
+            and (
+                row is None
+                or row.id != observed.id
+                or row.pausedAt != observed.pausedAt
             )
-        except Exception:
-            logger.warning(
-                "Could not post the resumed note for scheduled chat %s",
-                schedule_key,
-                exc_info=True,
-            )
-    return True
+        ):
+            # A concurrent resume ended the pause this request observed.
+            return True
+        if row is None or row.pausedAt is None:
+            return False
+        await resume_jobs(user_id, row.scheduleIds)
+        await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+        await resolve_alert(user_id, schedule_key)
+        if row.sessionId is not None:
+            try:
+                await post_notice(
+                    resumed_notice(title=row.title, streak_id=row.id),
+                    user_id=user_id,
+                    schedule_key=schedule_key,
+                    title=row.title,
+                    session_id=row.sessionId,
+                    expert_id=None,
+                )
+            except Exception:
+                logger.warning(
+                    "Could not post the resumed note for scheduled chat %s",
+                    schedule_key,
+                    exc_info=True,
+                )
+        return True
 
 
 async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]:
@@ -202,6 +222,18 @@ async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]
             )
         )
     return paused
+
+
+@asynccontextmanager
+async def _scheduled_chat_write_lock(
+    user_id: str, schedule_key: str
+) -> AsyncIterator[None]:
+    """Serialize the read and scheduler transition for a chat on any replica."""
+    key = f"copilot:scheduled_chat_lock:{len(user_id)}:{user_id}:{schedule_key}"
+    async with scheduler_write_lock(key) as held:
+        if not held:
+            raise RuntimeError("Could not acquire scheduled chat write lock")
+        yield
 
 
 async def _still_paused(run: ScheduledRun) -> bool:
