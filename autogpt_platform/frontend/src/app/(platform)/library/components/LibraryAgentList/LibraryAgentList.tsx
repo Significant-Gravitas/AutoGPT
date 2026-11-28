@@ -23,7 +23,11 @@ import { useLibraryAgentList } from "./useLibraryAgentList";
 import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
-import { ArrowLeft02Icon, FavouriteIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowLeft02Icon,
+  FavouriteIcon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { duration, spring } from "@/components/styles/motion";
 
@@ -150,6 +154,29 @@ export function LibraryAgentList({
     !selectedFolderId &&
     statusFilter === "all";
 
+  // A filter that matches nothing, once every page is read or the filter
+  // has exhausted them. Not for Scheduled or Idle while the schedules are
+  // unknown: the outage notice already explains that gap.
+  const isFilterNoMatch =
+    !agentLoading &&
+    statusFilter !== "all" &&
+    agents.length === 0 &&
+    !hasNextPage &&
+    !(
+      schedulesUnknown &&
+      (statusFilter === "scheduled" || statusFilter === "idle")
+    );
+
+  // The no-match message, shown on its own when there are no folders — and
+  // above the folder grid when there are, so a filter that matches nothing
+  // at root never hides folders that may hold matching workflows.
+  const noMatchMessage = (
+    <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
+      <Icon icon={Search01Icon} className="h-10 w-10" aria-hidden="true" />
+      <Text variant="body">No workflows match this filter</Text>
+    </div>
+  );
+
   return (
     <>
       {!selectedFolderId &&
@@ -219,80 +246,89 @@ export function LibraryAgentList({
           </div>
         ) : isFavoritesTab && favoritesCount === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-foreground-tertiary">
-            <Icon icon={FavouriteIcon} className="h-10 w-10" />
+            <Icon
+              icon={FavouriteIcon}
+              className="h-10 w-10"
+              aria-hidden="true"
+            />
             <Text variant="body">No favorite workflows yet</Text>
           </div>
         ) : isPristineEmpty ? (
           <LibraryEmptyState />
+        ) : isFilterNoMatch && hasNoFolders ? (
+          noMatchMessage
         ) : (
-          <InfiniteScroll
-            isFetchingNextPage={isFetchingNextPage}
-            fetchNextPage={fetchNextPage}
-            hasNextPage={hasNextPage}
-            loader={<LoadingSpinner size="medium" />}
-          >
-            <LayoutGroup>
-              <AnimatePresence mode="popLayout">
-                <motion.div
-                  key={`${activeTab}-${selectedFolderId || "all"}`}
-                  className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
-                  variants={activeContainerVariants}
-                  initial="hidden"
-                  animate="show"
-                  exit="exit"
-                >
-                  {showFolders &&
-                    foldersData?.folders.map((folder, i) => (
+          <>
+            {isFilterNoMatch && noMatchMessage}
+            <InfiniteScroll
+              isFetchingNextPage={isFetchingNextPage}
+              fetchNextPage={fetchNextPage}
+              hasNextPage={hasNextPage}
+              loader={<LoadingSpinner size="medium" />}
+            >
+              <LayoutGroup>
+                <AnimatePresence mode="popLayout">
+                  <motion.div
+                    key={`${activeTab}-${selectedFolderId || "all"}`}
+                    className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(21rem,1fr))]"
+                    variants={activeContainerVariants}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                  >
+                    {showFolders &&
+                      foldersData?.folders.map((folder, i) => (
+                        <motion.div
+                          key={folder.id}
+                          initial={activeInitial}
+                          animate={activeAnimate}
+                          transition={{
+                            ...activeTransition,
+                            delay: i * 0.04,
+                          }}
+                        >
+                          <LibraryFolder
+                            id={folder.id}
+                            name={folder.name}
+                            agentCount={folder.agent_count ?? 0}
+                            color={folder.color ?? undefined}
+                            icon={folder.icon ?? "📁"}
+                            onAgentDrop={handleAgentDrop}
+                            onClick={() => onFolderSelect(folder.id)}
+                            onEdit={() => setEditingFolder(folder)}
+                            onDelete={() => setDeletingFolder(folder)}
+                          />
+                        </motion.div>
+                      ))}
+                    {agents.map((agent, i) => (
                       <motion.div
-                        key={folder.id}
+                        key={agent.id}
                         initial={activeInitial}
                         animate={activeAnimate}
                         transition={{
                           ...activeTransition,
-                          delay: i * 0.04,
+                          delay:
+                            ((showFolders
+                              ? (foldersData?.folders.length ?? 0)
+                              : 0) +
+                              i) *
+                            0.04,
                         }}
                       >
-                        <LibraryFolder
-                          id={folder.id}
-                          name={folder.name}
-                          agentCount={folder.agent_count ?? 0}
-                          color={folder.color ?? undefined}
-                          icon={folder.icon ?? "📁"}
-                          onAgentDrop={handleAgentDrop}
-                          onClick={() => onFolderSelect(folder.id)}
-                          onEdit={() => setEditingFolder(folder)}
-                          onDelete={() => setDeletingFolder(folder)}
+                        <LibraryAgentCard
+                          agent={agent}
+                          statusInfo={getAgentStatus(
+                            agentStatusMap,
+                            agent.graph_id,
+                          )}
                         />
                       </motion.div>
                     ))}
-                  {agents.map((agent, i) => (
-                    <motion.div
-                      key={agent.id}
-                      initial={activeInitial}
-                      animate={activeAnimate}
-                      transition={{
-                        ...activeTransition,
-                        delay:
-                          ((showFolders
-                            ? (foldersData?.folders.length ?? 0)
-                            : 0) +
-                            i) *
-                          0.04,
-                      }}
-                    >
-                      <LibraryAgentCard
-                        agent={agent}
-                        statusInfo={getAgentStatus(
-                          agentStatusMap,
-                          agent.graph_id,
-                        )}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              </AnimatePresence>
-            </LayoutGroup>
-          </InfiniteScroll>
+                  </motion.div>
+                </AnimatePresence>
+              </LayoutGroup>
+            </InfiniteScroll>
+          </>
         )}
       </div>
 

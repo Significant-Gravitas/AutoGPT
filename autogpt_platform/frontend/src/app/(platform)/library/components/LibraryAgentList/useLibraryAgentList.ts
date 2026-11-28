@@ -30,7 +30,7 @@ import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/gra
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { isAgentScheduled } from "../../hooks/executionHelpers";
 import { hasUnknownSchedules } from "@/services/schedules/scheduler-availability";
-import { useRecheckWhileSchedulesUnknown } from "@/services/schedules/useRecheckWhileSchedulesUnknown";
+import { useSchedulerProbe } from "@/services/schedules/useSchedulerProbe";
 
 const FILTER_EXHAUST_THRESHOLD = 3;
 
@@ -67,7 +67,6 @@ export function useLibraryAgentList({
     null,
   );
 
-  const recheckWhileSchedulesUnknown = useRecheckWhileSchedulesUnknown();
   const {
     data: agentsQueryData,
     fetchNextPage,
@@ -75,6 +74,7 @@ export function useLibraryAgentList({
     isFetching,
     isFetchingNextPage,
     isLoading: allAgentsLoading,
+    refetch,
   } = useGetV2ListLibraryAgentsInfinite(
     {
       page: 1,
@@ -88,14 +88,6 @@ export function useLibraryAgentList({
     {
       query: {
         getNextPageParam: getPaginationNextPageNumber,
-        // Without the scheduler the agents load with their schedules
-        // unknown; recheck after its Retry-After until they are known.
-        refetchInterval: (query) =>
-          recheckWhileSchedulesUnknown(
-            hasUnknownSchedules(
-              query.state.data ? unpaginate(query.state.data, "agents") : [],
-            ),
-          ),
       },
     },
   );
@@ -274,6 +266,18 @@ export function useLibraryAgentList({
     completedGraphIds,
   );
   const schedulesUnknown = hasUnknownSchedules(agents);
+
+  // While the All list's schedules are unknown, a cheap probe — one read
+  // of the user's schedule list — checks whether the scheduler is back,
+  // instead of re-reading every loaded page; once it answers, this list
+  // re-reads once per probe answer while its schedules stay unknown. Favorites has its own probe in useFavoriteAgents, so a
+  // Favorites-only unknown must not re-read the All pages.
+  const { recovered } = useSchedulerProbe(hasUnknownSchedules(allAgentsList));
+  useEffect(() => {
+    // cancelRefetch: false lets an in-flight multi-page reread finish: a
+    // new probe answer while one runs is ignored instead of restarting it.
+    if (recovered) void refetch({ cancelRefetch: false });
+  }, [recovered, refetch]);
 
   useEffect(() => {
     if (statusFilter === "all") {
