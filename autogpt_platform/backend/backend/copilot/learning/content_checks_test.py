@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import time
+
 import pytest
 
 from .content_checks import (
     check_metadata,
     check_skill_bundle,
     check_skill_content,
+    collect_content_approvals,
     safe_diagnostic,
 )
 
@@ -31,10 +35,64 @@ def test_clean_skill_passes() -> None:
     ],
 )
 def test_known_credential_patterns_are_blocked(line: str, pattern_class: str) -> None:
-    failure = check_skill_content(f"## Steps\n1. First\n2. {line}\n")
+    failure = check_skill_content(f"## Steps\n\n1. First\n  \n2. {line}\n")
     assert failure is not None
     assert failure.pattern_class == pattern_class
-    assert failure.step == "section 1 › step 2 › line 3"
+    assert failure.step == "section 1 › step 2 › line 5"
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["z." * 100_000, "a-" * 100_000, "z." * 100_000 + "@", "a://b:" * 33_333],
+    ids=["dots", "dashes", "dots-then-at", "unfinished-urls"],
+)
+def test_a_long_line_is_checked_in_linear_time(line: str) -> None:
+    """A bundle file may be a single line of up to 2 MB."""
+    started = time.perf_counter()
+    check_skill_bundle({"references/notes.txt": line})
+    collect_content_approvals(
+        {"references/notes.txt": line}, approved_by_user_id="owner"
+    )
+    assert time.perf_counter() - started < 5
+
+
+@pytest.mark.parametrize(
+    "line,connection_strings",
+    [
+        (
+            "postgres://app:supersecretpw@db.internal/app",
+            ["postgres://app:supersecretpw@"],
+        ),
+        ("jdbc:postgresql://u:passw0rd!@h:5432/db", ["postgresql://u:passw0rd!@"]),
+        ("1.mysql+pymysql://u:secretpw@h", ["mysql+pymysql://u:secretpw@"]),
+        ("-postgres://app:supersecretpw@db", ["postgres://app:supersecretpw@"]),
+        ("see db.internal.amqp://u:secretpw@h", ["db.internal.amqp://u:secretpw@"]),
+        (
+            "http://a:8080/x?to=redis://u:secretpw@h",
+            ["http://a:8080/x?to=redis://u:secretpw@"],
+        ),
+        (
+            "x://u:pwpwpw@h y://v:" + "q" * 3000 + "@h",
+            ["x://u:pwpwpw@", "y://v:" + "q" * 3000 + "@"],
+        ),
+        ("https://example.com:8443/path and ops@example.com", []),
+        ("amqp://guest:guest@localhost _x://u:secretpw@h", []),
+    ],
+)
+def test_connection_strings_found_are_the_ones_read_left_to_right(
+    line: str, connection_strings: list[str]
+) -> None:
+    """Stored approvals are hashes of the matched text, so the scan must find
+    the same texts a left-to-right reading of the line does."""
+    approvals = collect_content_approvals(
+        {"SKILL.md": line},
+        approved_by_user_id="owner",
+        allowed_pattern_classes=["connection_string_password"],
+    )
+    assert [(a.pattern_class, a.match_hash) for a in approvals] == [
+        ("connection_string_password", hashlib.sha256(text.encode()).hexdigest())
+        for text in connection_strings
+    ]
 
 
 def test_diagnostic_never_contains_the_secret_even_from_a_heading() -> None:

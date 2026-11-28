@@ -25,6 +25,10 @@ _PLACEHOLDER_RE = re.compile(
     r"(\{\{[A-Z][A-Z0-9_]{1,63}\}\}|\$\{[A-Z][A-Z0-9_]{1,63}\}|<[A-Z][A-Z0-9_]{1,63}>)"
 )
 
+# The connection-string pattern written right to left, for the reversed line
+# (``_matched_texts``): a match can only start at an ``@``.
+_CONNECTION_STRING_RE = re.compile(r"(?i)@[^\s@]{6,}:[^\s:/@]+//:[a-z0-9+.-]*[a-z]\b")
+
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "private_key",
@@ -44,10 +48,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"['\"]?(?!\{\{)[A-Za-z0-9+/_=-]{16,}"
         ),
     ),
-    (
-        "connection_string_password",
-        re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s:/@]+:[^\s@]{6,}@"),
-    ),
+    ("connection_string_password", _CONNECTION_STRING_RE),
 ]
 
 PATTERN_CLASSES: tuple[str, ...] = tuple(name for name, _ in _PATTERNS)
@@ -115,10 +116,12 @@ def collect_content_approvals(
     matches: Counter[tuple[str, str, str]] = Counter()
     for path, text in files.items():
         for line in text.splitlines():
+            if not line or line.isspace():
+                continue
             scrubbed = _PLACEHOLDER_RE.sub("", line)
             for pattern_class, pattern in _PATTERNS:
-                for match in pattern.finditer(scrubbed):
-                    matches[(path, pattern_class, _match_hash(match.group()))] += 1
+                for matched in _matched_texts(pattern, scrubbed):
+                    matches[(path, pattern_class, _match_hash(matched))] += 1
     result = []
     for key, occurrences in matches.items():
         path, pattern_class, digest = key
@@ -148,6 +151,14 @@ def _approval_budget(
         key = (approval.file_path, approval.pattern_class, approval.match_hash)
         budget[key] = max(budget[key], approval.count)
     return budget
+
+
+def _matched_texts(pattern: re.Pattern[str], line: str) -> list[str]:
+    """Every text in ``line`` that the pattern matches, left to right."""
+    if pattern is not _CONNECTION_STRING_RE:
+        return [match.group() for match in pattern.finditer(line)]
+    reversed_matches = pattern.finditer(line[::-1])
+    return [match.group()[::-1] for match in reversed_matches][::-1]
 
 
 def _match_hash(text: str) -> str:
@@ -213,29 +224,34 @@ def _check_text(
     section = 0
     step: int | None = None
     for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line or line.isspace():
+            continue
         if _HEADING_RE.match(line):
             section += 1
             step = None
         step_match = _STEP_RE.match(line)
         if step_match:
             step = int(step_match.group(1))
-        location = _location(section, step, line_number)
         for seed in seeds:
             if seed in line:
                 return ContentCheckFailure(
-                    pattern_class=SEEDED_PATTERN_CLASS, step=location, file=file_label
+                    pattern_class=SEEDED_PATTERN_CLASS,
+                    step=_location(section, step, line_number),
+                    file=file_label,
                 )
         scrubbed = _PLACEHOLDER_RE.sub("", line)
         for pattern_class, pattern in _PATTERNS:
             if pattern_class in allowed:
                 continue
-            for match in pattern.finditer(scrubbed):
-                key = (file_path, pattern_class, _match_hash(match.group()))
+            for matched in _matched_texts(pattern, scrubbed):
+                key = (file_path, pattern_class, _match_hash(matched))
                 if approved is not None and approved[key] > 0:
                     approved[key] -= 1
                     continue
                 return ContentCheckFailure(
-                    pattern_class=pattern_class, step=location, file=file_label
+                    pattern_class=pattern_class,
+                    step=_location(section, step, line_number),
+                    file=file_label,
                 )
     return None
 
