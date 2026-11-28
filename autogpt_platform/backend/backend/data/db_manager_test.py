@@ -80,6 +80,12 @@ def test_bot_analytics_methods_registered() -> None:
         assert hasattr(DatabaseManagerAsyncClient, method)
 
 
+def test_the_copilot_finds_a_parked_runs_card_chat_over_the_rpc() -> None:
+    for method in ("get_waiting_review_ids_for_execution", "get_waiting_card_chat"):
+        assert hasattr(DatabaseManager, method)
+        assert hasattr(DatabaseManagerAsyncClient, method)
+
+
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)

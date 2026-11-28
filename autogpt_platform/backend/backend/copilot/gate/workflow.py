@@ -226,23 +226,15 @@ async def close_step_cards(user_id: str, node_exec_ids: Iterable[str]) -> None:
 async def card_chat_for_run(user_id: str, graph_exec_id: str) -> str | None:
     """The chat holding a card for one of this run's waiting steps, if any."""
     try:
-        rows = await review_db().get_pending_reviews_for_execution(
+        steps = await review_db().get_waiting_review_ids_for_execution(
             graph_exec_id, user_id
         )
-        cards = await review_db().get_reviews_by_node_exec_ids(
-            [step_card_id(user_id, row.node_exec_id) for row in rows], user_id
+        return await review_db().get_waiting_card_chat(
+            [step_card_id(user_id, step) for step in steps], user_id
         )
     except Exception:
         logger.warning(f"Could not read step cards of run {graph_exec_id}")
         return None
-    return next(
-        (
-            card.session_id
-            for card in cards.values()
-            if card.status == ReviewStatus.WAITING and card.session_id
-        ),
-        None,
-    )
 
 
 def awaiting_whom(card_chat: str | None, session_id: str | None) -> str:

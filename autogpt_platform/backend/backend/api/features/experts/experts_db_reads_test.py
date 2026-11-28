@@ -82,9 +82,7 @@ async def test_an_experts_runs_read_reviews_and_outputs_side_by_side() -> None:
         SimpleNamespace(id="x2", agentGraphId="g1"),
     ]
     reviews = _expert_prisma(
-        find_many=AsyncMock(
-            side_effect=meeting.returning([SimpleNamespace(graphExecId="x2")])
-        )
+        group_by=AsyncMock(side_effect=meeting.returning([{"graphExecId": "x2"}]))
     )
 
     def to_run(execution, workflow, output_type, output_key, *, needs_review):
