@@ -232,6 +232,54 @@ async def disconnect_async():
             await client.close()
 
 
+def _attach_loop_close_wrapper(loop: asyncio.AbstractEventLoop) -> None:
+    """Ensure closing the loop closes its async Redis client even if
+    ``loop.shutdown_asyncgens()`` was not called."""
+    if getattr(loop, "_redis_close_wrapped", False):
+        return
+    try:
+        setattr(loop, "_redis_close_wrapped", True)
+    except AttributeError:
+        pass
+
+    orig_close = loop.close
+    loop_ref = ref(loop)
+
+    def _wrapped_close() -> None:
+        target_loop = loop_ref()
+        if target_loop is not None:
+            try:
+                _close_async_client_for_loop(target_loop)
+            except Exception:
+                pass
+        orig_close()
+
+    try:
+        setattr(loop, "close", _wrapped_close)
+    except (AttributeError, TypeError):
+        pass
+
+
+def _close_async_client_for_loop(loop: asyncio.AbstractEventLoop) -> None:
+    finalizer = _async_client_finalizers.get(loop)
+    client = _async_clients.get(loop)
+    if finalizer is not None:
+        try:
+            if not loop.is_closed() and not loop.is_running():
+                loop.run_until_complete(finalizer.aclose())
+        except Exception:
+            pass
+    elif client is not None:
+        try:
+            if not loop.is_closed() and not loop.is_running():
+                loop.run_until_complete(client.close())
+        except Exception:
+            pass
+    _async_clients.pop(loop, None)
+    _async_client_finalizers.pop(loop, None)
+    _async_client_locks.pop(loop, None)
+
+
 async def get_redis_async() -> AsyncRedisClient:
     loop = asyncio.get_running_loop()
     async with _get_async_client_lock(loop):
@@ -242,6 +290,7 @@ async def get_redis_async() -> AsyncRedisClient:
             await anext(finalizer)
             _async_clients[loop] = client
             _async_client_finalizers[loop] = finalizer
+            _attach_loop_close_wrapper(loop)
         return client
 
 
