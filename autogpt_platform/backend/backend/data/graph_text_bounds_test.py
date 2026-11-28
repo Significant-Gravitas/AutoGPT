@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.data import graph as graph_db
-from backend.data.graph import GRAPH_TEXT_MAX_LENGTHS, Graph, GraphModel
+from backend.data.graph import (
+    GRAPH_TEXT_MAX_LENGTHS,
+    MAX_SUB_GRAPHS_PER_SAVE,
+    Graph,
+    GraphModel,
+)
 
 # Module-level, so the name is not mangled by the class-scope rule.
 _create_graph = vars(graph_db)["__create_graph"]
@@ -106,4 +111,39 @@ async def test_a_sub_graph_is_bounded_too():
     graph = _graph(sub_graphs=[sub])
 
     with pytest.raises(ValueError, match="Graph name is too long"):
+        await _create_graph(None, graph, "user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_save_refuses_more_sub_graphs_than_the_bound():
+    graph = _graph(sub_graphs=[_graph() for _ in range(MAX_SUB_GRAPHS_PER_SAVE + 1)])
+
+    with pytest.raises(ValueError, match="too many sub-workflows"):
+        await _create_graph(None, graph, "user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_save_accepts_sub_graphs_at_the_bound(mocker):
+    graph = _graph(sub_graphs=[_graph() for _ in range(MAX_SUB_GRAPHS_PER_SAVE)])
+    mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
+
+    with pytest.raises(_ReachedTheFirstQuery):
+        await _create_graph(None, graph, "user-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sub_graphs, refusal",
+    [
+        (MAX_SUB_GRAPHS_PER_SAVE + 1, "too many sub-workflows"),
+        (MAX_SUB_GRAPHS_PER_SAVE, "Graph name is too long"),
+    ],
+    ids=["too-many", "at-the-count"],
+)
+async def test_a_save_over_both_bounds_names_the_first_it_breaks(sub_graphs, refusal):
+    over = "x" * (GRAPH_TEXT_MAX_LENGTHS["name"] + 1)
+    subs = [_graph() for _ in range(sub_graphs - 1)] + [_graph(name=over)]
+    graph = _graph(sub_graphs=subs)
+
+    with pytest.raises(ValueError, match=refusal):
         await _create_graph(None, graph, "user-1")
