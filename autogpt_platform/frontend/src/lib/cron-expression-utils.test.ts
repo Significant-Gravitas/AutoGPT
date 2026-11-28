@@ -28,6 +28,22 @@ describe("humanizeCronExpression", () => {
     );
   });
 
+  it.each([
+    ["Mon-Wed,Fri", "Monday, Tuesday, Wednesday, Friday"],
+    ["fri-mon", "Friday, Saturday, Sunday, Monday"],
+    ["sun,7", "Sunday"],
+  ])("renders weekdays from %s", (field, days) => {
+    expect(humanizeCronExpression(`0 9 * * ${field}`)).toBe(
+      `Every ${days} at 09:00`,
+    );
+  });
+
+  it("keeps a readable expression when a weekday step cannot be summarized", () => {
+    expect(humanizeCronExpression("0 9 * * mon-fri/2")).toBe(
+      "Cron Expression: 0 9 * * mon-fri/2",
+    );
+  });
+
   it("renders comma-separated months", () => {
     expect(humanizeCronExpression("0 12 1 1,6,12 *")).toBe(
       "Every year on the 1st day of January, June, December at 12:00",
