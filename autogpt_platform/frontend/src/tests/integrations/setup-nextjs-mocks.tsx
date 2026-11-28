@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { vi } from "vitest";
+import type { ComponentPropsWithoutRef } from "react";
 
 export const mockNextjsModules = () => {
   vi.mock("next/image", () => ({
@@ -55,13 +56,20 @@ export const mockNextjsModules = () => {
     },
   }));
 
-  vi.mock("next/link", () => ({
-    __esModule: true,
-    default: ({ children, href, ...props }: any) => (
-      <a href={href} {...props}>
-        {children}
-      </a>
-    ),
-    useLinkStatus: () => ({ pending: false }),
-  }));
+  vi.mock("next/link", async () => {
+    const { forwardRef } = await import("react");
+    return {
+      __esModule: true,
+      default: forwardRef<HTMLAnchorElement, ComponentPropsWithoutRef<"a">>(
+        function MockLink({ children, href, ...props }, ref) {
+          return (
+            <a ref={ref} href={href} {...props}>
+              {children}
+            </a>
+          );
+        },
+      ),
+      useLinkStatus: () => ({ pending: false }),
+    };
+  });
 };
