@@ -1,5 +1,5 @@
 import { ServerUserSeed } from "@/components/auth/ServerUserSeed";
-import { getServerUser } from "@/lib/auth/server/getServerUser";
+import { getFirstRenderUser } from "@/lib/auth/server/getFirstRenderUser";
 import { ReactNode } from "react";
 
 export default async function OnboardingLayout({
@@ -7,7 +7,7 @@ export default async function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const { user } = await getServerUser();
+  const user = await getFirstRenderUser();
   return (
     <div className="relative flex min-h-screen w-full flex-col bg-surface-hover">
       <ServerUserSeed user={user} />
