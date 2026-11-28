@@ -1,14 +1,22 @@
+import { usePostV2MarkSessionRead } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
-import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useInsertionEffect, useRef } from "react";
-import { COPILOT_COMPLETION_NOTIFICATION, parseSessionIDs } from "./helpers";
+import { useEffect, useInsertionEffect, useRef, useState } from "react";
+import { COPILOT_COMPLETION_NOTIFICATION } from "./helpers";
+import { newestCachedSession } from "./sessionGroups";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
 
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 const SEEN_RECHECK_MS = 2_000;
+// Without a turn id, the same chat finishing again this soon is taken for the
+// same event delivered twice (a WebSocket replay).
+const RENOTIFY_AFTER_MS = 10_000;
+const NOTIFIED_TURNS_KEPT = 200;
+// Failed acknowledgements of one chat before this tab stops re-sending them
+// until the user opens a chat again.
+const MAX_FAILED_READS = 3;
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
@@ -56,8 +64,9 @@ function isUserAway() {
 }
 
 /**
- * Listens for copilot completion notifications via WebSocket.
- * Updates the Zustand store and plays a sound.
+ * Marks the open chat read on the server once the user is here, and on each
+ * chat's completion over the WebSocket refreshes the chat list and plays a
+ * sound or shows a notification.
  */
 export function useCopilotNotifications(activeSessionID: string | null) {
   const api = useBackendAPI();
@@ -67,35 +76,98 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   useInsertionEffect(() => {
     activeSessionRef.current = activeSessionID;
   });
-  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
+  const notifiedAtRef = useRef(new Map<string, number>());
+  const notifiedTurnsRef = useRef(new Set<string>());
+  const failedReadsRef = useRef({ sessionID: "", count: 0 });
+  const readInFlightRef = useRef(false);
+  // The open chat while it has a finished turn the user hasn't seen here yet:
+  // opening it, a turn ending in it, or a list showing it unread puts it here
+  // until they are present.
+  const [unseenSessionID, setUnseenSessionID] = useState(activeSessionID);
+  const [openedSessionID, setOpenedSessionID] = useState(activeSessionID);
+  if (openedSessionID !== activeSessionID) {
+    setOpenedSessionID(activeSessionID);
+    setUnseenSessionID(activeSessionID);
+  }
 
-  // Seeing a finished chat takes it off the list. The handler below skips
-  // chats already on it, so a chat left there never notifies again. Only a
-  // tab the user is in counts: the list is shared across tabs, so a tab that
-  // merely has the chat open must not mark it seen for the others.
+  const { mutate: markRead } = usePostV2MarkSessionRead({
+    mutation: {
+      retry: 2,
+      onSuccess: () => {
+        failedReadsRef.current = { sessionID: "", count: 0 };
+      },
+      onError: (_error, { sessionId }) => {
+        const failed = failedReadsRef.current;
+        failedReadsRef.current = {
+          sessionID: sessionId,
+          count: failed.sessionID === sessionId ? failed.count + 1 : 1,
+        };
+      },
+      // A read that still failed shows the chat unread again, which re-arms
+      // it below while the user is here.
+      // Held until the lists have re-read the chat, so their stale copy
+      // doesn't send the read again.
+      onSettled: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: SESSION_LIST_QUERY_KEY,
+        });
+        readInFlightRef.current = false;
+      },
+    },
+  });
+
+  // A turn can end without its completion event reaching this tab (the
+  // socket was down, or the event was lost), so a list showing the open chat
+  // unread arms it too.
   useEffect(() => {
-    function clearIfSeen() {
+    if (!activeSessionID) return;
+    const sessionID = activeSessionID;
+    function armIfUnread() {
+      if (readInFlightRef.current) return;
+      const failed = failedReadsRef.current;
+      if (failed.sessionID === sessionID && failed.count >= MAX_FAILED_READS) {
+        return;
+      }
+      // `is_unread`, not the marker: a chat that needs the user shows that
+      // marker over an unseen turn.
+      if (newestCachedSession(queryClient, sessionID)?.is_unread) {
+        setUnseenSessionID(sessionID);
+      }
+    }
+    armIfUnread();
+    return queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "success") {
+        armIfUnread();
+      }
+    });
+  }, [activeSessionID, queryClient]);
+
+  // Seeing the chat marks it read on the server, so its marker clears in every
+  // browser and on every device. Only a tab the user is in counts: a tab that
+  // merely has the chat open must not mark it seen.
+  useEffect(() => {
+    if (!unseenSessionID) return;
+    const sessionID = unseenSessionID;
+
+    function markIfSeen() {
       if (isUserAway()) return;
-      if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
-      useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+      setUnseenSessionID(null);
+      readInFlightRef.current = true;
+      markRead({ sessionId: sessionID });
     }
 
-    clearIfSeen();
-    document.addEventListener("visibilitychange", clearIfSeen);
-    window.addEventListener("focus", clearIfSeen);
+    markIfSeen();
+    document.addEventListener("visibilitychange", markIfSeen);
+    window.addEventListener("focus", markIfSeen);
     // Coming back by clicking straight into an embedded frame (the desktop
-    // preview) fires no event in this document, so re-check while the open
-    // chat is still on the list. Clearing it ends the interval.
-    const recheck =
-      activeSessionID && completedSessionIDs.has(activeSessionID)
-        ? window.setInterval(clearIfSeen, SEEN_RECHECK_MS)
-        : undefined;
+    // preview) fires no event in this document, so re-check until it's seen.
+    const recheck = window.setInterval(markIfSeen, SEEN_RECHECK_MS);
     return () => {
-      document.removeEventListener("visibilitychange", clearIfSeen);
-      window.removeEventListener("focus", clearIfSeen);
+      document.removeEventListener("visibilitychange", markIfSeen);
+      window.removeEventListener("focus", markIfSeen);
       window.clearInterval(recheck);
     };
-  }, [activeSessionID, completedSessionIDs]);
+  }, [unseenSessionID, markRead]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,21 +185,22 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       const sessionID = (notification as Record<string, unknown>).session_id;
       if (typeof sessionID !== "string") return;
 
-      const state = useCopilotUIStore.getState();
+      // The server has already marked the chat unread; refetch so the
+      // sidebar shows it now rather than at its next poll.
+      queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
 
       const isActiveSession = sessionID === activeSessionRef.current;
       const userAway = isUserAway();
+      if (isActiveSession) setUnseenSessionID(sessionID);
+
+      // Recorded even when it doesn't sound, so a later replay of it doesn't.
+      if (isRepeatedCompletion(sessionID, notification)) return;
 
       // Skip if viewing the active session and it's in focus
       if (isActiveSession && !userAway) return;
 
-      // Skip if we already notified for this session (e.g. WS replay)
-      if (state.completedSessionIDs.has(sessionID)) return;
-
-      // Always update UI state (checkmark + title) regardless of notification setting
-      state.addCompletedSession(sessionID);
-
       // Sound and browser notifications are gated by the user setting
+      const state = useCopilotUIStore.getState();
       if (!state.isNotificationsEnabled) return;
 
       if (state.isSoundEnabled && audioRef.current) {
@@ -149,11 +222,37 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       }
     }
 
+    // The same turn's completion delivered twice (a WebSocket replay) sounds
+    // once; the chat's next turn sounds again.
+    function isRepeatedCompletion(
+      sessionID: string,
+      notification: WebSocketNotification,
+    ) {
+      const turnID = (notification as Record<string, unknown>).turn_id;
+      if (typeof turnID === "string" && turnID) {
+        const key = `${sessionID}:${turnID}`;
+        const notified = notifiedTurnsRef.current;
+        if (notified.has(key)) return true;
+        notified.add(key);
+        if (notified.size > NOTIFIED_TURNS_KEPT) {
+          notified.delete(notified.values().next().value as string);
+        }
+        return false;
+      }
+      const now = Date.now();
+      const notifiedAt = notifiedAtRef.current.get(sessionID);
+      if (notifiedAt !== undefined && now - notifiedAt < RENOTIFY_AFTER_MS) {
+        return true;
+      }
+      notifiedAtRef.current.set(sessionID, now);
+      return false;
+    }
+
     const detach = api.onWebSocketMessage("notification", handleNotification);
     return () => {
       detach();
     };
-  }, [api]);
+  }, [api, queryClient]);
 
   // Completions sent while the socket was down never arrive, so re-read the
   // session list after a reconnect, or it keeps showing those chats busy.
@@ -162,23 +261,4 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
     });
   }, [api, queryClient]);
-
-  // Sync completedSessionIDs across tabs via localStorage storage events
-  useEffect(() => {
-    function handleStorage(e: StorageEvent) {
-      if (e.key !== Key.COPILOT_COMPLETED_SESSIONS) return;
-      // localStorage is the shared source of truth — adopt it directly so both
-      // additions (new completions) and removals (cleared sessions) propagate.
-      const next = parseSessionIDs(e.newValue);
-      useCopilotUIStore.setState({ completedSessionIDs: next });
-
-      // Refetch the session list so the sidebar reflects the latest
-      // is_processing state (avoids stale spinner after cross-tab clear).
-      queryClient.invalidateQueries({
-        queryKey: SESSION_LIST_QUERY_KEY,
-      });
-    }
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, [queryClient]);
 }

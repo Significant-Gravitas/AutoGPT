@@ -612,7 +612,6 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 useAuthStore.subscribe((state, previousState) => {
   if (previousState.user && previousState.user.id !== state.user?.id) {
     resetAnalyticsIdentity();
-    clearCopilotCompletedSessions();
   }
   // Signing out is reported here; the signed-out state on load once
   // initialize() is done. After the reset above, which already rotated the id.
@@ -644,15 +643,4 @@ function reportAnalyticsSession(userID: string | null): void {
   if (isAnonymousIDSpentFor(userID)) {
     resetAnalyticsIdentity({ keepLanding: true });
   }
-}
-
-// Loaded lazily: the copilot store pulls in React hooks the auth store
-// otherwise has no reason to load.
-function clearCopilotCompletedSessions() {
-  if (typeof window === "undefined") return;
-  import("@/app/(platform)/copilot/store")
-    .then(({ useCopilotUIStore }) =>
-      useCopilotUIStore.getState().clearAllCompletedSessions(),
-    )
-    .catch(() => {});
 }

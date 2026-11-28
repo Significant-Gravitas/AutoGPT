@@ -17,7 +17,9 @@ import {
 import Link, { useLinkStatus } from "next/link";
 import { memo, useRef } from "react";
 import {
+  AlertCircleIcon,
   BookOpen01Icon,
+  BubbleChatQuestionIcon,
   Delete02Icon,
   Download04Icon,
   Loading03Icon,
@@ -29,6 +31,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { isKey } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
+import type { ChatAttention } from "../../helpers";
 
 interface Session {
   id: string;
@@ -41,6 +45,7 @@ interface Session {
 
 interface Props {
   session: Session;
+  attention?: ChatAttention | null;
   isActive: boolean;
   isEditing: boolean;
   editingTitle: string;
@@ -75,10 +80,46 @@ function ChatLinkLoader() {
   );
 }
 
+const ATTENTION_LABELS: Record<ChatAttention, string> = {
+  needs_you: "Needs you",
+  error: "Stopped with an error",
+  unread: "Unread",
+};
+
+// Sits in the spinner's slot, so a chat shows one marker at a time.
+function AttentionMarker({ attention }: { attention: ChatAttention }) {
+  const label = ATTENTION_LABELS[attention];
+
+  if (attention === "unread") {
+    return (
+      <span
+        role="img"
+        aria-label={label}
+        className="flex size-4 shrink-0 items-center justify-center"
+      >
+        <span className="size-2 rounded-full bg-brand" />
+      </span>
+    );
+  }
+
+  return (
+    <Icon
+      icon={
+        attention === "needs_you" ? BubbleChatQuestionIcon : AlertCircleIcon
+      }
+      role="img"
+      aria-label={label}
+      tone={attention === "needs_you" ? "warning" : "error"}
+      className="size-4 shrink-0"
+    />
+  );
+}
+
 // Memoised: the list hands every row the same shared callbacks (taking the
 // session id), so a list refetch only re-renders rows whose session changed.
 export const RecentChatItem = memo(function RecentChatItem({
   session,
+  attention,
   isActive,
   isEditing,
   editingTitle,
@@ -148,16 +189,36 @@ export const RecentChatItem = memo(function RecentChatItem({
         className="max-md:h-11"
       >
         <Link href={`/home?sessionId=${session.id}`}>
-          {session.is_processing ? (
+          {/* A running turn can be waiting on an approval, so needing the
+              user outranks the spinner. */}
+          {attention === "needs_you" ? (
+            <AttentionMarker attention={attention} />
+          ) : session.is_processing ? (
             <LoadingSpinner
               size="small"
               tone="brand-strong"
               className="size-4 shrink-0"
             />
+          ) : attention ? (
+            <AttentionMarker attention={attention} />
           ) : hasPlatformLogo ? (
-            <ChatOriginIcon sourcePlatform={session.source_platform} />
-          ) : null}
-          <span className="truncate">{title}</span>
+            // The logo is a little smaller than the slot; centred in it, so
+            // its title lines up with the rest.
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <ChatOriginIcon sourcePlatform={session.source_platform} />
+            </span>
+          ) : (
+            // Holds the marker's slot, so every title starts at the same place.
+            <span aria-hidden className="size-4 shrink-0" />
+          )}
+          <span
+            className={cn(
+              "truncate",
+              attention && "font-semibold text-foreground-emphasis",
+            )}
+          >
+            {title}
+          </span>
           <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>

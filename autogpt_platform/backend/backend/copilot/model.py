@@ -523,6 +523,10 @@ class Usage(BaseModel):
     cache_creation_tokens: int = 0
 
 
+# What a chat in the sidebar wants from its owner; see ChatSessionInfo.attention.
+ChatAttention = Literal["needs_you", "error", "unread"]
+
+
 class ChatSessionInfo(BaseModel):
     session_id: str
     user_id: str
@@ -547,6 +551,43 @@ class ChatSessionInfo(BaseModel):
     expert_id: str | None = None
     # Set when that expert was reset: the chat is kept but closed.
     archived_at: datetime | None = None
+    # When the newest turn ended and whether it failed (a turn the user
+    # stopped changes neither), and when the owner last opened the chat on
+    # any device. Read only by the session lists: the cached session can hold
+    # older values, since these are written straight to the database.
+    last_turn_ended_at: datetime | None = None
+    last_turn_failed: bool | None = None
+    last_read_at: datetime | None = None
+
+    @property
+    def is_unread(self) -> bool:
+        """A turn ended since the owner last opened the chat. Counted in SQL
+        by ``db._UNREAD_SQL``; keep the two in step."""
+        if self.last_turn_ended_at is None:
+            return False
+        return self.last_read_at is None or self.last_read_at < self.last_turn_ended_at
+
+    @property
+    def asks_owner(self) -> bool:
+        """The chat waits on the owner's answer to a question. A delegated
+        sub-chat's question is its caller's to report, so it doesn't count
+        unless the chat was handed off. Same rule as Home's "Needs You";
+        counted in SQL by ``db._ASKS_OWNER_SQL``."""
+        metadata = self.metadata
+        return metadata.pending_question is not None and (
+            metadata.delegated_by_session_id is None
+            or metadata.handed_off_from_expert_id is not None
+        )
+
+    def attention(self, awaiting_review: bool) -> ChatAttention | None:
+        """What the chat wants from its owner, the most urgent first:
+        ``needs_you`` (a question or an approval waits), ``error`` (an unread
+        turn failed) or ``unread``."""
+        if awaiting_review or self.asks_owner:
+            return "needs_you"
+        if not self.is_unread:
+            return None
+        return "error" if self.last_turn_failed else "unread"
 
     @property
     def dry_run(self) -> bool:
@@ -601,6 +642,9 @@ class ChatSessionInfo(BaseModel):
             is_pinned=prisma_session.isPinned,
             expert_id=prisma_session.expertId,
             archived_at=prisma_session.archivedAt,
+            last_turn_ended_at=prisma_session.lastTurnEndedAt,
+            last_turn_failed=prisma_session.lastTurnFailed,
+            last_read_at=prisma_session.lastReadAt,
         )
 
 
@@ -612,6 +656,10 @@ class ChatSessionGroup(BaseModel):
     expert_id: str | None = None
     total: int
     sessions: list[ChatSessionInfo]
+    # Of ``total``: the chats that want the owner (needs you, error or
+    # unread), and the unread ones, failed included, that marking read clears.
+    attention_count: int = 0
+    unread_count: int = 0
 
 
 class ChatSession(ChatSessionInfo):

@@ -1230,7 +1230,16 @@ async def mark_session_completed(
     # sessions; ``release_turn_slot`` is a no-op then.
     user_id = meta.get("user_id") or ""
     if user_id:
-        await release_turn_slot(user_id, session_id)
+        # Records the turn's end in the same write, before StreamFinish and the
+        # completion notification, so a sidebar refetching on either already
+        # shows the chat unread. A turn the user stopped leaves it as it was.
+        await release_turn_slot(
+            user_id,
+            session_id,
+            turn_failed=(
+                None if error_message == CANCELLED_MESSAGE else status == "failed"
+            ),
+        )
 
     # Promote the user's oldest queued turn (if any) AFTER the executor
     # cluster lock and SDK stream lock are cleared — otherwise the
@@ -1327,6 +1336,7 @@ async def mark_session_completed(
                             event="session_completed",
                             session_id=session_id,
                             status=status,
+                            turn_id=turn_id,
                         ),
                     )
                 )

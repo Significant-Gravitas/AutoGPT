@@ -7,6 +7,22 @@ import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessio
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Key, storage } from "@/services/storage/local-storage";
 
+/** What a chat wants from the user, most urgent first: a question or an
+ *  approval, a turn that failed since they last looked, or a finished turn
+ *  they haven't seen. */
+export type ChatAttention = NonNullable<SessionSummaryResponse["attention"]>;
+
+/** The chat's marker. The open chat is marked read as soon as the user sees
+ *  it, so until the list catches up it shows only what still needs them. */
+export function getChatAttention(
+  session: SessionSummaryResponse,
+  activeSessionId: string | null,
+): ChatAttention | null {
+  const attention = session.attention ?? null;
+  if (session.id === activeSessionId && attention !== "needs_you") return null;
+  return attention;
+}
+
 /** The newest chats every group shows, however old they are. */
 export const GROUP_MIN_CHATS = 3;
 /** Chats the sidebar shows before any "Show more", about what a tall

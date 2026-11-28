@@ -157,3 +157,6 @@ class OnboardingNotificationPayload(NotificationPayload):
 class CopilotCompletionPayload(NotificationPayload):
     session_id: str
     status: Literal["completed", "failed"]
+    # The turn that ended, so a client can tell the same completion delivered
+    # twice from the chat's next turn.
+    turn_id: str = ""

@@ -61,22 +61,6 @@ export class CopilotAuthError extends Error {
 }
 
 /**
- * Safely parse a JSON string (from localStorage) into a `Set<string>` of
- * session IDs. Returns an empty set for `null`, malformed, or non-array values.
- */
-export function parseSessionIDs(raw: string | null | undefined): Set<string> {
-  if (!raw) return new Set();
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? new Set<string>(parsed.filter((v) => typeof v === "string"))
-      : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-/**
  * Resolve the actual dry_run value for a session from the raw API response.
  * Returns true only when the session response is a 200 with metadata.dry_run === true.
  * Returns false for missing/non-200 responses so callers never show a stale

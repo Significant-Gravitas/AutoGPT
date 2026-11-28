@@ -333,7 +333,6 @@ describe("useCopilotUIStore", () => {
       sessionToDelete: null,
       isDrawerOpen: false,
       isSearchOpen: false,
-      completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       copilotLlmModel: "standard",
@@ -454,66 +453,6 @@ describe("useCopilotUIStore", () => {
     });
   });
 
-  describe("completedSessionIDs", () => {
-    it("starts empty", () => {
-      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
-    });
-
-    it("adds a completed session", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      expect(useCopilotUIStore.getState().completedSessionIDs.has("s1")).toBe(
-        true,
-      );
-    });
-
-    it("persists added sessions to localStorage", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().addCompletedSession("s2");
-      const raw = window.localStorage.getItem("copilot-completed-sessions");
-      expect(raw).not.toBeNull();
-      const parsed = JSON.parse(raw!) as string[];
-      expect(parsed).toContain("s1");
-      expect(parsed).toContain("s2");
-    });
-
-    it("clears a single completed session", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().addCompletedSession("s2");
-      useCopilotUIStore.getState().clearCompletedSession("s1");
-      expect(useCopilotUIStore.getState().completedSessionIDs.has("s1")).toBe(
-        false,
-      );
-      expect(useCopilotUIStore.getState().completedSessionIDs.has("s2")).toBe(
-        true,
-      );
-    });
-
-    it("updates localStorage when a session is cleared", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().addCompletedSession("s2");
-      useCopilotUIStore.getState().clearCompletedSession("s1");
-      const raw = window.localStorage.getItem("copilot-completed-sessions");
-      const parsed = JSON.parse(raw!) as string[];
-      expect(parsed).not.toContain("s1");
-      expect(parsed).toContain("s2");
-    });
-
-    it("clears all completed sessions", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().addCompletedSession("s2");
-      useCopilotUIStore.getState().clearAllCompletedSessions();
-      expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
-    });
-
-    it("removes localStorage key when all sessions are cleared", () => {
-      useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().clearAllCompletedSessions();
-      expect(
-        window.localStorage.getItem("copilot-completed-sessions"),
-      ).toBeNull();
-    });
-  });
-
   describe("sound toggle", () => {
     it("starts enabled", () => {
       expect(useCopilotUIStore.getState().isSoundEnabled).toBe(true);
@@ -581,7 +520,6 @@ describe("useCopilotUIStore", () => {
       });
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
-      useCopilotUIStore.getState().addCompletedSession("s1");
       window.localStorage.setItem("copilot-local-pc-warning-acked", "true");
 
       useCopilotUIStore.getState().clearCopilotLocalData();
@@ -592,7 +530,6 @@ describe("useCopilotUIStore", () => {
       expect(state.copilotLlmAuth).toBeNull();
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
-      expect(state.completedSessionIDs.size).toBe(0);
       expect(
         window.localStorage.getItem("copilot-notifications-enabled"),
       ).toBeNull();

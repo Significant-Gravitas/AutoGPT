@@ -918,7 +918,7 @@ class TestCompletionOnRealRedis:
         await redis.set(f"{STREAM_LOCK_PREFIX}{session_id}", "a")
         held_at_release: list[int] = []
 
-        async def release(_user_id: str, sid: str) -> None:
+        async def release(_user_id: str, sid: str, **_kwargs: object) -> None:
             held_at_release.append(
                 await redis.exists(
                     get_session_lock_key(sid), f"{STREAM_LOCK_PREFIX}{sid}"

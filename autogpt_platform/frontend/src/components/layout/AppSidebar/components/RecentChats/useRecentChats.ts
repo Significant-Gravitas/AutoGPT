@@ -1,6 +1,7 @@
 import {
   getV2GetSession,
   usePatchV2UpdateSessionPinned,
+  usePostV2MarkSessionsRead,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useExcludeSkillLearningSource } from "@/app/api/__generated__/endpoints/skill-learning/skill-learning";
@@ -43,6 +44,30 @@ export function useRecentChats({ pinnedSeparately = false }: Args = {}) {
     confirmDelete,
     cancelDelete,
   } = useSessionDeletion();
+
+  const { mutate: markChatsRead } = usePostV2MarkSessionsRead({
+    mutation: {
+      onSettled: () =>
+        queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY }),
+      onError: () => {
+        toast({
+          title: "Couldn't mark the chats as read",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  // With pinned chats in their own section, a group's counts leave them out,
+  // so marking the group read does too.
+  function markGroupRead(expertId: string | null) {
+    markChatsRead({
+      data: {
+        ...(expertId ? { expert_id: expertId } : { autopilot_only: true }),
+        ...(pinnedSeparately ? { pinned: false } : {}),
+      },
+    });
+  }
 
   const { mutate: setSessionPinned } = usePatchV2UpdateSessionPinned({
     mutation: {
@@ -181,5 +206,6 @@ export function useRecentChats({ pinnedSeparately = false }: Args = {}) {
     requestDelete: stableRequestDelete,
     confirmDelete,
     cancelDelete,
+    markGroupRead,
   };
 }

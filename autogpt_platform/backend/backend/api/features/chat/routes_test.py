@@ -112,6 +112,9 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     from autogpt_libs.auth.dependencies import get_request_context
 
     mocker.patch.object(chat_routes, "cancel_background_subtasks", new=AsyncMock())
+    mock_chat_db = mocker.patch.object(chat_routes, "chat_db").return_value
+    mock_chat_db.get_chats_awaiting_review = AsyncMock(return_value=set())
+    mock_chat_db.mark_sessions_read = AsyncMock(return_value=0)
     mocker.patch.object(
         chat_routes,
         "background_task_db",
@@ -4565,6 +4568,8 @@ def _make_session_info(
     source_platform: str | None = None,
     is_pinned: bool = False,
     expert_id: str | None = None,
+    last_turn_ended_at: datetime | None = None,
+    last_turn_failed: bool | None = None,
 ):
     """Build a minimal ChatSessionInfo-like mock."""
     from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
@@ -4579,6 +4584,8 @@ def _make_session_info(
         metadata=ChatSessionMetadata(source_platform=source_platform),
         is_pinned=is_pinned,
         expert_id=expert_id,
+        last_turn_ended_at=last_turn_ended_at,
+        last_turn_failed=last_turn_failed,
     )
 
 
@@ -4889,6 +4896,123 @@ def test_list_session_groups_with_no_chats_skips_redis(
     assert response.status_code == 200
     assert response.json() == {"groups": [], "pinned": []}
     mock_redis.assert_not_awaited()
+
+
+def test_chat_lists_carry_each_chats_marker_and_each_groups_counts(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    ended = datetime.now(UTC)
+    unread = _make_session_info("sess-unread", last_turn_ended_at=ended)
+    failed = _make_session_info(
+        "sess-failed", last_turn_ended_at=ended, last_turn_failed=True
+    )
+    approval = _make_session_info("sess-approval", last_turn_ended_at=ended)
+    read = _make_session_info("sess-read")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+        return_value=(
+            [
+                ChatSessionGroup(
+                    expert_id=None,
+                    total=9,
+                    attention_count=3,
+                    unread_count=2,
+                    sessions=[unread, failed, approval, read],
+                )
+            ],
+            [],
+        ),
+    )
+    chat_routes.chat_db.return_value.get_chats_awaiting_review = AsyncMock(
+        return_value={"sess-approval"}
+    )
+    mocker.patch.object(
+        chat_routes, "_running_session_ids", AsyncMock(return_value=set())
+    )
+
+    response = client.get("/session-groups")
+
+    assert response.status_code == 200
+    (group,) = response.json()["groups"]
+    assert (group["attention_count"], group["unread_count"]) == (3, 2)
+    assert [(s["id"], s["attention"], s["is_unread"]) for s in group["sessions"]] == [
+        ("sess-unread", "unread", True),
+        ("sess-failed", "error", True),
+        # Waiting on an approval and holding an unseen turn: marked needs you,
+        # still unread underneath.
+        ("sess-approval", "needs_you", True),
+        ("sess-read", None, False),
+    ]
+
+
+def test_chat_list_survives_a_failed_approval_lookup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    ended = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([_make_session_info("sess-1", last_turn_ended_at=ended)], 1),
+    )
+    chat_routes.chat_db.return_value.get_chats_awaiting_review = AsyncMock(
+        side_effect=RuntimeError("database unavailable")
+    )
+    mocker.patch.object(
+        chat_routes, "_running_session_ids", AsyncMock(return_value=set())
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert [(s["id"], s["attention"]) for s in response.json()["sessions"]] == [
+        ("sess-1", "unread")
+    ]
+
+
+def test_opening_a_chat_marks_it_read_for_its_owner() -> None:
+    response = client.post("/sessions/sess-1/read")
+
+    assert response.status_code == 204
+    chat_routes.chat_db.return_value.mark_sessions_read.assert_awaited_once()
+    call = chat_routes.chat_db.return_value.mark_sessions_read.await_args
+    assert call.args[0] == TEST_USER_ID
+    assert call.kwargs == {"session_id": "sess-1"}
+
+
+@pytest.mark.parametrize(
+    "body, scope",
+    [
+        ({}, {"expert_id": None, "autopilot_only": False, "pinned": None}),
+        (
+            {"expert_id": "maria", "pinned": False},
+            {"expert_id": "maria", "autopilot_only": False, "pinned": False},
+        ),
+        (
+            {"autopilot_only": True},
+            {"expert_id": None, "autopilot_only": True, "pinned": None},
+        ),
+    ],
+)
+def test_marking_chats_read_in_bulk_is_scoped_like_the_list(body, scope) -> None:
+    chat_routes.chat_db.return_value.mark_sessions_read = AsyncMock(return_value=4)
+
+    response = client.post("/sessions/read", json=body)
+
+    assert response.status_code == 200
+    assert response.json() == {"marked": 4}
+    call = chat_routes.chat_db.return_value.mark_sessions_read.await_args
+    assert call.args[0] == TEST_USER_ID
+    assert call.kwargs == scope
+
+
+def test_marking_chats_read_refuses_an_expert_and_otto_at_once() -> None:
+    response = client.post(
+        "/sessions/read", json={"expert_id": "maria", "autopilot_only": True}
+    )
+
+    assert response.status_code == 400
+    chat_routes.chat_db.return_value.mark_sessions_read.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

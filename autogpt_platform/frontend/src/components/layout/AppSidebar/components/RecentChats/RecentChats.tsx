@@ -15,7 +15,11 @@ import { useState } from "react";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { NewExpertGroup } from "./components/NewExpertGroup/NewExpertGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
-import { getNewChatHref, getNewExpertsWithoutChats } from "./helpers";
+import {
+  getChatAttention,
+  getNewChatHref,
+  getNewExpertsWithoutChats,
+} from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
 export function RecentChats() {
@@ -51,6 +55,7 @@ export function RecentChats() {
     requestDelete,
     confirmDelete,
     cancelDelete,
+    markGroupRead,
   } = useRecentChats({ pinnedSeparately: chatPinningEnabled });
 
   if (isLoading) {
@@ -101,6 +106,7 @@ export function RecentChats() {
       <RecentChatItem
         key={session.id}
         session={session}
+        attention={getChatAttention(session, activeSessionId)}
         isActive={session.id === activeSessionId}
         isEditing={isEditing}
         editingTitle={isEditing ? editingTitle : ""}
@@ -145,6 +151,11 @@ export function RecentChats() {
         previewSessions={group.sessions}
         pinnedSeparately={chatPinningEnabled}
         activeSessionId={activeSessionId}
+        attentionCount={group.attention_count ?? 0}
+        unreadCount={group.unread_count ?? 0}
+        onMarkAllRead={
+          group.unread_count ? () => markGroupRead(expertId) : undefined
+        }
         renderItem={renderItem}
       />
     );

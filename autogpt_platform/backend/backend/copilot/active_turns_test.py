@@ -224,3 +224,20 @@ async def test_a_failed_release_on_a_clean_exit_still_raises() -> None:
         with pytest.raises(ConnectionError, match="db blip"):
             async with acquire_turn_slot("user-1", "session-a"):
                 pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("turn_failed", [False, True])
+async def test_release_records_how_the_turn_ended_in_the_same_write(
+    turn_failed: bool,
+) -> None:
+    db = _mock_db()
+    with patch.object(active_turns, "chat_db", return_value=db):
+        await release_turn_slot("user-1", "session-a", turn_failed=turn_failed)
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="session-a",
+        expect_status="running",
+        status="idle",
+        user_id="user-1",
+        turn_failed=turn_failed,
+    )

@@ -865,6 +865,8 @@ class DatabaseManager(AppService):
     update_chat_session_autopilot_mode = _(chat_db.update_chat_session_autopilot_mode)
     update_chat_session_pinned = _(chat_db.update_chat_session_pinned)
     set_turn_duration = _(chat_db.set_turn_duration)
+    mark_sessions_read = _(chat_db.mark_sessions_read)
+    get_chats_awaiting_review = _(chat_db.get_chats_awaiting_review)
     # ChatSession lifecycle primitives.  Three functions cover the
     # cap-count + cross-session queue (count/list/transition).
     count_chat_sessions_by_status = _(chat_db.count_chat_sessions_by_status)
@@ -1444,6 +1446,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session_autopilot_mode = d.update_chat_session_autopilot_mode
     update_chat_session_pinned = d.update_chat_session_pinned
     set_turn_duration = d.set_turn_duration
+    mark_sessions_read = d.mark_sessions_read
+    get_chats_awaiting_review = d.get_chats_awaiting_review
     count_chat_sessions_by_status = d.count_chat_sessions_by_status
     list_chat_sessions_by_status = d.list_chat_sessions_by_status
     update_chat_session_status = d.update_chat_session_status

@@ -979,6 +979,14 @@ model ChatSession {
   // database but leaves every list and can no longer be opened or continued.
   archivedAt DateTime?
 
+  // When the newest turn ended and whether it failed; a turn the user stopped
+  // changes neither. Against lastReadAt, when the owner last opened the chat
+  // on any device, they decide the sidebar's unread and error markers. Null
+  // on chats whose turns ended before these existed, which count as read.
+  lastTurnEndedAt DateTime?
+  lastTurnFailed  Boolean?
+  lastReadAt      DateTime?
+
   // Sharing fields — mirrors AgentGraphExecution sharing
   isShared   Boolean   @default(false)
   shareToken String?   @unique

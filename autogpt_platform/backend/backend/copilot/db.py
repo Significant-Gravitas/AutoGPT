@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import sentry_sdk
 from prisma.errors import UniqueViolationError
@@ -28,6 +28,7 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 from backend.util.sql import escape_like
 
+from .constants import COPILOT_SESSION_PREFIX
 from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
@@ -850,6 +851,74 @@ _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 # A reset expert's chats are archived: kept, but out of every list.
 EXCLUDE_ARCHIVED_SESSIONS_SQL = '"archivedAt" IS NULL'
 
+# The sidebar's markers, counted per group in SQL. Each mirrors a
+# ChatSessionInfo property (is_unread, asks_owner); keep them in step.
+_UNREAD_SQL = (
+    '("lastTurnEndedAt" IS NOT NULL AND '
+    '("lastReadAt" IS NULL OR "lastReadAt" < "lastTurnEndedAt"))'
+)
+_ASKS_OWNER_SQL = (
+    "(jsonb_typeof(\"metadata\" -> 'pending_question') = 'object' AND "
+    "(\"metadata\" ->> 'delegated_by_session_id' IS NULL "
+    "OR \"metadata\" ->> 'handed_off_from_expert_id' IS NOT NULL))"
+)
+# Ids of the chats of user $1 with an approval waiting. Rows an older deploy
+# wrote name the chat in a synthetic graph execution id instead.
+_AWAITING_REVIEW_CHAT_IDS_SQL = (
+    'SELECT "chatSessionId" FROM {schema_prefix}"PendingHumanReview" '
+    'WHERE "userId" = $1 AND "status" = \'WAITING\' '
+    'AND "chatSessionId" IS NOT NULL '
+    f'UNION SELECT substring("graphExecId" FROM {len(COPILOT_SESSION_PREFIX) + 1}) '
+    'FROM {schema_prefix}"PendingHumanReview" '
+    'WHERE "userId" = $1 AND "status" = \'WAITING\' '
+    f"AND starts_with(\"graphExecId\", '{COPILOT_SESSION_PREFIX}')"
+)
+_NEEDS_YOU_SQL = f'({_ASKS_OWNER_SQL} OR "id" IN ({_AWAITING_REVIEW_CHAT_IDS_SQL}))'
+
+
+async def get_chats_awaiting_review(user_id: str) -> set[str]:
+    """Ids of the user's chats with an approval waiting on them."""
+    rows = await db.query_raw_with_schema(
+        f'SELECT "chatSessionId" AS "id" FROM ({_AWAITING_REVIEW_CHAT_IDS_SQL}) '
+        'AS "awaiting"',
+        user_id,
+    )
+    return {row["id"] for row in rows if row["id"]}
+
+
+async def mark_sessions_read(
+    user_id: str,
+    organization_id: str | None = None,
+    *,
+    session_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_only: bool = False,
+    pinned: bool | None = None,
+) -> int:
+    """Marks the user's unread sessions read: one, one expert's, Otto's own
+    or all of them, among those the session list shows (``pinned`` as there).
+    Returns how many changed. Raw SQL so the sidebar's order doesn't move.
+
+    Stamped by the database's clock, like a turn's end in
+    ``update_chat_session_status``: the two are compared, and pods' clocks
+    can disagree either way."""
+    where, params = _visible_sessions_where(
+        user_id,
+        organization_id,
+        expert_id=expert_id,
+        autopilot_only=autopilot_only,
+        pinned=pinned,
+    )
+    if session_id is not None:
+        params.append(session_id)
+        where += f' AND "id" = ${len(params)}'
+    return await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" '
+        'SET "lastReadAt" = statement_timestamp() '
+        "WHERE " + where + f" AND {_UNREAD_SQL}",
+        *params,
+    )
+
 
 async def get_user_chat_sessions(
     user_id: str,
@@ -964,7 +1033,10 @@ async def get_user_chat_session_groups(
     where, params = _visible_sessions_where(user_id, organization_id, pinned=pinned)
     totals, rows = await asyncio.gather(
         db.query_raw_with_schema(
-            'SELECT "expertId", COUNT(*)::int AS "total" '
+            'SELECT "expertId", COUNT(*)::int AS "total", '
+            f"COUNT(*) FILTER (WHERE {_NEEDS_YOU_SQL} OR {_UNREAD_SQL})::int "
+            'AS "attention", '
+            f'COUNT(*) FILTER (WHERE {_UNREAD_SQL})::int AS "unread" '
             'FROM {schema_prefix}"ChatSession" WHERE ' + where + ' GROUP BY "expertId"',
             *params,
         ),
@@ -991,7 +1063,12 @@ async def get_user_chat_session_groups(
         ),
     )
     return _group_newest_sessions(
-        {row["expertId"]: row["total"] for row in totals},
+        {
+            row["expertId"]: _GroupCounts(
+                row["total"], row.get("attention", 0), row.get("unread", 0)
+            )
+            for row in totals
+        },
         [ChatSessionInfo.from_db(row) for row in rows],
         min_per_group,
         fill_to,
@@ -1047,8 +1124,14 @@ def _visible_sessions_where(
     return " AND ".join(conditions), params
 
 
+class _GroupCounts(NamedTuple):
+    total: int
+    attention: int
+    unread: int
+
+
 def _group_newest_sessions(
-    totals: dict[str | None, int],
+    totals: dict[str | None, _GroupCounts],
     sessions: list[ChatSessionInfo],
     min_per_group: int,
     fill_to: int,
@@ -1065,14 +1148,16 @@ def _group_newest_sessions(
     groups = [
         ChatSessionGroup(
             expert_id=expert_id,
-            total=total,
+            total=counts.total,
+            attention_count=counts.attention,
+            unread_count=counts.unread,
             sessions=[
                 s
                 for s in newest_first
                 if s.expert_id == expert_id and s.session_id in kept
             ],
         )
-        for expert_id, total in totals.items()
+        for expert_id, counts in totals.items()
     ]
     return sorted(
         (group for group in groups if group.sessions),
@@ -1163,7 +1248,8 @@ async def clear_session_pending_question(session_id: str, user_id: str) -> None:
 #  ("id", "userId", "title", "credentials", "createdAt", "updatedAt",
 #  "successfulAgentRuns", "successfulAgentSchedules", "metadata",
 #  "totalPromptTokens", "totalCompletionTokens", "chatStatus",
-#  "organizationId", "teamId", "isPinned", "expertId") plus "visibility",
+#  "organizationId", "teamId", "isPinned", "expertId", "lastTurnEndedAt",
+#  "lastTurnFailed", "lastReadAt") plus "visibility",
 #  "isShared", "autoShareExecutions" — those three are unused by ``from_db``
 #  but have no default on the generated ``PrismaChatSession`` model, so
 #  ``query_raw_with_schema(..., model=PrismaChatSession)`` raises a pydantic
@@ -1174,7 +1260,8 @@ _SESSION_INFO_COLUMNS = (
     '"successfulAgentRuns", "successfulAgentSchedules", "metadata", '
     '"totalPromptTokens", "totalCompletionTokens", "chatStatus", '
     '"organizationId", "teamId", "isPinned", "expertId", "visibility", '
-    '"isShared", "autoShareExecutions"'
+    '"isShared", "autoShareExecutions", "lastTurnEndedAt", "lastTurnFailed", '
+    '"lastReadAt"'
 )
 
 
@@ -1873,6 +1960,7 @@ async def update_chat_session_status(
     status: str,
     expect_status: str | None = None,
     user_id: str | None = None,
+    turn_failed: bool | None = None,
 ) -> bool:
     """Update ``ChatSession.chatStatus`` to ``status``.
 
@@ -1880,8 +1968,18 @@ async def update_chat_session_status(
     value — required for race-safe cancel/claim/restore (so two
     concurrent transitions can't both win).  Pass ``user_id`` to
     enforce ownership in the same statement (used by the user-initiated
-    cancel path).  Returns True iff the row was matched and updated.
+    cancel path).  Pass ``turn_failed`` when a turn ended, failed or
+    not, to record that end, which leaves the chat unread until its owner
+    opens it.  Returns True iff the row was matched and updated.
     """
+    if turn_failed is not None:
+        return await _end_turn(
+            session_id=session_id,
+            status=status,
+            expect_status=expect_status,
+            user_id=user_id,
+            turn_failed=turn_failed,
+        )
     where: ChatSessionWhereInput = {"id": session_id}
     if expect_status is not None:
         where["chatStatus"] = expect_status
@@ -1889,6 +1987,40 @@ async def update_chat_session_status(
         where["userId"] = user_id
     updated = await PrismaChatSession.prisma().update_many(
         where=where, data={"chatStatus": status}
+    )
+    return updated > 0
+
+
+async def _end_turn(
+    *,
+    session_id: str,
+    status: str,
+    expect_status: str | None,
+    user_id: str | None,
+    turn_failed: bool,
+) -> bool:
+    """The status flip of ``update_chat_session_status`` plus the turn's end,
+    stamped by the database's clock: ``mark_sessions_read`` stamps a read by
+    the same clock, and the two are compared to tell an unread chat. Sets
+    ``updatedAt`` as Prisma's ``@updatedAt`` would."""
+    params: list[Any] = [session_id, status, turn_failed]
+    where = '"id" = $1'
+    if expect_status is not None:
+        params.append(expect_status)
+        where += (
+            f' AND "chatStatus" = ${len(params)}::{{schema_prefix}}"ChatSessionStatus"'
+        )
+    if user_id is not None:
+        params.append(user_id)
+        where += f' AND "userId" = ${len(params)}'
+    updated = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" '
+        'SET "chatStatus" = $2::{schema_prefix}"ChatSessionStatus", '
+        '"updatedAt" = statement_timestamp(), '
+        '"lastTurnEndedAt" = statement_timestamp(), '
+        '"lastTurnFailed" = $3 '
+        "WHERE " + where,
+        *params,
     )
     return updated > 0
 

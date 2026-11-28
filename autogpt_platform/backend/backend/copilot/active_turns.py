@@ -155,17 +155,22 @@ async def get_running_session_ids(user_id: str) -> set[str]:
 ORPHAN_RUNNING_RESET_SECONDS = 30
 
 
-async def release_turn_slot(user_id: str, session_id: str) -> None:
+async def release_turn_slot(
+    user_id: str, session_id: str, *, turn_failed: bool | None = None
+) -> None:
     """Flip the session back to ``"idle"``.  Idempotent — the CAS on
     ``chatStatus='running'`` is a no-op when the status has already
-    changed (e.g. a parallel cancel)."""
+    changed (e.g. a parallel cancel).  ``turn_failed`` records, in the same
+    write, that the turn ended and how; see ``update_chat_session_status``."""
     if not user_id:
         return
+    turn_end = {} if turn_failed is None else {"turn_failed": turn_failed}
     if await chat_db().update_chat_session_status(
         session_id=session_id,
         expect_status=CHAT_STATUS_RUNNING,
         status=CHAT_STATUS_IDLE,
         user_id=user_id,
+        **turn_end,
     ):
         logger.info(
             f"release_turn_slot: session={session_id} user={user_id} "

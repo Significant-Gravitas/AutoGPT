@@ -81,6 +81,7 @@ from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
     AutopilotMode,
+    ChatAttention,
     ChatSession,
     ChatSessionInfo,
     LocalExecutionTargetMetadata,
@@ -231,7 +232,7 @@ from backend.copilot.transports import (
 )
 from backend.copilot.trial_reads import sharing_trial_reads
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-from backend.data.db_accessors import background_task_db
+from backend.data.db_accessors import background_task_db, chat_db
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
 from backend.data.workspace import build_files_block
@@ -692,6 +693,23 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    attention: ChatAttention | None = Field(
+        default=None,
+        description=(
+            "What the chat wants from its owner, the most urgent first: "
+            "`needs_you` (a question or an approval waits on them), `error` "
+            "(a turn failed since they last opened it) or `unread` (a turn "
+            "ended since then). Opening the chat clears `error` and `unread`."
+        ),
+    )
+    is_unread: bool = Field(
+        default=False,
+        description=(
+            "A turn ended since the owner last opened the chat. Also true for "
+            "a `needs_you` chat with such a turn, which marking read clears "
+            "while it keeps its marker."
+        ),
+    )
 
 
 class ListSessionsResponse(BaseModel):
@@ -706,6 +724,17 @@ class SessionGroupResponse(BaseModel):
 
     expert_id: str | None = None
     total: int = Field(description="Every chat in the group, not just those listed.")
+    attention_count: int = Field(
+        default=0, description="Of `total`, the chats with an `attention` marker."
+    )
+    unread_count: int = Field(
+        default=0,
+        description=(
+            "Of `total`, the chats with a turn their owner hasn't seen, which "
+            "marking read clears. It includes a chat shown as `needs_you` that "
+            "also has one; marking it read keeps its `needs_you` marker."
+        ),
+    )
     sessions: list[SessionSummaryResponse] = Field(
         description="The group's newest chats, newest first."
     )
@@ -719,6 +748,27 @@ class ListSessionGroupsResponse(BaseModel):
         default_factory=list,
         description="Pinned chats, newest first, when asked for separately.",
     )
+
+
+class MarkSessionsReadRequest(BaseModel):
+    """Which chats to mark read; every chat when both are left out."""
+
+    expert_id: str | None = Field(default=None, min_length=1, max_length=128)
+    autopilot_only: bool = Field(
+        default=False, description="Only Otto's own chats, those with no expert."
+    )
+    pinned: bool | None = Field(
+        default=None,
+        description=(
+            "Only pinned (true) or only unpinned (false) chats; both when left "
+            "out. Matches the grouped read's `pinned_separately`, whose counts "
+            "leave pinned chats out."
+        ),
+    )
+
+
+class MarkSessionsReadResponse(BaseModel):
+    marked: int = Field(description="How many unread chats were marked read.")
 
 
 class CancelSessionResponse(BaseModel):
@@ -993,7 +1043,7 @@ async def list_sessions(
     pinned: bool | None = Query(
         default=None,
         description=(
-            "Only pinned (true) or only unpinned (false) chats; both when " "left out."
+            "Only pinned (true) or only unpinned (false) chats; both when left out."
         ),
     ),
 ) -> ListSessionsResponse:
@@ -1020,19 +1070,22 @@ async def list_sessions(
             status_code=400,
             detail="Pass expert_id or autopilot_only, not both.",
         )
-    sessions, total_count = await get_user_sessions(
-        user_id,
-        limit,
-        offset,
-        organization_id=ctx.org_id,
-        expert_id=expert_id,
-        pinned_first=pinned_first,
-        autopilot_only=autopilot_only,
-        pinned=pinned,
+    (sessions, total_count), awaiting = await asyncio.gather(
+        get_user_sessions(
+            user_id,
+            limit,
+            offset,
+            organization_id=ctx.org_id,
+            expert_id=expert_id,
+            pinned_first=pinned_first,
+            autopilot_only=autopilot_only,
+            pinned=pinned,
+        ),
+        _chats_awaiting_review(user_id),
     )
     running = await _running_session_ids(sessions)
     return ListSessionsResponse(
-        sessions=[_session_summary(session, running) for session in sessions],
+        sessions=[_session_summary(session, running, awaiting) for session in sessions],
         total=total_count,
     )
 
@@ -1077,12 +1130,15 @@ async def list_session_groups(
     with ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for
     Otto's.
     """
-    groups, pinned = await get_user_session_groups(
-        user_id,
-        min_per_group,
-        limit,
-        organization_id=ctx.org_id,
-        pinned_separately=pinned_separately,
+    (groups, pinned), awaiting = await asyncio.gather(
+        get_user_session_groups(
+            user_id,
+            min_per_group,
+            limit,
+            organization_id=ctx.org_id,
+            pinned_separately=pinned_separately,
+        ),
+        _chats_awaiting_review(user_id),
     )
     running = await _running_session_ids(
         [*pinned, *(session for group in groups for session in group.sessions)]
@@ -1092,12 +1148,74 @@ async def list_session_groups(
             SessionGroupResponse(
                 expert_id=group.expert_id,
                 total=group.total,
-                sessions=[_session_summary(s, running) for s in group.sessions],
+                attention_count=group.attention_count,
+                unread_count=group.unread_count,
+                sessions=[
+                    _session_summary(s, running, awaiting) for s in group.sessions
+                ],
             )
             for group in groups
         ],
-        pinned=[_session_summary(session, running) for session in pinned],
+        pinned=[_session_summary(session, running, awaiting) for session in pinned],
     )
+
+
+@router.post(
+    "/sessions/read",
+    dependencies=[Security(auth.requires_user)],
+)
+async def mark_sessions_read(
+    request: MarkSessionsReadRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
+) -> MarkSessionsReadResponse:
+    """
+    Mark the user's unread chats read, on every device: one expert's, Otto's
+    own, or all of them. A chat waiting on a question or an approval keeps
+    its `needs_you` marker until that is answered.
+    """
+    if request.expert_id is not None and request.autopilot_only:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass expert_id or autopilot_only, not both.",
+        )
+    marked = await chat_db().mark_sessions_read(
+        user_id,
+        ctx.org_id,
+        expert_id=request.expert_id,
+        autopilot_only=request.autopilot_only,
+        pinned=request.pinned,
+    )
+    return MarkSessionsReadResponse(marked=marked)
+
+
+@router.post(
+    "/sessions/{session_id}/read",
+    dependencies=[Security(auth.requires_user)],
+    status_code=204,
+)
+async def mark_session_read(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
+) -> Response:
+    """
+    Mark one chat read on every device, once its owner has seen it. A chat
+    that isn't theirs, or has nothing unread, is left as it is.
+    """
+    await chat_db().mark_sessions_read(user_id, ctx.org_id, session_id=session_id)
+    return Response(status_code=204)
+
+
+async def _chats_awaiting_review(user_id: str) -> set[str]:
+    """The user's chats with an approval waiting. A failed read only costs
+    those chats their `needs_you` marker until the next poll; it must not
+    take the chat list down with it."""
+    try:
+        return await chat_db().get_chats_awaiting_review(user_id)
+    except Exception:
+        logger.warning("Failed to read chats awaiting review", exc_info=True)
+        return set()
 
 
 async def _running_session_ids(sessions: list[ChatSessionInfo]) -> set[str]:
@@ -1130,7 +1248,7 @@ async def _running_session_ids(sessions: list[ChatSessionInfo]) -> set[str]:
 
 
 def _session_summary(
-    session: ChatSessionInfo, running: set[str]
+    session: ChatSessionInfo, running: set[str], awaiting_review: set[str]
 ) -> SessionSummaryResponse:
     return SessionSummaryResponse(
         id=session.session_id,
@@ -1142,6 +1260,8 @@ def _session_summary(
         source_platform=session.metadata.source_platform,
         is_pinned=session.is_pinned,
         expert_id=session.expert_id,
+        attention=session.attention(session.session_id in awaiting_review),
+        is_unread=session.is_unread,
     )
 
 
