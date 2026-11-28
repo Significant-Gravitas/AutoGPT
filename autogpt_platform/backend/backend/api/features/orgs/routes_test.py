@@ -893,6 +893,182 @@ class TestOrgRoutes:
 
         assert exc_info.value.status_code == 403
 
+    # ── avatar_url host allowlist ──────────────────────────────────────────
+
+    def _mock_update_org(self):
+        from backend.api.features.orgs.model import OrgResponse
+
+        self.mock_db.update_org = AsyncMock(
+            return_value=OrgResponse(
+                id=ORG_ID,
+                name="Acme",
+                slug="acme",
+                avatar_url="https://storage.googleapis.com/media/a.png",
+                description=None,
+                is_personal=False,
+                member_count=1,
+                created_at=FIXED_NOW,
+            )
+        )
+
+    def _patch_org(self, json_body):
+        from autogpt_libs.auth.dependencies import get_request_context
+
+        self.app.dependency_overrides[get_request_context] = lambda: _owner_ctx(
+            org_id=ORG_ID, user_id=self._user_id
+        )
+        return self.client.patch(f"/orgs/{ORG_ID}", json=json_body)
+
+    def test_update_org_rejects_avatar_url_on_disallowed_host(self):
+        """SECURITY: avatar URLs must not point at arbitrary hosts."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "https://attacker.example/a.png"})
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_rejects_avatar_url_lookalike_host(self):
+        """A suffix of an allowed host is not an allowed host."""
+        self._mock_update_org()
+
+        resp = self._patch_org(
+            {"avatar_url": "https://storage.googleapis.com.attacker.example/a.png"}
+        )
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_rejects_avatar_url_with_non_http_scheme(self):
+        """javascript:, data: etc. are not renderable image URLs."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "javascript:alert(1)"})
+
+        assert resp.status_code == 422
+        self.mock_db.update_org.assert_not_called()
+
+    def test_update_org_accepts_avatar_url_on_allowed_host(self):
+        """Our own media storage host (next/image allowlist) is accepted."""
+        self._mock_update_org()
+
+        resp = self._patch_org(
+            {"avatar_url": "https://storage.googleapis.com/media/users/a.png"}
+        )
+
+        assert resp.status_code == 200
+        self.mock_db.update_org.assert_called_once()
+        assert (
+            self.mock_db.update_org.call_args.args[1].avatar_url
+            == "https://storage.googleapis.com/media/users/a.png"
+        )
+
+    def test_update_org_accepts_relative_avatar_url(self):
+        """Relative paths render from our own origin through next/image."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": "/media/users/a.png"})
+
+        assert resp.status_code == 200
+
+    def test_update_org_treats_null_avatar_url_as_no_change(self):
+        """null means "leave unchanged" — update_org only writes avatarUrl
+        when the field is not None (db.py), so the avatar stays as-is."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": None})
+
+        assert resp.status_code == 200
+        self.mock_db.update_org.assert_called_once()
+        assert self.mock_db.update_org.call_args.args[1].avatar_url is None
+
+    @pytest.mark.parametrize(
+        ("avatar_url", "reason"),
+        [
+            ("https://storage.googleapis.com:invalid/a.png", "non-numeric port"),
+            ("https://storage.googleapis.com:999999/a.png", "out-of-range port"),
+            ("//attacker.example/a.png", "protocol-relative URL"),
+            ("/\\attacker.example/a.png", "backslash folds to '/' in browsers"),
+            ("\\\\attacker.example/a.png", "backslash folds to '/' in browsers"),
+            ("/\t/attacker.example/a.png", "tab is stripped, leaving '//host/...'"),
+            ("\t//attacker.example/a.png", "tab is stripped, leaving '//host/...'"),
+            ("a.png", "resolves against the page path, not the media prefix"),
+            ("http://lh3.googleusercontent.com/a.png", "https-only host over http"),
+            ("http://storage.cloud.google.com/a.png", "https-only host over http"),
+            (
+                "https://user:secret@storage.googleapis.com/a.png",
+                "fetch() rejects URLs that embed credentials",
+            ),
+        ],
+    )
+    def test_update_org_rejects_avatar_url_render_tricks(self, avatar_url, reason):
+        """Inputs that parse as "relative" or scheme-clean locally but would
+        re-target the avatar or fail next/image at render time."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": avatar_url})
+
+        assert resp.status_code == 422, avatar_url
+        self.mock_db.update_org.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "avatar_url",
+        [
+            # `domains` hosts keep the configured http support
+            "http://storage.googleapis.com/a.png",
+            "http://images.unsplash.com/a.png",
+            # https-only hosts are fine over https
+            "https://lh3.googleusercontent.com/a.png",
+            "https://storage.cloud.google.com/a.png",
+            # valid ports stay accepted
+            "https://storage.googleapis.com:443/a.png",
+        ],
+    )
+    def test_update_org_accepts_avatar_url_scheme_and_port_variants(
+        self, avatar_url
+    ):
+        """Accepted http(s) forms must match what next/image is configured for."""
+        self._mock_update_org()
+
+        resp = self._patch_org({"avatar_url": avatar_url})
+
+        assert resp.status_code == 200, avatar_url
+
+    def test_avatar_allowlist_matches_frontend_image_config(self):
+        """ALLOWED_AVATAR_HOSTS mirrors `images` in next.config.mjs, and the
+        https-only split follows its `domains` vs `remotePatterns` distinction,
+        so the backend never stores an avatar next/image would refuse."""
+        import re
+        from pathlib import Path
+
+        from backend.api.features.orgs.model import (
+            ALLOWED_AVATAR_HOSTS,
+            HTTPS_ONLY_AVATAR_HOSTS,
+        )
+
+        next_config = (
+            Path(__file__).resolve().parents[5]
+            / "frontend"
+            / "next.config.mjs"
+        )
+        config = next_config.read_text(encoding="utf-8")
+
+        # `domains` entries accept any protocol; `remotePatterns` entries are
+        # https-only (each carries an explicit protocol: "https").
+        domains_block = re.search(
+            r"domains:\s*\[(?P<body>.*?)\]", config, re.DOTALL
+        ).group("body")
+        remote_block = re.search(
+            r"remotePatterns:\s*\[(?P<body>.*?)\]", config, re.DOTALL
+        ).group("body")
+
+        domains_hosts = set(re.findall(r'"([^"]+)"', domains_block))
+        remote_hosts = set(re.findall(r'hostname:\s*"([^"]+)"', remote_block))
+
+        assert domains_hosts and remote_hosts
+        assert ALLOWED_AVATAR_HOSTS == domains_hosts | remote_hosts
+        assert HTTPS_ONLY_AVATAR_HOSTS == remote_hosts - domains_hosts
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. WORKSPACE CRUD (team_db.py)
