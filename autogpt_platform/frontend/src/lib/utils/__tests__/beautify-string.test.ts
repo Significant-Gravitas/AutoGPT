@@ -19,6 +19,9 @@ describe("beautifyString", () => {
     expect(beautifyString("AllQuietGetOnCallBlock")).toBe(
       "AllQuiet Get On Call Block",
     );
+    expect(beautifyString("WebRouterSearchBlock")).toBe(
+      "WebRouter Search Block",
+    );
   });
 
   it("splits ordinary camel case into words", () => {
