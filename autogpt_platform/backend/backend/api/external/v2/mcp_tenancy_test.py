@@ -13,7 +13,9 @@ from backend.api.external.v2.mcp_tenancy import (
     check_ids_in_tenant,
 )
 from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools.agent_generator.core import MAX_LIBRARY_AGENT_IDS
 from backend.util.exceptions import NotFoundError
+from backend.util.text_limits import MAX_LIST_ENTRIES
 
 USER = "user-1"
 ORG = "org-1"
@@ -58,11 +60,27 @@ def test_the_classification_names_no_stale_tool_or_argument():
     assert not stale, f"Classified arguments no exposed tool takes: {stale}"
 
 
+def test_an_argument_named_for_a_list_is_the_tools_only_list():
+    """The check refuses a list where a tool takes one id, by the name alone."""
+    mismatched = sorted(
+        f"{name}.{arg}"
+        for name, arguments in TENANTED_ARGS.items()
+        for arg in arguments
+        if (
+            TOOL_REGISTRY[name].external_parameters["properties"][arg].get("type")
+            == "array"
+        )
+        != arg.endswith("_ids")
+    )
+    assert (
+        not mismatched
+    ), f"List arguments not named *_ids, or the reverse: {mismatched}"
+
+
 @pytest.fixture
 def library(mocker: pytest_mock.MockerFixture) -> MagicMock:
     lib = MagicMock()
-    lib.get_library_agent = AsyncMock(side_effect=NotFoundError("no"))
-    lib.get_library_agent_by_graph_id = AsyncMock(return_value=None)
+    lib.get_library_agent_organizations_by_any_id = AsyncMock(return_value={})
     lib.get_folder = AsyncMock(side_effect=NotFoundError("no"))
     mocker.patch("backend.api.external.v2.mcp_tenancy.library_db", return_value=lib)
     return lib
@@ -71,7 +89,7 @@ def library(mocker: pytest_mock.MockerFixture) -> MagicMock:
 @pytest.fixture
 def graphs(mocker: pytest_mock.MockerFixture) -> MagicMock:
     db = MagicMock()
-    db.get_graph = AsyncMock(return_value=None)
+    db.get_owned_graph_organizations = AsyncMock(return_value={})
     mocker.patch("backend.api.external.v2.mcp_tenancy.graph_db", return_value=db)
     return db
 
@@ -129,49 +147,85 @@ async def test_an_id_naming_nothing_is_left_to_the_tool(
 async def test_a_library_agent_in_another_organization_is_not_found(
     library: MagicMock, graphs: MagicMock
 ):
-    library.get_library_agent = AsyncMock(return_value=_row("org-2"))
+    library.get_library_agent_organizations_by_any_id.return_value = {
+        "agent-1": ["org-2"]
+    }
 
     with pytest.raises(ToolError, match="Library agent 'agent-1' not found"):
         await check_ids_in_tenant(
             "run_agent", {"library_agent_id": "agent-1"}, USER, ORG
         )
-    graphs.get_graph.assert_not_called()
+    graphs.get_owned_graph_organizations.assert_not_called()
 
 
-async def test_an_agent_named_by_its_graph_id_is_checked_too(
+async def test_an_id_naming_two_entries_needs_both_in_the_organization(
     library: MagicMock, graphs: MagicMock
 ):
-    library.get_library_agent_by_graph_id = AsyncMock(return_value=_row("org-2"))
+    """One entry by its own id, another by its graph's."""
+    library.get_library_agent_organizations_by_any_id.return_value = {
+        "graph-1": [ORG, "org-2"]
+    }
 
     with pytest.raises(ToolError, match="Library agent 'graph-1' not found"):
         await check_ids_in_tenant("edit_agent", {"agent_id": "graph-1"}, USER, ORG)
-    library.get_library_agent_by_graph_id.assert_awaited_once_with(
-        USER, "graph-1", include_archived=True
-    )
 
 
 async def test_an_own_graph_without_a_library_entry_is_checked_by_its_own_tag(
     library: MagicMock, graphs: MagicMock
 ):
-    graphs.get_graph = AsyncMock(return_value=_row("org-2", user_id=USER))
+    graphs.get_owned_graph_organizations.return_value = {"graph-1": "org-2"}
 
     with pytest.raises(ToolError, match="Library agent 'graph-1' not found"):
         await check_ids_in_tenant("edit_agent", {"agent_id": "graph-1"}, USER, ORG)
+    graphs.get_owned_graph_organizations.assert_awaited_once_with(USER, ["graph-1"])
 
 
-async def test_someone_elses_graph_is_left_to_the_tool(
+async def test_a_list_is_resolved_in_one_read_and_each_id_once(
     library: MagicMock, graphs: MagicMock
 ):
-    """A marketplace graph carries its publisher's organization, not the caller's."""
-    graphs.get_graph = AsyncMock(return_value=_row("org-2", user_id="publisher"))
+    ids = [f"agent-{i}" for i in range(MAX_LIST_ENTRIES - 1)] + [" agent-0 "]
+    unique = ids[:-1]
+    library.get_library_agent_organizations_by_any_id.return_value = {"agent-0": [ORG]}
 
-    await check_ids_in_tenant("edit_agent", {"agent_id": "graph-1"}, USER, ORG)
+    await check_ids_in_tenant("move_agents_to_folder", {"agent_ids": ids}, USER, ORG)
+
+    library.get_library_agent_organizations_by_any_id.assert_awaited_once_with(
+        USER, unique
+    )
+    graphs.get_owned_graph_organizations.assert_awaited_once_with(USER, unique[1:])
+
+
+@pytest.mark.parametrize(
+    "tool, args",
+    [
+        ("move_agents_to_folder", {"agent_ids": ["agent-1"] * (MAX_LIST_ENTRIES + 1)}),
+        (
+            "create_agent",
+            {"library_agent_ids": [f"a-{i}" for i in range(MAX_LIBRARY_AGENT_IDS + 1)]},
+        ),
+        ("create_agent", {"library_agent_ids": "agent-1"}),
+        ("create_agent", {"library_agent_ids": {"agent-1": "agent-2"}}),
+        ("move_agents_to_folder", {"agent_ids": ["agent-1", 7]}),
+        ("list_presets", {"graph_id": ["graph-1", "graph-2"]}),
+        ("delete_folder", {"folder_id": {"id": "folder-1"}}),
+    ],
+)
+async def test_an_argument_the_tool_cant_take_is_refused_unread(
+    library: MagicMock, graphs: MagicMock, tool: str, args: dict
+):
+    with pytest.raises(ToolError, match="must be|at most"):
+        await check_ids_in_tenant(tool, args, USER, ORG)
+
+    library.get_library_agent_organizations_by_any_id.assert_not_called()
+    library.get_folder.assert_not_called()
+    graphs.get_owned_graph_organizations.assert_not_called()
 
 
 async def test_every_id_in_a_list_is_checked(library: MagicMock, graphs: MagicMock):
-    library.get_library_agent = AsyncMock(
-        side_effect=[_row(ORG), _row("org-2")],
-    )
+    library.get_library_agent_organizations_by_any_id.return_value = {
+        "agent-1": [ORG],
+        "agent-2": ["org-2"],
+    }
 
     with pytest.raises(ToolError, match="Library agent 'agent-2' not found"):
         await check_ids_in_tenant(

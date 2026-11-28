@@ -63,6 +63,7 @@ from backend.data.graph import (
     get_graph_all_versions,
     get_graph_at_version,
     get_graph_settings,
+    get_owned_graph_organizations,
     get_store_listed_graphs,
     graph_in_library_filter,
     graph_owner_id,
@@ -431,6 +432,39 @@ async def test_is_graph_version_owner(server: SpinTestServer):
     assert not await is_graph_version_owner(
         created.id, created.version + 1, DEFAULT_USER_ID
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_owned_graph_organizations(server: SpinTestServer):
+    """A graph carries the tag of the version `get_graph(version=None)` gives
+    its owner: the active one, else the newest. Another user's is left out."""
+    other_user = await create_test_user(alt_user=True)
+    active_id, inactive_id, their_graph_id = str(uuid4()), str(uuid4()), str(uuid4())
+    for graph, version, user_id, organization_id, is_active in (
+        (active_id, 1, DEFAULT_USER_ID, "org-active", True),
+        (active_id, 2, DEFAULT_USER_ID, "org-newer", False),
+        (inactive_id, 1, DEFAULT_USER_ID, "org-old", False),
+        (inactive_id, 2, DEFAULT_USER_ID, "org-newest", False),
+        (their_graph_id, 1, other_user.id, "org-theirs", True),
+    ):
+        await AgentGraph.prisma().create(
+            data={
+                "id": graph,
+                "version": version,
+                "userId": user_id,
+                "organizationId": organization_id,
+                "isActive": is_active,
+            }
+        )
+
+    organizations = await get_owned_graph_organizations(
+        DEFAULT_USER_ID, [active_id, inactive_id, their_graph_id, "no-such-graph"]
+    )
+
+    assert organizations == {active_id: "org-active", inactive_id: "org-newest"}
+    for graph_id, organization_id in organizations.items():
+        graph = await get_graph(graph_id, None, user_id=DEFAULT_USER_ID)
+        assert graph is not None and graph.organization_id == organization_id
 
 
 @pytest.mark.asyncio(loop_scope="session")
