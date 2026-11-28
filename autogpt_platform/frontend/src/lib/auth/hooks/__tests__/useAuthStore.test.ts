@@ -11,6 +11,7 @@ vi.mock("../../actions", () => ({
 }));
 vi.mock("../../helpers", () => ({
   broadcastLogout: vi.fn(),
+  clearWebSocketDisconnectIntent: vi.fn(),
   navigateWithFullLoad: vi.fn(),
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
@@ -572,5 +573,102 @@ describe("useAuthStore account change", () => {
     await vi.dynamicImportSettled();
 
     expect(mockClearAllCompletedSessions).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuthStore.seedFromServer", () => {
+  const user = { id: "user-1", role: "authenticated" } as User;
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  beforeEach(() => {
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+  });
+
+  afterEach(() => {
+    useAuthStore.getState().cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("drops a start-up lookup already on its way and checks the session itself", async () => {
+    const router = makeRouter();
+    const lookup = deferred<Awaited<ReturnType<typeof fetchUser>>>();
+    vi.mocked(fetchUser).mockReturnValue(lookup.promise);
+    const check = deferred<Awaited<ReturnType<typeof validateSessionHelper>>>();
+    vi.mocked(validateSessionHelper).mockReturnValue(check.promise);
+
+    const startUp = useAuthStore
+      .getState()
+      .initialize({ api: makeApi(), router, path: "/home" });
+    useAuthStore.getState().seedFromServer(user);
+
+    expect(useAuthStore.getState()).toMatchObject({
+      user,
+      isUserLoading: false,
+    });
+
+    // The lookup answers that nobody is signed in; it started before the
+    // server's answer, so it's dropped rather than applied.
+    lookup.resolve({ user: null, hasLoadedUser: false, isUserLoading: false });
+    await vi.waitFor(() =>
+      expect(validateSessionHelper).toHaveBeenCalledWith({
+        path: "/home",
+        currentUser: user,
+      }),
+    );
+    expect(useAuthStore.getState().user).toBe(user);
+
+    // The session check that follows decides.
+    check.resolve({
+      isValid: false,
+      redirectPath: "/login?next=%2Fhome",
+      shouldUpdateUser: true,
+    });
+    await startUp;
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Fhome");
+  });
+
+  it("is ignored once this tab has an answer of its own", async () => {
+    vi.mocked(fetchUser).mockResolvedValue({
+      user: null,
+      hasLoadedUser: true,
+      isUserLoading: false,
+    });
+    vi.mocked(validateSessionHelper).mockResolvedValue({
+      isValid: false,
+      shouldUpdateUser: true,
+    });
+    await useAuthStore
+      .getState()
+      .initialize({ api: makeApi(), router: makeRouter(), path: "/home" });
+
+    useAuthStore.getState().seedFromServer(user);
+
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("lets the WebSocket connect for the seeded user", async () => {
+    const { clearWebSocketDisconnectIntent } = await import("../../helpers");
+
+    useAuthStore.getState().seedFromServer(user);
+
+    expect(clearWebSocketDisconnectIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it("is taken once per page load", () => {
+    useAuthStore.getState().seedFromServer(user);
+    useAuthStore.setState({ user: null, isUserLoading: true });
+
+    useAuthStore.getState().seedFromServer({ ...user, id: "user-2" });
+
+    expect(useAuthStore.getState().user).toBeNull();
   });
 });
