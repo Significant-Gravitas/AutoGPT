@@ -1,4 +1,5 @@
 import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
@@ -24,6 +25,7 @@ type Props = {
   agent: LibraryAgent;
   run: GraphExecution | undefined;
   onSelectRun?: (id: string) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
   onClearSelectedRun?: () => void;
 };
 
@@ -31,6 +33,7 @@ export function SelectedRunActions({
   agent,
   run,
   onSelectRun,
+  onScheduleCreated,
   onClearSelectedRun,
 }: Props) {
   const {
@@ -101,6 +104,7 @@ export function SelectedRunActions({
           initialInputCredentials={rerunForm.credentials}
           fieldsToPick={rerunForm.fieldsToPick}
           onRunCreated={(execution) => onSelectRun?.(execution.id)}
+          onScheduleCreated={onScheduleCreated}
         />
       ) : null}
       {rerunForm && hasRerunVersionError ? (

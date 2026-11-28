@@ -7,9 +7,14 @@ import {
   getGetV2GetLibraryAgentResponseMock,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getGetV2ListPresetsMockHandler } from "@/app/api/__generated__/endpoints/presets/presets.msw";
-import { getGetV1ListExecutionSchedulesForAGraphMockHandler } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
+import {
+  getGetV1ListExecutionSchedulesForAGraphMockHandler,
+  getPostV1CreateExecutionScheduleMockHandler,
+  getPostV1CreateExecutionScheduleResponseMock,
+} from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { CredentialsMetaInputType } from "@/app/api/__generated__/models/credentialsMetaInputType";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
@@ -187,6 +192,13 @@ type ExecuteBody = {
   credentials_inputs?: Record<string, { id?: string }>;
 };
 
+type ScheduleBody = {
+  name?: string;
+  cron?: string;
+  graph_version?: number | null;
+  inputs?: Record<string, unknown>;
+};
+
 interface Setup {
   // The key the past run used
   runKey?: Key;
@@ -257,6 +269,9 @@ function setup({
   const runRequests: string[] = [];
   // The version each read of the workflow asked for
   const graphReads: Array<string | null> = [];
+  const scheduleBodies: ScheduleBody[] = [];
+  // The workflow's schedules, as the list answers once one is made
+  const schedules: GraphExecutionJobInfo[] = [];
 
   server.use(
     getGetV2GetLibraryAgentMockHandler(
@@ -315,7 +330,20 @@ function setup({
         node_executions: [],
       };
     }),
-    getGetV1ListExecutionSchedulesForAGraphMockHandler([]),
+    getGetV1ListExecutionSchedulesForAGraphMockHandler(() => schedules),
+    getPostV1CreateExecutionScheduleMockHandler(async ({ request }) => {
+      const body = (await request.json()) as ScheduleBody;
+      scheduleBodies.push(body);
+      const schedule = getPostV1CreateExecutionScheduleResponseMock({
+        id: "new-schedule",
+        name: body.name || "Rerun schedule",
+        cron: body.cron || "0 9 * * 1",
+        graph_id: "graph-1",
+        graph_version: body.graph_version ?? libraryVersion,
+      });
+      schedules.push(schedule);
+      return schedule;
+    }),
     getGetV2ListPresetsMockHandler({
       presets: [],
       pagination: {
@@ -350,7 +378,7 @@ function setup({
     </>,
   );
 
-  return { executeBodies, runRequests, graphReads };
+  return { executeBodies, runRequests, graphReads, scheduleBodies };
 }
 
 // Shows once the user's saved keys, which a rerun checks, have loaded. The
@@ -845,6 +873,32 @@ describe("the run form reruns the workflow version the task ran", () => {
     expect(runRequests[0]).toMatch(/\/execute\/1$/);
   });
 
+  test("scheduling from the rerun form schedules the version the task ran, and shows the new schedule", async () => {
+    const { scheduleBodies, runRequests } = setup({ libraryVersion: 2 });
+    await waitForRunView();
+
+    await rerun();
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    expect(await within(form).findByDisplayValue("news")).toBeDefined();
+    await userEvent.selectOptions(
+      await within(form).findByRole("combobox", { name: PICKER }),
+      OTHER_KEY.id,
+    );
+    await clickWhenEnabled("Schedule Task", form);
+    await clickWhenEnabled("Schedule", document.body);
+
+    await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+    expect(scheduleBodies[0].graph_version).toBe(RUN_VERSION);
+    expect(scheduleBodies[0].inputs).toEqual({ topic: "news" });
+    expect(runRequests).toHaveLength(0);
+    // The page moves to the new schedule, as Start Task moves to the new run
+    expect(await screen.findByText("Recurrence")).toBeDefined();
+    expect(
+      screen.getAllByText(scheduleBodies[0].name || "Rerun schedule").length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(`Output of ${RUN_ID}`)).toBeNull();
+  });
+
   test("a task of the workflow's current version opens its form without reading the workflow", async () => {
     // No key of the user's own is left, so nothing else on the page reads
     // the workflow either
@@ -888,8 +942,8 @@ test("a refusal that comes back after the user moved to another task opens no fo
   await showTask(LATER_RUN_ID);
   refuse?.();
 
-  // The refusal is still told. Its toast renders in the same pass that used to
-  // open the form here, with the first task's inputs on the later task's version
+  // The refusal is still told. Its toast renders in the same pass a stale form
+  // would open in, with the first task's inputs on the later task's version
   expect(await screen.findByText("Failed to start run")).toBeDefined();
   expect(
     screen.getByText("A key this task used was deleted: My Firecrawl key."),
