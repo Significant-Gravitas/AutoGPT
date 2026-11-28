@@ -62,6 +62,9 @@ def app(mocker):
         ),
     )
     client = MagicMock()
+    client.organization.find_unique = AsyncMock(
+        return_value=MagicMock(isPersonal=False)
+    )
     client.orginvitation.create = AsyncMock(side_effect=_stored_invitation)
     mocker.patch.object(invitation_routes, "prisma", client)
     return app
@@ -157,7 +160,7 @@ async def test_accepting_grants_the_role_only_while_the_inviter_holds_billing(
         }
     )
     invitation.acceptedAt = invitation.revokedAt = None
-    invitation.Org = MagicMock(deletedAt=None)
+    invitation.Org = MagicMock(deletedAt=None, isPersonal=False)
     client = MagicMock()
     client.orginvitation.find_unique = AsyncMock(return_value=invitation)
     client.orginvitation.update = AsyncMock()

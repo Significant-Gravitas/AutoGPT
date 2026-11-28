@@ -182,6 +182,7 @@ def _meet_the_other_call_at_the_owner_row(
                 where.get("orgId_userId", {}).get("userId"),
             ):
                 try:
+                    # hang-cap: correct code holds the other call, so this runs out.
                     await asyncio.wait_for(barrier.wait(), timeout=2)
                 except (TimeoutError, asyncio.BrokenBarrierError):
                     if not _lenient:
