@@ -80,12 +80,7 @@ class CodeExtractionBlock(Block):
 
         # Extract code for each language
         for canonical_name, aliases in language_aliases.items():
-            code = ""
-            # Try each alias for the language
-            for alias in aliases:
-                code_for_alias = self.extract_code(input_data.text, alias)
-                if code_for_alias:
-                    code = code + "\n\n" + code_for_alias if code else code_for_alias
+            code = self.extract_code(input_data.text, *aliases)
 
             if code:  # Only yield if there's actual code content
                 yield canonical_name, code
@@ -111,15 +106,22 @@ class CodeExtractionBlock(Block):
         if remaining_text:  # Only yield if there's remaining text
             yield "remaining_text", remaining_text
 
-    def extract_code(self, text: str, language: str) -> str:
-        opener = re.compile(rf"```{re.escape(language)}[ \t]*\n", re.IGNORECASE)
+    def extract_code(self, text: str, language: str, *aliases: str) -> str:
+        labels = "|".join(re.escape(label) for label in (language, *aliases))
+        opener = re.compile(rf"```(?:{labels})[ \t]*\n", re.IGNORECASE)
+        bare_closer = re.compile(r"```[ \t]*(?:\n|$)")
         code_blocks = []
         position = 0
         # A fence with no closer ends the search, as no later fence can have one.
         while opening := opener.search(text, position):
+            # The opener has already consumed the newline before an empty body.
+            if empty_closer := bare_closer.match(text, opening.end()):
+                position = empty_closer.end()
+                continue
             closing = text.find("\n```", opening.end())
             if closing == -1:
                 break
-            code_blocks.append(text[opening.end() : closing].strip())
+            if code := text[opening.end() : closing].strip():
+                code_blocks.append(code)
             position = closing + len("\n```")
         return "\n\n".join(code_blocks)
