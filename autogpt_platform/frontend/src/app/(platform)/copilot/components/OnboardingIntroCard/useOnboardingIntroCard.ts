@@ -168,6 +168,9 @@ export function useOnboardingIntroCard() {
     // stays centered — that is the distance the orb travels when the
     // greeting lands.
     anchorTop: isVisible,
+    // Whether the page knows which of the three it shows: greeting, loader or
+    // the regular hero.
+    isResolved: isMounted && (isDone || hasIntroAnswer),
     // Independent of the greeting: whether someone has had the walkthrough
     // has nothing to do with whether they have sent their first message.
     isFirstRunPending,

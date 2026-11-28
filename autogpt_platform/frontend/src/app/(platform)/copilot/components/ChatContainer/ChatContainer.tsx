@@ -17,6 +17,7 @@ import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
+import { useReportChatLoaded } from "../ChatFrame/chatFrameHandoff";
 import { EmptySession } from "../EmptySession/EmptySession";
 import { getPendingOnboardingCallId } from "../ExpertOnboardingCard/helpers";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
@@ -245,6 +246,16 @@ export const ChatContainer = ({
       : null;
   useShareChatExpert(chatExpert);
   const isTurnLocked = isExpertArchived || !!isResolvingExpertIdentity;
+  // An open chat has loaded once its composer can take text, or once it never
+  // will: a chat that failed to load, is gone, or is with a fired expert.
+  useReportChatLoaded(
+    sessionId
+      ? !isInputDisabled ||
+          !!isSessionError ||
+          !!isSessionNotFound ||
+          isExpertArchived
+      : null,
+  );
   const isSendLocked = isTurnLocked || isLimitReached;
   // The usage limit pauses the composer only. A card's answers, a review
   // approval, a retry or a voice turn still go to the server, which refuses
@@ -619,6 +630,7 @@ export const ChatContainer = ({
                     <TooltipTrigger asChild>
                       <div>
                         <ChatInput
+                          takesFrameHandoff
                           inputId={SESSION_COMPOSER_ID}
                           draftKey={sessionDraftKey(sessionId)}
                           // An unanswered card takes the keys for its shortcuts.

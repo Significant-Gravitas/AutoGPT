@@ -68,6 +68,7 @@ import {
   getFilesFromClipboard,
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
+import { useComposerHandoff } from "./useComposerHandoff";
 import { useChatMentions } from "./useChatMentions";
 import { useConnectedIntegrations } from "./useConnectedIntegrations";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
@@ -144,6 +145,8 @@ interface Props {
   /** Out of AutoPilot budget with a reset ahead: the text stays editable and
    *  submitting sets it to send at the reset. Text only. */
   atReset?: { onSchedule: (message: string) => Promise<void> };
+  /** The page's own composer: it takes over the chat frame's message box. */
+  takesFrameHandoff?: boolean;
 }
 
 // memo-boundary: the chat page re-renders on every streamed flush, and the
@@ -180,6 +183,7 @@ export const ChatInput = memo(function ChatInput({
   assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
+  takesFrameHandoff = false,
 }: Props) {
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setIsDryRun = useCopilotUIStore((s) => s.setIsDryRun);
@@ -284,6 +288,15 @@ export const ChatInput = memo(function ChatInput({
       autoFocus,
       failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
+
+  useComposerHandoff({
+    inputId,
+    draftKey,
+    takesFrame: takesFrameHandoff,
+    value,
+    setValue,
+    autoFocus,
+  });
 
   const integrations = useConnectedIntegrations(expertId);
 
