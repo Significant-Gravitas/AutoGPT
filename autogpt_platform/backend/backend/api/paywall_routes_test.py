@@ -77,6 +77,8 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
     "GET /api/oauth/apps/mine",
+    "GET /api/oauth/grants",
+    "DELETE /api/oauth/grants/{app_id}",
     "POST /api/oauth/authorize",
     "POST /api/oauth/authorize/deny",
     "GET /api/orgs",

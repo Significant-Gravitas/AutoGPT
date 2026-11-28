@@ -51,6 +51,7 @@ from backend.data.auth.oauth import (
     OAuthApplicationInfo,
     RefreshTokenFamilyRevokedError,
     TokenIntrospectionResult,
+    confirm_code_still_granted,
     consume_authorization_code,
     create_access_token,
     create_authorization_code,
@@ -81,7 +82,7 @@ router = APIRouter()
 MAX_STATE_LENGTH = 16_384
 
 
-async def _push_shim_revocation(user_id: str, client_id: str) -> None:
+async def push_shim_revocation(user_id: str, client_id: str) -> None:
     """Have this user's Local PC connections for the app recheck their tokens.
 
     Each computer signs in on its own, so only the connections whose own token
@@ -615,6 +616,10 @@ async def token(
             scopes,
             refresh_family_id=refresh_family_id,
         )
+        try:
+            await confirm_code_still_granted(request.code, refresh_family_id)
+        except InvalidGrantError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         logger.info(
             f"Access token issued for user #{user_id} and app {app.name} (#{app.id})"
@@ -644,7 +649,7 @@ async def token(
                 request.refresh_token, app.id
             )
         except RefreshTokenFamilyRevokedError as e:
-            await _push_shim_revocation(e.user_id, app.client_id)
+            await push_shim_revocation(e.user_id, app.client_id)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e),
@@ -806,7 +811,7 @@ async def revoke(
                 f"Access token revoked for app {app.name} (#{app.id}); "
                 f"user #{revoked.user_id}"
             )
-            await _push_shim_revocation(revoked.user_id, app.client_id)
+            await push_shim_revocation(revoked.user_id, app.client_id)
             return {"status": "ok"}
 
     # Try to revoke as refresh token
@@ -816,7 +821,7 @@ async def revoke(
             f"Refresh token revoked for app {app.name} (#{app.id}); "
             f"user #{revoked.user_id}"
         )
-        await _push_shim_revocation(revoked.user_id, app.client_id)
+        await push_shim_revocation(revoked.user_id, app.client_id)
         return {"status": "ok"}
 
     # Per RFC 7009, revocation endpoint returns 200 even if token not found

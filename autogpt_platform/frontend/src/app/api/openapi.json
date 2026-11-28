@@ -13726,6 +13726,64 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/oauth/grants": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "List My Oauth Grants",
+        "description": "List the apps that hold access to the current user's account.",
+        "operationId": "getOauthListMyOauthGrants",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/OAuthGrantInfo" },
+                  "type": "array",
+                  "title": "Response Getoauthlistmyoauthgrants"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/oauth/grants/{app_id}": {
+      "delete": {
+        "tags": ["oauth"],
+        "summary": "Revoke My Oauth Grant",
+        "description": "End every access and refresh token one app holds for the current user.",
+        "operationId": "deleteOauthRevokeMyOauthGrant",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "The app holds no access to this account" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/oauth/introspect": {
       "post": {
         "tags": ["oauth"],
@@ -33332,6 +33390,31 @@
         "required": ["name", "scopes"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
+      },
+      "OAuthGrantInfo": {
+        "properties": {
+          "application_id": { "type": "string", "title": "Application Id" },
+          "name": { "type": "string", "title": "Name" },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "scopes": {
+            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "last_active_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Active At",
+            "description": "When the app last got a token"
+          }
+        },
+        "type": "object",
+        "required": ["application_id", "name", "scopes", "last_active_at"],
+        "title": "OAuthGrantInfo",
+        "description": "An app that holds a live access or refresh token for the user."
       },
       "OnboardingProfileRequest": {
         "properties": {

@@ -569,6 +569,18 @@ async def consume_authorization_code(
     return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 
 
+async def confirm_code_still_granted(code: str, family_id: str) -> None:
+    """Revoke the family minted for a code that a grant revoke deleted meanwhile.
+
+    Raises:
+        InvalidGrantError: If the code is gone
+    """
+    if await PrismaOAuthAuthorizationCode.prisma().find_unique(where={"code": code}):
+        return
+    await _revoke_refresh_family(family_id, datetime.now(timezone.utc))
+    raise InvalidGrantError("authorization was revoked")
+
+
 def _verify_pkce(
     code_verifier: str, code_challenge: str, code_challenge_method: Optional[str]
 ) -> bool:
