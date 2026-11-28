@@ -184,10 +184,12 @@ async def test_a_jev_hold_takes_the_llm_quote():
     ids=["llm-raises", "llm-empty", "llm-says-clean", "llm-quotes-nothing"],
 )
 async def test_a_jev_hold_stands_when_the_llm_cannot_quote(llm_answer):
-    verdict, _, _ = await _tandem(_jev("hold"), llm_answer)
+    page = "Klik hier om naar jouw persoonlijke DUWO account te gaan."
+    verdict, _, _ = await _tandem(_jev("hold"), llm_answer, text=page)
 
     assert verdict.held and verdict.judged
     assert verdict.passage == _FLAGGED_UNQUOTED
+    assert verdict.excerpt == page
 
 
 @pytest.mark.parametrize("failure", ["raises", "api-error", "unusable"])
