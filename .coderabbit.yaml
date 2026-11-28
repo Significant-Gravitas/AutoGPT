@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Without inheritance this file would replace the organization's UI settings instead of adding to them.
+inheritance: true
+
+reviews:
+  path_instructions:
+    - path: "autogpt_platform/backend/**/*_test.py"
+      instructions: &backend_tests |
+        Check new or changed tests against "Tests That Don't Flake" in autogpt_platform/backend/AGENTS.md,
+        and flag each break as a flake risk, naming the rule:
+        - a tight bound on elapsed time, instead of ~10x margin or a clock the test advances;
+        - code keyed to a time window (a rate-limit minute, a daily counter) without the clock pinned mid-window;
+        - `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` patched on a shared module;
+        - a client, request, timer or patch that outlives the test, or `asyncio.run` in a test;
+        - a race tested with `asyncio.gather` alone, instead of forcing the bad order with `asyncio.Barrier`.
+    - path: "autogpt_platform/backend/**/test_*.py"
+      instructions: *backend_tests
+    - path: "autogpt_platform/frontend/**/*.test.ts"
+      instructions: &frontend_tests |
+        Check new or changed tests against "Writing Tests That Don't Flake" in autogpt_platform/frontend/AGENTS.md,
+        and flag each break as a flake risk, naming the rule:
+        - a product timer (an arm delay, a debounce, an auto-dismiss) raced with a real wait instead of fake timers;
+        - `getBy*` right after an action that refetches or re-renders, or a search test whose MSW handler answers any query;
+        - a callback fired from an effect asserted outside `waitFor`;
+        - an accessible name matched loosely (`/Max/`) instead of exactly;
+        - a timer, debounce or request still pending when the file ends.
+    - path: "autogpt_platform/frontend/**/*.test.tsx"
+      instructions: *frontend_tests
+    - path: "autogpt_platform/frontend/src/playwright/**/*.spec.ts"
+      instructions: |
+        Check new or changed steps against the Playwright rule of "Writing Tests That Don't Flake" in
+        autogpt_platform/frontend/AGENTS.md, and flag a step that acts before the page has settled, a new
+        first-visit popup not marked seen in `src/playwright/coverage-fixture.ts`, or a timeout raised
+        without ruling out a backend stall.
