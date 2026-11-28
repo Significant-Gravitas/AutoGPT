@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.model import ONBOARDING_INTERVIEW_KIND
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.schedule_followup import (
     ScheduleCreatedResponse,
@@ -316,6 +317,31 @@ async def test_session_id_override_rejects_session_not_owned(tool, session):
             message="x",
             delay_seconds=600,
             session_id=other_session_id,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "session_not_found"
+    mock_client.add_copilot_turn_schedule.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_session_id_override_rejects_an_onboarding_interview(tool, session):
+    """An interview takes only its owner's own messages, so it is never a
+    followup's target, and is answered like a session that is not there."""
+    interview = MagicMock(expert_id=session.expert_id)
+    interview.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    mock_client = AsyncMock()
+
+    with (
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.get_chat_session", new=AsyncMock(return_value=interview)),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="x",
+            delay_seconds=600,
+            session_id="session-interview",
         )
 
     assert isinstance(result, ErrorResponse)

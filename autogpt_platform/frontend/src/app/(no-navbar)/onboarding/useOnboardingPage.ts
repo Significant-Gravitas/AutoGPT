@@ -31,6 +31,7 @@ export function useOnboardingPage() {
     isPaymentEnabled,
     isSelfHostConnectEnabled,
     paidConfirmation,
+    isLayoutAnswered,
   } = useOnboardingLayout({
     userID: user?.id ?? null,
     isLoggedIn,
@@ -44,6 +45,7 @@ export function useOnboardingPage() {
     isUserSettled: !isUserLoading,
     steps,
     hasPaywall: isPaymentEnabled,
+    isLayoutAnswered,
   });
   const currentStep =
     isPaymentEnabled && !environment.isLocal()

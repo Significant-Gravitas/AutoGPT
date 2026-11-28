@@ -4,14 +4,34 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+
+from backend.copilot.onboarding_interview_details import InterviewDetails
 
 # ``recording_id`` is concatenated into a cloud-storage object key and a
 # Redis key, so anything with a path or namespace separator in it would
 # let a caller reach outside their own prefix. The client sends a
 # ``crypto.randomUUID()``; this is the server refusing everything else.
 RECORDING_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
-RecordingId = Annotated[str, StringConstraints(pattern=RECORDING_ID_PATTERN)]
+
+# The takes the server makes itself, an interview's and a voice call's, are
+# named this and the interview's id. A client never names a take so.
+INTERVIEW_RECORDING_PREFIX = "interview-"
+
+
+def clients_recording_id(recording_id: str) -> str:
+    """*recording_id*, when it is a take a client may name: none named as
+    the server names its own takes."""
+    if recording_id.startswith(INTERVIEW_RECORDING_PREFIX):
+        raise ValueError("recording_id names a take only the server makes")
+    return recording_id
+
+
+RecordingId = Annotated[
+    str,
+    StringConstraints(pattern=RECORDING_ID_PATTERN),
+    AfterValidator(clients_recording_id),
+]
 
 # A 3s MediaRecorder timeslice of webm/opus voice is ~10 KB; 2 MB per part
 # leaves three orders of magnitude of headroom while still rejecting a
@@ -44,6 +64,12 @@ MAX_RECORDING_BYTES = 50 * 1024 * 1024
 # Typed fallback. Copilot's own message ceiling is 64,000 chars; the typed
 # composer is a paragraph or two, so cap well below that.
 MAX_TYPED_CHARS = 20_000
+
+# What the person may change on an interview's ending screen.
+MAX_CORRECTION_CHARS = 2_000
+
+# A voice call's id, as the start route mints it (``voice_relay.tokens``).
+VOICE_CALL_ID_PATTERN = r"^[0-9a-f]{32}$"
 
 # The client stops recording at 30 minutes, and this number is not just
 # metadata: an unmuxed MediaRecorder stream carries no container duration,
@@ -113,7 +139,8 @@ class FinalizeResponse(BaseModel):
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
     transcript_words: int | None = None
-    """A rejected transcript's length as the gate counts words."""
+    """The judged words' length as the gate counts words, accepted or rejected;
+    None where no words were judged."""
 
 
 class DumpStatusResponse(BaseModel):
@@ -311,3 +338,215 @@ class GreetingDoneResponse(BaseModel):
 class RecordingUrlResponse(BaseModel):
     url: str
     mime_type: str | None = None
+
+
+class InterviewStartResponse(BaseModel):
+    """The person's onboarding interview, open on the onboarding step."""
+
+    session_id: str
+    """The interview's chat session; each person has one."""
+    turn_id: str | None = None
+    """Otto's first turn, when this call started it. None when there was
+    nothing to start: the client then reads the session, which resumes any
+    turn still running in it."""
+    stage: str | None = None
+    """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
+    still asking."""
+
+
+class InterviewStateResponse(BaseModel):
+    """The person's onboarding interview as it stands, read without starting
+    it, and whether the step may offer them a call."""
+
+    session_id: str | None
+    """The interview's chat session; each person has one. None while they
+    have not opened it."""
+    stage: str | None = None
+    """``ChatSessionMetadata.onboarding_interview_stage``; None while Otto is
+    still asking."""
+    is_over: bool
+    """Whether it takes no more turns: closed, handed off, or its replies
+    used up, which can be true before ``stage`` says so."""
+    voice_available: bool
+    """Whether the step may offer a call: voice is on for the person, and
+    this deployment can carry one."""
+    livekit_url: str | None = None
+    """The LiveKit project a call would join, while ``voice_available``: the
+    step warms its connection before the person asks for a call. Not a
+    secret: the start hands it over anyway."""
+
+
+class VoiceCallCaps(BaseModel):
+    """A voice call's limits. The relay enforces them; the browser shows them."""
+
+    max_call_s: float
+    soft_wrap_s: float
+    """Otto is told to sum up this long before ``max_call_s``."""
+    max_agent_turns: int
+    soft_wrap_turns: int
+    """Otto is told to sum up this many turns before ``max_agent_turns``."""
+    idle_s: float
+    """The call ends after this long with nothing heard from the person."""
+
+
+class VoiceCallRoom(BaseModel):
+    """The call's LiveKit room, which carries its audio. The browser joins it
+    before it opens the relay's socket, which carries everything else."""
+
+    url: str
+    """The LiveKit project's ``wss://`` URL."""
+    token: str
+    """The browser's token for the call's room, which lets it publish its
+    microphone and hear Otto there."""
+
+
+class VoiceCallStartResponse(BaseModel):
+    """A voice call the person can now open on the relay."""
+
+    call_id: str
+    relay_url: str
+    """The relay's call socket."""
+    token: str
+    """The socket's first message carries it, ``{"type": "start",
+    "token"}``. Good for this one call, within ``expires_in`` seconds."""
+    expires_in: int
+    room: VoiceCallRoom
+    caps: VoiceCallCaps
+
+
+# A voice call's status, in the order a call moves through them: opening,
+# live, over, its transcript of record being made, made, its hand-off
+# running, and handed to the onboarding
+# pipeline or failed. ``handing_off`` is never stored: the call routes report
+# it for a call whose transcript is made and whose hand-off is owed.
+VoiceCallStatus = Literal[
+    "connecting",
+    "live",
+    "ended",
+    "transcribing",
+    "transcribed",
+    "handing_off",
+    "handed_off",
+    "failed",
+]
+
+# Who owns the person's interview as far as a voice call goes: the call's
+# words took it, or what the person typed after the call superseded them.
+VoiceCallInterview = Literal["taken", "superseded"]
+
+
+class VoiceCallStatusResponse(BaseModel):
+    """A voice call as it stands."""
+
+    call_id: str
+    status: VoiceCallStatus
+    """``connecting`` and ``live`` while the call runs; ``ended`` and
+    ``transcribing`` while its transcript of record is made. Then
+    ``handing_off`` while the onboarding pipeline takes its words;
+    ``handed_off`` once the pipeline took the call's words or another take
+    beat them (``hand_off`` says which); or ``failed``, with ``hand_off``
+    saying why, while the interview stays open."""
+    interview: VoiceCallInterview | None = None
+    """``taken`` once the call's words took the person's interview, which is
+    then over; ``superseded`` once the person typed into their interview
+    after the call ended, so the typed interview owns it; None while neither
+    has happened. Read before ``end_reason`` and ``status``."""
+    end_reason: str | None = None
+    """Why the call ended: ``finished`` once Otto said goodbye, the control
+    that ended it (``wall_clock``, ``turn_cap``, ``idle``, ``scope``,
+    ``spend_cap``, ``user_hangup``, ``superseded``, ``client_gone``,
+    ``vendor_error``, ``room_error``, ``server_restart``), or ``crashed`` when
+    the server running it stopped."""
+    ending: str | None = None
+    """The call's ending arm: the ending experiment's, or a tester's pick;
+    None for anyone not enrolled."""
+    first_task: str | None = None
+    """The first thing the team starts on, as Otto put it when he ended the
+    call; None when he did not say."""
+    details: InterviewDetails | None = None
+    """What the person said, read from the transcript of record for the
+    profile card the call ends on; None otherwise."""
+    relay_url: str | None = None
+    """The relay's call socket, which a tab holding the call's resume ticket
+    rejoins it on; set only while the call is live."""
+    livekit_url: str | None = None
+    """The LiveKit project a tab rejoining the call joins its room on; set
+    only while the call is live."""
+    hand_off: FinalizeResponse | None = None
+    """What the onboarding pipeline answered the call's hand-off, read the
+    way the typed interview's finish answer is read; None until it has
+    answered."""
+
+
+class InterviewDetailsResponse(BaseModel):
+    """What the person's typed interview has heard so far."""
+
+    details: InterviewDetails | None = None
+    """None before they have said anything, and while it cannot be read: the
+    ending screen then falls back to the plain ending."""
+
+
+class VoiceCallStartRequest(BaseModel):
+    """A voice call's start."""
+
+    ending_pick: str | None = Field(default=None, max_length=64)
+    """A tester's pick of the call's ending, honoured only while the picker
+    is on for them and the arm fits a call; ignored otherwise."""
+
+    start_over: bool = False
+    """The person asked to do their interview over: a closed interview is
+    set aside for this call, instead of refusing it."""
+
+    start_over_from: str | None = Field(default=None, max_length=64)
+    """With ``start_over``, the interview the person saw end: their typed
+    interview's session or the call that took it. It is set aside only while
+    it is still their closed interview; otherwise the call starts as it
+    would without ``start_over``."""
+
+    language: str | None = Field(default=None, max_length=35)
+    """The browser's language, as a BCP-47 tag such as ``es-MX``: the call
+    starts in it when the call offers it, and in English otherwise."""
+
+
+class InterviewStartRequest(BaseModel):
+    """The typed interview's start."""
+
+    ending_pick: str | None = Field(default=None, max_length=64)
+    """A tester's pick of the interview's ending, honoured only while the
+    picker is on for them; ignored otherwise."""
+
+    start_over: bool = False
+    """The person asked to do their interview over: a closed interview is
+    set aside for a fresh typed one, instead of reopening it."""
+
+    start_over_from: str | None = Field(default=None, max_length=64)
+    """With ``start_over``, the interview the person saw end: their typed
+    interview's session or the call that took it. It is set aside only while
+    it is still their closed interview; otherwise the interview opens as it
+    would without ``start_over``."""
+
+
+def start_over_of(
+    request: VoiceCallStartRequest | InterviewStartRequest | None,
+) -> str | None:
+    """The interview a start asks to set aside, or None for a plain start:
+    ``start_over`` without the interview it names starts as without it."""
+    if request is None or not request.start_over:
+        return None
+    return request.start_over_from
+
+
+class InterviewFinishRequest(BaseModel):
+    """The person's finish of their typed interview."""
+
+    corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
+    """What they changed on the ending screen, handed off as their own words
+    after the interview's."""
+
+
+class VoiceCallFinishRequest(BaseModel):
+    """The person's finish of a voice call."""
+
+    corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
+    """What they changed on the ending screen, handed off as their own words
+    after the call's."""

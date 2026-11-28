@@ -5,6 +5,7 @@ place, and ``recordingId`` identifies the current one so ``finalize`` can
 be retried safely.
 """
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -12,22 +13,40 @@ from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 
+from backend.api.features.onboarding_dump.models import INTERVIEW_RECORDING_PREFIX
+
 
 async def get_dump(user_id: str) -> OnboardingBrainDump | None:
     return await OnboardingBrainDump.prisma().find_unique(where={"userId": user_id})
 
 
-async def owns_dump(user_id: str, recording_id: str) -> bool:
-    """Whether ``recording_id`` is still the take the row belongs to.
+async def owns_dump(
+    user_id: str, recording_id: str, transcript: str | None = None
+) -> bool:
+    """Whether ``recording_id`` is still the take the row belongs to, and,
+    given *transcript*, still holds the words a job was started with.
 
     Row writes carry their own ``recordingId`` guard, but the business
     understanding is shared user context with no take on it. A background
     job for a superseded take has to be told to stop before it writes
-    there, and this is what tells it.
+    there, and this is what tells it. A take given up for a newer one
+    (``superseded``) is not, though it is still on the row. Nor is a take
+    corrected since the job started (``reopen_for_correction``): its words
+    changed, and the job of the corrected words writes instead.
     """
     dump = await get_dump(user_id)
-    return dump is not None and dump.recordingId == recording_id
+    return (
+        dump is not None
+        and dump.recordingId == recording_id
+        and (transcript is None or dump.transcript == transcript)
+        and not (
+            dump.status == BrainDumpStatus.failed and dump.errorCode == SUPERSEDED_TAKE
+        )
+    )
 
+
+# The failure code of a take a newer take replaced.
+SUPERSEDED_TAKE = "superseded"
 
 # A take still being processed. A new typed or skipped take cannot displace
 # one: unlike part 0 of a voice upload, they carry no earlier server-side
@@ -73,18 +92,49 @@ _TAKE_OWNED_RESET: dict[str, Any] = {
 }
 
 
+# A voice call's interview take is named for the call: the interview prefix
+# and the call's id, 32 hex digits. A typed interview's is named for its chat
+# session, whose id is a dashed UUID, so the two never match, and a client
+# names no take with the prefix (``models.RecordingId``).
+_CALL_TAKE = re.compile(re.escape(INTERVIEW_RECORDING_PREFIX) + r"[0-9a-f]{32}")
+
+
+def call_take_displaces(recording_id: str, held: str, *, call_take: bool) -> bool:
+    """Whether *recording_id*, a voice call's interview take (*call_take*,
+    as the hand-off that makes it says), displaces the row's take *held*,
+    another call's, in whatever status it is.
+
+    A typed or skipped take never displaces a take still being processed:
+    two typed submits carry no order between them. Two calls' takes do. The
+    row named the later call when it started, so the later call's take
+    claims the row as a new voice upload does, and the earlier take's jobs
+    write nothing once it is off the row.
+    """
+    return (
+        call_take
+        and recording_id != held
+        and _CALL_TAKE.fullmatch(recording_id) is not None
+        and _CALL_TAKE.fullmatch(held) is not None
+    )
+
+
 async def start_dump(
     user_id: str,
     recording_id: str,
     input_mode: BrainDumpInputMode,
+    *,
+    call_take: bool = False,
 ) -> OnboardingBrainDump:
     """Claim the row for ``recording_id``, resetting any prior take's state.
 
     A take already moving through the pipeline is returned untouched when
-    recovery replays part 0 or finalize is retried, and a typed or skipped
-    take with a different id cannot displace one still being processed. Any
-    other new id is a deliberate new take, a re-take after a finished one
-    included, and claims the row, taking every take-owned column with it.
+    recovery replays part 0 or finalize is retried, and a take that is no
+    uploaded recording (typed, skipped, or a voice call's words, *call_take*,
+    which are ``voice`` too) with a different id cannot displace one still
+    being processed, unless it is a call's take and the take on the row
+    another call's (:func:`call_take_displaces`). Any other new id is a
+    deliberate new take, a re-take after a finished one included, and claims
+    the row, taking every take-owned column with it.
     """
     existing = await get_dump(user_id)
     if existing and (
@@ -93,8 +143,11 @@ async def start_dump(
             and existing.status in _IN_FLIGHT_STATUSES
         )
         or (
-            input_mode != BrainDumpInputMode.voice
+            (input_mode != BrainDumpInputMode.voice or call_take)
             and existing.status in _PROCESSING_STATUSES
+            and not call_take_displaces(
+                recording_id, existing.recordingId, call_take=call_take
+            )
         )
     ):
         return existing
@@ -137,6 +190,51 @@ async def update_dump(user_id: str, recording_id: str, **fields: Any) -> bool:
         data=fields,
     )
     return updated == 1
+
+
+async def update_take_words(
+    user_id: str, recording_id: str, transcript: str, **fields: Any
+) -> bool:
+    """:func:`update_dump`, only while the take still holds *transcript*: a
+    job of a take corrected since it started writes nothing."""
+    updated = await OnboardingBrainDump.prisma().update_many(
+        where={
+            "userId": user_id,
+            "recordingId": recording_id,
+            "transcript": transcript,
+        },
+        data=fields,
+    )
+    return updated == 1
+
+
+# What a correction of a finished take clears with its words: the plan the
+# first words built, which the corrected words build again.
+_PLAN_RESET: dict[str, Any] = {
+    "greeting": None,
+    "suggestedPrompts": Json([]),
+    "recommendedProviders": Json(None),
+    "recommendedExperts": Json(None),
+    "greetingSeen": False,
+    "errorCode": None,
+    "errorReason": None,
+}
+
+
+async def reopen_for_correction(
+    user_id: str, recording_id: str, transcript: str
+) -> bool:
+    """Move a ``completed`` take back to ``transcribed`` with *transcript* in
+    place of its words and its plan cleared, once: the status is part of the
+    ``WHERE``, so of two corrections one wins. True for the one that did."""
+    return await claim_transition(
+        user_id,
+        recording_id,
+        expected=BrainDumpStatus.completed,
+        new=BrainDumpStatus.transcribed,
+        transcript=transcript,
+        **_PLAN_RESET,
+    )
 
 
 async def store_greeting(

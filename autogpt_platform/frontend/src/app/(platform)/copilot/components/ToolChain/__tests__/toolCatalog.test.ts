@@ -216,6 +216,18 @@ describe("getCatalogLabel", () => {
     );
   });
 
+  it("wraps an onboarding interview up without naming its first task", () => {
+    const input = { first_task: "Answer order emails in Gmail" };
+
+    expect(getCatalogLabel("end_interview", input, "running")).toEqual({
+      category: "team",
+      text: "Wrapping up…",
+    });
+    expect(getCatalogLabel("end_interview", input, "done")?.text).toBe(
+      "Wrapped up",
+    );
+  });
+
   it("ignores blank and non-string subject values", () => {
     expect(getCatalogLabel("web_search", { query: "   " }, "done")?.text).toBe(
       "Searched the web for",

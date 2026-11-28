@@ -227,6 +227,7 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useFlagStatus: (flag: string) => ({
     enabled: mockFlags[flag] ?? false,
     ready: true,
+    answered: true,
   }),
 }));
 

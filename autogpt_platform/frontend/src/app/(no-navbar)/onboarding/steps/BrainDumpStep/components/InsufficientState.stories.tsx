@@ -8,7 +8,7 @@ import { type InsufficientMode, type OttoReplyKind } from "./insufficient-copy";
 
 // The hosted wizard's step count, as useOnboardingLayout derives it.
 const TOTAL_STEPS = PAYWALL_LAST_STEPS.preparing - 1;
-const STEP = PAYWALL_LAST_STEPS.painPoints;
+const STEP = PAYWALL_LAST_STEPS.painPoints!;
 
 interface Args {
   mode: InsufficientMode;
