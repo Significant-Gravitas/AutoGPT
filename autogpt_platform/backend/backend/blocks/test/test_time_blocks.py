@@ -116,3 +116,25 @@ async def test_get_current_date_and_time_runs_with_minimal_execution_context():
         tzinfo=ZoneInfo("UTC")
     )
     assert abs(datetime.now(tz=ZoneInfo("UTC")) - parsed) <= timedelta(seconds=10)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "block_cls", [GetCurrentTimeBlock, GetCurrentDateBlock, GetCurrentDateAndTimeBlock]
+)
+@pytest.mark.parametrize("repeats, allowed", [(500, True), (501, False)])
+async def test_a_custom_format_is_bounded_in_length(block_cls, repeats, allowed):
+    block = block_cls()
+    input_data = block.input_schema(
+        trigger="Hello",
+        format_type={"discriminator": "strftime", "format": "%d" * repeats},
+    )
+    run = _collect_single_output(
+        block.run(input_data=input_data, execution_context=ExecutionContext())
+    )
+    if not allowed:
+        with pytest.raises(ValueError, match="at most 1000"):
+            await run
+        return
+    _, value = await run
+    assert value
