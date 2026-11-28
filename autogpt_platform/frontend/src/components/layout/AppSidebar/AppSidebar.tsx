@@ -13,6 +13,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/molecules/Sidebar/Sidebar";
+import { useEntranceInitial } from "@/hooks/useEntranceInitial";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
 import {
@@ -176,6 +177,7 @@ export function AppSidebar(props: Props) {
   const reduceMotion = useReducedMotion();
   const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
+  const linksInitial = useEntranceInitial("hidden");
   const router = useRouter();
 
   const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
@@ -214,7 +216,7 @@ export function AppSidebar(props: Props) {
           variants={sidebarContainerVariants}
           // On mobile the sheet's slide is the entrance; a blurred stagger on
           // top of it delays the items and costs frames on phones.
-          initial={isMobile ? false : "hidden"}
+          initial={isMobile ? false : linksInitial}
           animate="show"
           className="flex shrink-0 flex-col gap-2"
         >

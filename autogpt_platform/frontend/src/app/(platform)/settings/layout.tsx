@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
+import { useEntranceInitial } from "@/hooks/useEntranceInitial";
 import { SettingsSidebar } from "./components/SettingsSidebar/SettingsSidebar";
 import { SettingsMobileNav } from "./components/SettingsMobileNav/SettingsMobileNav";
 import { duration, ease } from "@/components/styles/motion";
@@ -11,6 +12,9 @@ import { duration, ease } from "@/components/styles/motion";
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
+  const pageInitial = useEntranceInitial(
+    reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 },
+  );
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-surface-muted">
@@ -21,7 +25,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           <ScrollArea className="h-full">
             <motion.div
               key={pathname}
-              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              initial={pageInitial}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: duration.slow, ease: ease.out }}
               className="mx-auto max-w-[1100px] px-4 pt-2 pb-8 md:pt-10"

@@ -3,15 +3,18 @@
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { CopilotChatHost } from "./CopilotChatHost";
+import { ChatFrame } from "./components/ChatFrame/ChatFrame";
+import { ChatFrameHandoffContext } from "./components/ChatFrame/chatFrameHandoff";
+import { useChatFrameHandoff } from "./components/ChatFrame/useChatFrameHandoff";
 import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAutoOpen";
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
-import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useIsMobile } from "./useIsMobile";
 
 const ArtifactPanel = dynamic(
@@ -41,13 +44,14 @@ export function CopilotPage() {
   // background JS state while another chat is on screen.
   const [sessionId] = useQueryState("sessionId", parseAsString);
 
-  if (isUserLoading || !isLoggedIn) {
-    return (
-      <div className="fixed inset-0 z-overlay flex items-center justify-center bg-canvas">
-        <ScaleLoader className="text-foreground-subtle" />
-      </div>
-    );
-  }
+  const isChatReady = !isUserLoading && isLoggedIn;
+  const frame = useChatFrameHandoff(isChatReady);
+  const isFrameShown = frame.isShown || !isChatReady;
+  const handoff = {
+    isFrameShown,
+    takeSnapshot: frame.takeSnapshot,
+    reportChatLoaded: frame.reportChatLoaded,
+  };
 
   return (
     <SidebarProvider
@@ -64,16 +68,45 @@ export function CopilotPage() {
       // visible when mobile browser chrome is shown.
       className="h-svh min-h-0"
     >
-      <MainArea
-        isMobile={isMobile}
-        sessionId={sessionId}
-        droppedFiles={droppedFiles}
-        setDroppedFiles={setDroppedFiles}
-      />
-      {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
-      {isMobile && <ArtifactPanel mobile />}
-
-      <CopilotModals />
+      <ChatFrameHandoffContext value={handoff}>
+        {/* The chat loads under the frame, kept out of reach until the frame
+            hands it the message box, so typing never lands in a box that is
+            about to be replaced. */}
+        <div className="relative flex h-full w-full min-w-0">
+          {isChatReady && (
+            <div
+              inert={isFrameShown}
+              className={cn(
+                "isolate flex h-full w-full min-w-0",
+                isFrameShown && "invisible",
+              )}
+            >
+              <MainArea
+                isMobile={isMobile}
+                sessionId={sessionId}
+                droppedFiles={droppedFiles}
+                setDroppedFiles={setDroppedFiles}
+              />
+            </div>
+          )}
+          {isFrameShown && (
+            <ChatFrame
+              onUnmount={frame.keepSnapshot}
+              hasSession={!!sessionId}
+              className="absolute inset-0 z-raised"
+            />
+          )}
+        </div>
+        {isChatReady && (
+          <>
+            {isMobile && sessionId && (
+              <ContextPanel sessionId={sessionId} mobile />
+            )}
+            {isMobile && <ArtifactPanel mobile />}
+            <CopilotModals />
+          </>
+        )}
+      </ChatFrameHandoffContext>
     </SidebarProvider>
   );
 }

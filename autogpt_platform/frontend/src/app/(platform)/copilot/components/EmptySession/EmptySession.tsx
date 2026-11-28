@@ -11,6 +11,7 @@ import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useCopilotUIStore } from "../../store";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
+import { useReportChatLoaded } from "../ChatFrame/chatFrameHandoff";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
@@ -143,6 +144,10 @@ export function EmptySession({
     resetNewChatExecutionTarget();
   }, [resetNewChatExecutionTarget]);
 
+  useReportChatLoaded(
+    !!isKickoffStarting || (intro.isResolved && !isLoadingRecipient),
+  );
+
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
   }
@@ -211,6 +216,7 @@ export function EmptySession({
                   <div className="mb-3 text-left">{usageNotice}</div>
                 )}
                 <ChatInput
+                  takesFrameHandoff
                   inputId="chat-input-empty"
                   draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked

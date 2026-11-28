@@ -88,9 +88,6 @@ vi.mock(
   "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner",
   () => ({ LowCreditBanner: () => null }),
 );
-vi.mock("@/app/(platform)/copilot/components/ScaleLoader/ScaleLoader", () => ({
-  ScaleLoader: () => <div data-testid="loader" />,
-}));
 
 const USER: User = {
   id: "user-1",
@@ -161,7 +158,7 @@ describe("/home first paint", () => {
     await homePage();
 
     expect(await screen.findByTestId("chat")).toBeDefined();
-    expect(screen.queryByTestId("loader")).toBeNull();
+    expect(screen.queryByTestId("chat-frame")).toBeNull();
     // The check still runs, in the background.
     await waitFor(() => expect(validateSession).toHaveBeenCalledWith("/home"));
     expect(getCurrentUser).not.toHaveBeenCalled();
@@ -191,7 +188,7 @@ describe("/home first paint", () => {
       redirectPath: "/login?next=%2Fhome",
     });
 
-    expect(await screen.findByTestId("loader")).toBeDefined();
+    expect(await screen.findByTestId("chat-frame")).toBeDefined();
     expect(screen.queryByTestId("chat")).toBeNull();
     expect(routerPush).toHaveBeenCalledWith("/login?next=%2Fhome");
   });
@@ -205,7 +202,7 @@ describe("/home first paint", () => {
     await homePage();
 
     await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
-    expect(screen.getByTestId("loader")).toBeDefined();
+    expect(screen.getByTestId("chat-frame")).toBeDefined();
     expect(screen.queryByTestId("chat")).toBeNull();
 
     lookup.resolve({ user: USER });
@@ -229,7 +226,7 @@ describe("/home first paint", () => {
       render(page);
 
       await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
-      expect(screen.getByTestId("loader")).toBeDefined();
+      expect(screen.getByTestId("chat-frame")).toBeDefined();
       expect(screen.queryByTestId("chat")).toBeNull();
 
       lookup.resolve({ user: USER });
