@@ -25,9 +25,7 @@ import {
 import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { RenderUISamples } from "./RenderUISamples";
-import type { ToolUIPart } from "ai";
-import type { MessagePart } from "../components/ChatMessagesContainer/helpers";
-import { ToolChain } from "../components/ToolChain/ToolChain";
+import { ChainDemo } from "./ChainDemo";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2145,23 +2143,5 @@ export default function StyleguidePage() {
         </div>
       </div>
     </CopilotChatActionsProvider>
-  );
-}
-
-interface DemoPart {
-  type: `tool-${string}`;
-  toolCallId: string;
-  state: ToolUIPart["state"];
-  input?: unknown;
-  output?: unknown;
-  errorText?: string;
-}
-
-/** A tool call as the chat draws it: one row of the tool chain. */
-function ChainDemo({ part }: { part: DemoPart }) {
-  const running =
-    part.state === "input-streaming" || part.state === "input-available";
-  return (
-    <ToolChain parts={[part as unknown as MessagePart]} isStreaming={running} />
   );
 }
