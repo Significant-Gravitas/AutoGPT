@@ -1,3 +1,4 @@
+import functools
 import itertools
 import json
 import logging
@@ -16,6 +17,7 @@ import jsonschema.exceptions
 import jsonschema.validators
 import orjson
 from fastapi.encoders import jsonable_encoder
+from jsonschema.protocols import Validator
 from prisma import Json
 from pydantic import BaseModel
 from referencing import Registry
@@ -280,7 +282,7 @@ def _schema_type_fingerprint(value: Any) -> _SchemaTypeFingerprint | None:
 
 
 def _new_validator(schema: dict[str, Any]):
-    validator_cls = jsonschema.validators.validator_for(schema)
+    validator_cls = bounded_validator_for(schema)
     validator_cls.check_schema(schema)
     # Resolve `$ref` only within the schema and the bundled meta-schemas.
     return validator_cls(schema, registry=Registry())
@@ -304,19 +306,19 @@ def _remember(key: _SchemaCacheKey, value: Any) -> Any:
 
 
 def validate_with_jsonschema(
-    schema: dict[str, Any], data: dict[str, Any]
+    schema: dict[str, Any], data: Any, field_name: str | None = None
 ) -> str | None:
     """
     Validate the data against the schema.
     Returns the validation error message if the data does not match the schema.
     """
     error = _best_error(schema, data)
-    return describe_validation_error(error) if error is not None else None
+    if error is None:
+        return None
+    return describe_validation_error(error, field_name=field_name)
 
 
-def _best_error(
-    schema: dict[str, Any], data: dict[str, Any]
-) -> jsonschema.ValidationError | None:
+def _best_error(schema: dict[str, Any], data: Any) -> jsonschema.ValidationError | None:
     """The error `jsonschema.validate()` would raise, or None."""
     errors = _compiled_validator(schema).iter_errors(data)
 
@@ -328,7 +330,78 @@ def _best_error(
     # `jsonschema.validate()` raises best_match(iter_errors(...)), which is not
     # the same error Validator.validate() raises, so match it exactly. chain the
     # already-consumed first error back in rather than re-running iter_errors.
+    # Data with one error per item would build them all, so read a bounded few.
+    errors = itertools.islice(errors, _MAX_ERRORS_READ - 1)
     return jsonschema.exceptions.best_match(itertools.chain((first_error,), errors))
+
+
+# How many errors a failed check reads to pick the one it reports, and how many a
+# failed anyOf/oneOf keeps per branch; each list item can add one.
+_MAX_ERRORS_READ = 100
+
+
+def bounded_validator_for(schema: dict[str, Any]) -> type[Validator]:
+    """`validator_for(schema)`, with a failed `anyOf` or `oneOf` keeping at
+    most `_MAX_ERRORS_READ` errors per branch; it accepts and rejects the same
+    data as jsonschema's own."""
+    return bounded_validator_class(jsonschema.validators.validator_for(schema))
+
+
+@functools.cache
+def bounded_validator_class(validator_cls: type[Validator]) -> type[Validator]:
+    keywords = {"anyOf": _any_of, "oneOf": _one_of}
+    return jsonschema.validators.extend(
+        validator_cls,
+        {k: v for k, v in keywords.items() if k in validator_cls.VALIDATORS},
+    )
+
+
+def _any_of(validator, any_of, instance, schema):
+    all_errors = []
+    for index, subschema in enumerate(any_of):
+        errors = _branch_errors(validator, instance, subschema, index)
+        if not errors:
+            break
+        all_errors.extend(errors)
+    else:
+        yield jsonschema.exceptions.ValidationError(
+            f"{instance!r} is not valid under any of the given schemas",
+            context=all_errors,
+        )
+
+
+def _one_of(validator, one_of, instance, schema):
+    subschemas = enumerate(one_of)
+    all_errors = []
+    first_valid = None
+    for index, subschema in subschemas:
+        errors = _branch_errors(validator, instance, subschema, index)
+        if not errors:
+            first_valid = subschema
+            break
+        all_errors.extend(errors)
+    else:
+        yield jsonschema.exceptions.ValidationError(
+            f"{instance!r} is not valid under any of the given schemas",
+            context=all_errors,
+        )
+
+    more_valid = [
+        each
+        for _, each in subschemas
+        if validator.evolve(schema=each).is_valid(instance)
+    ]
+    if more_valid:
+        more_valid.append(first_valid)
+        reprs = ", ".join(repr(schema) for schema in more_valid)
+        yield jsonschema.exceptions.ValidationError(
+            f"{instance!r} is valid under each of {reprs}"
+        )
+
+
+def _branch_errors(validator, instance, subschema, index: int) -> list:
+    errors = validator.descend(instance, subschema, schema_path=index)
+    return list(itertools.islice(errors, _MAX_ERRORS_READ))
 
 
 VALIDATION_ERROR_MAX_LENGTH = 300

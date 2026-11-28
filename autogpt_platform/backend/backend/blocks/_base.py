@@ -19,8 +19,6 @@ from typing import (
 )
 
 import jsonref
-import jsonschema
-from jsonschema.validators import validator_for as _jsonschema_validator_for
 from pydantic import BaseModel, Field
 
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
@@ -343,17 +341,16 @@ class BlockSchema(BaseModel):
         inline on the offending block field via the standard ``node_errors``
         path, rather than as a single string raised at execute time.
         """
-        schema = cls.jsonschema()
-        cleaned = {k: v for k, v in data.items() if v is not None}
-        validator_cls = _jsonschema_validator_for(schema)
+        schema = _bound_checks(cls.jsonschema(), cls._INLINE_FIELD_ERROR_KEYWORDS)
+        validator_cls = json.bounded_validator_for(schema)
         errors: dict[str, str] = {}
-        for err in validator_cls(schema).iter_errors(cleaned):
-            if err.validator not in cls._INLINE_FIELD_ERROR_KEYWORDS:
+        for field, field_schema in schema.get("properties", {}).items():
+            if data.get(field) is None:
                 continue
-            if not err.absolute_path:
-                continue
-            field = str(err.absolute_path[0])
-            errors.setdefault(field, err.message)
+            # Only the first is shown, and a list can hold one per item.
+            error = next(validator_cls(field_schema).iter_errors(data[field]), None)
+            if error is not None:
+                errors[field] = error.message
         return errors
 
     @classmethod
@@ -374,12 +371,10 @@ class BlockSchema(BaseModel):
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
         """
-        try:
-            property_schema = cls.get_field_schema(field_name)
-            jsonschema.validate(json.to_dict(data), property_schema)
-            return None
-        except jsonschema.ValidationError as e:
-            return json.describe_validation_error(e, field_name=field_name)
+        property_schema = cls.get_field_schema(field_name)
+        return json.validate_with_jsonschema(
+            property_schema, json.to_dict(data), field_name=field_name
+        )
 
     @classmethod
     def get_fields(cls) -> set[str]:
@@ -522,6 +517,45 @@ class BlockSchema(BaseModel):
     @classmethod
     def get_missing_input(cls, data: BlockInput) -> set[str]:
         return cls.get_required_fields() - set(data)
+
+
+# Keywords that pass a subschema's errors up as they are; any other keyword
+# fails only with an error of its own, which get_field_errors never reports.
+_SUBSCHEMA_MAPS = frozenset({"properties", "patternProperties", "dependentSchemas"})
+_SUBSCHEMAS = frozenset(
+    {"items", "prefixItems", "allOf", "additionalProperties", "propertyNames"}
+    | {"then", "else"}
+)
+
+
+def _bound_checks(schema: Any, keywords: frozenset[str]) -> Any:
+    """*schema* reduced to the *keywords* checks and the subschemas leading to
+    them, in its own key order, which sets the error reported first. `if` stays
+    whole: its condition is judged in full."""
+    if not isinstance(schema, dict):
+        return schema
+    reduced: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in keywords or key == "if":
+            reduced[key] = value
+        elif key in _SUBSCHEMA_MAPS and isinstance(value, dict):
+            reduced[key] = {k: _bound_checks(v, keywords) for k, v in value.items()}
+        elif key in _SUBSCHEMAS and isinstance(value, list):
+            reduced[key] = [_bound_checks(v, keywords) for v in value]
+        elif key in _SUBSCHEMAS and isinstance(value, dict):
+            reduced[key] = _bound_checks(value, keywords)
+
+    # Drop what checks nothing, so a list without bounds is not walked item by item,
+    # but keep the property names additionalProperties tells its keys apart by.
+    names_needed = bool(reduced.get("additionalProperties"))
+    for key, value in list(reduced.items()):
+        if key in _SUBSCHEMA_MAPS and not (names_needed and key != "dependentSchemas"):
+            value = reduced[key] = {k: v for k, v in value.items() if v}
+        if value == {} and key != "if":
+            del reduced[key]
+    if "then" not in reduced and "else" not in reduced:
+        reduced.pop("if", None)
+    return reduced
 
 
 class BlockSchemaInput(BlockSchema):
