@@ -201,6 +201,35 @@ async def test_discover_tools_returns_discovered_response():
     assert response.tools[1].input_schema is None
 
 
+@pytest.mark.parametrize("gate_on", [True, False])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_discovery_notes_the_listing_for_the_gate_only_while_it_is_on(gate_on):
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+    mock_tools = _make_tool_list("fetch", "search")
+    mock_client = AsyncMock()
+    mock_client.list_tools = AsyncMock(return_value=mock_tools)
+    module = "backend.copilot.tools.run_mcp_tool"
+
+    with (
+        patch(f"{module}.validate_url_host", new_callable=AsyncMock),
+        patch(
+            f"{module}.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(f"{module}.MCPClient", return_value=mock_client),
+        patch(f"{module}.gate_active", AsyncMock(return_value=gate_on)),
+        patch(f"{module}.remember_listing", new_callable=AsyncMock) as noted,
+    ):
+        await tool._execute(user_id=_USER_ID, session=session, server_url=_SERVER_URL)
+
+    if gate_on:
+        noted.assert_awaited_once_with(session.session_id, _SERVER_URL, mock_tools)
+    else:
+        noted.assert_not_awaited()
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_discover_tools_with_credentials():
     """A legacy stored credential is sent as a Bearer header.

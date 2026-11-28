@@ -160,10 +160,12 @@ class TestMCPClient:
                         "properties": {"city": {"type": "string"}},
                         "required": ["city"],
                     },
+                    "annotations": {"readOnlyHint": True},
                 },
                 {
                     "name": "search",
                     "description": "Search the web",
+                    "annotations": "read-only",
                     "inputSchema": {
                         "type": "object",
                         "properties": {"query": {"type": "string"}},
@@ -181,6 +183,9 @@ class TestMCPClient:
         assert tools[0].description == "Get current weather for a city"
         assert tools[0].input_schema["properties"]["city"]["type"] == "string"
         assert tools[1].name == "search"
+        assert tools[0].annotations == {"readOnlyHint": True}
+        # Anything but an object is no annotation at all.
+        assert tools[1].annotations == {}
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_list_tools_empty(self):

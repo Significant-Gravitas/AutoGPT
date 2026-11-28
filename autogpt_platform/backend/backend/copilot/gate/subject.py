@@ -6,7 +6,7 @@ decides on that subject's effect, and the card's headline names it.
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict
@@ -50,6 +50,10 @@ class Subject(BaseModel):
     # user's words, which the card shows in place of the raw inputs.
     preview: ChangePreview | None = None
 
+
+# What a tool's listing on its server was classified as; ``unconfirmed`` asks
+# as an unknown tool does.
+LearnedEffect = Literal["read", "change", "send", "delete", "unconfirmed"]
 
 # A schema lookup, ``validate_only``, a dry run, or a trigger workflow's details:
 # nothing runs, so nothing asks, whatever the mode.
@@ -167,30 +171,50 @@ def workflow_subject(
     return subject
 
 
-def mcp_subject(server_url: str, tool: str) -> Subject:
+def mcp_subject(
+    server_url: str, tool: str, learned: LearnedEffect | None = None
+) -> Subject:
     """Keyed on the server (host and path, since one host can serve many) and
-    the tool, so a rule on one tool leaves every other asking. Only the
-    server's effect map decides; a tool's name is no evidence of what it does."""
-    url = urlsplit(server_url)
-    host = url.hostname or server_url
-    port = f":{url.port}" if url.port not in (None, 443) else ""
+    the tool, so a rule on one tool leaves every other asking. The server's
+    hand-checked effect map decides; where it does not name the tool, what the
+    tool's own listing was classified as does (``gate/mcp_learned.py``). A
+    tool's name alone is no evidence of what it does."""
+    host = urlsplit(server_url).hostname or server_url
     mapped = mcp_tool_effect(server_url, tool)
     name = f"{tool} on {host}"
-    if mapped is None:
-        effect = Effect.EXTERNAL
-        reason = f"{AUTOPILOT_NAME} does not know what {name} does, so he asks."
-    elif mapped == "read":
+    if mapped == "read" or (mapped is None and learned == "read"):
         effect, reason = Effect.READ, ""
-    else:
+    elif mapped is not None:
         effect = Effect.EXTERNAL
         reason = f"Runs {name}, which reaches outside the platform."
+    elif learned in _LEARNED_REASONS:
+        effect = Effect.EXTERNAL
+        reason = f"Runs {name}, which {_LEARNED_REASONS[learned]}."
+    else:
+        effect = Effect.EXTERNAL
+        reason = f"{AUTOPILOT_NAME} does not know what {name} does, so he asks."
     return Subject(
-        key=f"mcp:{host}{port}{url.path.rstrip('/')}::{tool}",
+        key=f"mcp:{mcp_server_key(server_url)}::{tool}",
         name=name,
         effect=effect,
         reason=reason,
-        irreversible=mapped == "irreversible",
+        irreversible=mapped == "irreversible"
+        or (mapped is None and learned == "delete"),
     )
+
+
+def mcp_server_key(server_url: str) -> str:
+    url = urlsplit(server_url)
+    port = f":{url.port}" if url.port not in (None, 443) else ""
+    return f"{url.hostname or server_url}{port}{url.path.rstrip('/')}"
+
+
+# What a tool's own listing says it does, in the card's words.
+_LEARNED_REASONS: dict[str, str] = {
+    "change": "changes data there",
+    "send": "sends something from there",
+    "delete": "deletes data there",
+}
 
 
 def graph_cost_credits(graph: "GraphModel") -> int:
