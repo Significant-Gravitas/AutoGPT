@@ -5,7 +5,13 @@ DataForSEO API client with async support using the SDK patterns.
 import base64
 from typing import Any, Dict, List, Optional
 
-from backend.sdk import Requests, UserPasswordCredentials
+from backend.data.model import NodeExecutionStats
+from backend.sdk import Block, Requests, UserPasswordCredentials
+
+# "Ok." and, from a task_post, "Task Created."
+TASK_OK_CODES = (20000, 20100)
+# "Task Handed." and "Task In Queue.": a posted task that has not started yet.
+TASK_NOT_READY_CODES = (40601, 40602)
 
 
 class DataForSeoClient:
@@ -19,10 +25,11 @@ class DataForSeoClient:
             trusted_origins=["https://api.dataforseo.com"],
             raise_for_status=False,
         )
-        # USD cost reported by DataForSEO on the most recent successful call.
-        # Populated by keyword_suggestions / related_keywords so the caller
-        # can surface it via NodeExecutionStats.provider_cost for billing.
+        # USD cost reported by DataForSEO on the most recent successful call,
+        # so the caller can surface it via NodeExecutionStats.provider_cost.
         self.last_cost_usd: float = 0.0
+        # ID of the most recent task, which a task_post caller polls with.
+        self.last_task_id: str = ""
 
     def _get_headers(self) -> Dict[str, str]:
         """Generate the authorization header using Basic Auth."""
@@ -190,3 +197,50 @@ class DataForSeoClient:
                 raise Exception(f"DataForSEO task error: {error_msg}")
 
         return []
+
+    async def post_task(self, path: str, task: dict[str, Any]) -> list[dict[str, Any]]:
+        """POST one task to a DataForSEO endpoint and return its ``result`` list.
+
+        ``path`` starts after the host, e.g. ``/v3/backlinks/summary/live``.
+        The task's USD cost lands on ``last_cost_usd`` and its ID on
+        ``last_task_id``.
+        """
+        response = await self.requests.post(
+            f"{self.API_URL}{path}", headers=self._get_headers(), json=[task]
+        )
+        return self._task_result(response.status, response.json())
+
+    async def get_task(self, path: str) -> list[dict[str, Any]]:
+        """GET a DataForSEO endpoint (e.g. a task's summary) and return its result."""
+        response = await self.requests.get(
+            f"{self.API_URL}{path}", headers=self._get_headers()
+        )
+        return self._task_result(response.status, response.json())
+
+    def _task_result(self, status: int, data: dict[str, Any]) -> list[dict[str, Any]]:
+        if status != 200:
+            message = data.get("status_message", "Unknown error")
+            raise DataForSeoError(f"DataForSEO API error ({status}): {message}")
+        tasks = data.get("tasks") or []
+        if not tasks:
+            return []
+        task = tasks[0]
+        if task.get("status_code") in TASK_NOT_READY_CODES:
+            return []
+        if task.get("status_code") not in TASK_OK_CODES:
+            message = task.get("status_message", "Task failed")
+            raise DataForSeoError(f"DataForSEO task error: {message}")
+        self.last_cost_usd = float(task.get("cost") or 0.0)
+        self.last_task_id = task.get("id") or ""
+        return task.get("result") or []
+
+
+class DataForSeoError(ValueError):
+    """DataForSEO refused a request or a task failed."""
+
+
+def record_cost(block: Block, cost_usd: float) -> None:
+    """Bill the block for a USD cost DataForSEO reported."""
+    block.merge_stats(
+        NodeExecutionStats(provider_cost=cost_usd, provider_cost_type="cost_usd")
+    )
