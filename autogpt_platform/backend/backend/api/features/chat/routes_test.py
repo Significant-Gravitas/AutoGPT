@@ -5991,6 +5991,52 @@ def test_get_session_returns_backward_paginated(
     assert "newest_sequence" not in data
 
 
+def test_get_session_of_a_running_turn_holds_the_rows_its_checkpoint_counts(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A turn longer than the page is returned from its checkpoint's first row."""
+    from backend.copilot.db import PaginatedMessages
+    from backend.copilot.model import ChatMessage
+
+    page, mock_paginate = _make_paginated_messages(mocker, has_more=True)
+    page.messages = [ChatMessage(role="assistant", content="hi", sequence=60)]
+    page.oldest_sequence = 60
+    turn_rows = PaginatedMessages(
+        messages=[
+            ChatMessage(role="assistant", content="hi", sequence=sequence)
+            for sequence in range(1, 60)
+        ],
+        has_more=False,
+        oldest_sequence=1,
+        session=page.session,
+    )
+    mock_paginate.side_effect = [page, turn_rows]
+    running = chat_routes.stream_registry.ActiveSession(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        tool_call_id="",
+        tool_name="",
+        turn_id="turn-1",
+        checkpoint=chat_routes.stream_registry.TurnCheckpoint(
+            entry_id="9-0", rows=56, sequence=1
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(running, "9-0"),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [m["sequence"] for m in data["messages"]] == list(range(1, 61))
+    assert data["oldest_sequence"] == 1
+    assert data["has_more_messages"] is True
+    assert mock_paginate.await_args_list[1].kwargs["after_sequence"] == 1
+
+
 def test_get_session_reports_background_state_from_the_durable_record(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
