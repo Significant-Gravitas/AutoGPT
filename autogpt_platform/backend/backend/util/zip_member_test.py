@@ -1,6 +1,8 @@
 """Tests for zip member reads under a byte cap."""
 
 import io
+import struct
+import warnings
 import zipfile
 from unittest.mock import MagicMock
 
@@ -10,6 +12,7 @@ from backend.util.zip_member import (
     READ_CHUNK_BYTES,
     ZipMemberError,
     ZipMemberTooLarge,
+    check_members_disjoint,
     check_unpacked_size,
     iter_member,
     read_member,
@@ -106,3 +109,58 @@ def test_members_together_past_the_total_fail_the_archive():
         check_unpacked_size(
             io.BytesIO(data), max_member_bytes=1_000, max_total_bytes=2_500
         )
+
+
+def _entries_sharing_one_member(count: int) -> bytes:
+    """``count`` central-directory entries, all naming and pointing at the
+    first member."""
+    buffer = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for _ in range(count):
+                archive.writestr("a.bin", b"\0" * 100)
+    return _with_central_directory_field(buffer.getvalue(), offset=42, value=0)
+
+
+def _first_entry_claiming_the_whole_archive() -> bytes:
+    data = _zip({"a.bin": b"\0" * 100, "b.bin": b"\0" * 100})
+    start_dir = zipfile.ZipFile(io.BytesIO(data)).start_dir
+    return _with_central_directory_field(
+        data, offset=20, value=start_dir, first_only=True
+    )
+
+
+def _with_central_directory_field(
+    data: bytes, *, offset: int, value: int, first_only: bool = False
+) -> bytes:
+    out = bytearray(data)
+    start = 0
+    while (found := out.find(b"PK\x01\x02", start)) != -1:
+        struct.pack_into("<I", out, found + offset, value)
+        if first_only:
+            break
+        start = found + 4
+    return bytes(out)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [_entries_sharing_one_member(50), _first_entry_claiming_the_whole_archive()],
+    ids=["shared member", "overlapping data"],
+)
+def test_an_archive_whose_entries_overlap_is_refused_unread(data: bytes, monkeypatch):
+    opened = MagicMock(side_effect=AssertionError("a member was read"))
+    monkeypatch.setattr(zipfile.ZipFile, "open", opened)
+
+    with pytest.raises(ZipMemberError, match="archive entries overlap"):
+        check_unpacked_size(
+            io.BytesIO(data), max_member_bytes=1_000, max_total_bytes=100_000
+        )
+    opened.assert_not_called()
+
+
+def test_an_ordinary_archive_has_disjoint_members():
+    data = _zip({f"{i}.bin": bytes([i]) * 1_000 for i in range(5)})
+
+    check_members_disjoint(zipfile.ZipFile(io.BytesIO(data)))
