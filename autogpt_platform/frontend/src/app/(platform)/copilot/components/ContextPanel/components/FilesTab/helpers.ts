@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { ArtifactRef } from "../../../../store";
@@ -87,6 +86,7 @@ export async function downloadFilesAsZip(
 ): Promise<void> {
   const fetchImpl = deps.fetchImpl ?? ((url: string) => fetch(url));
   const save = deps.save ?? triggerDownload;
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   const used = new Set<string>();
   let added = 0;

@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
+import { LazyFormRenderer as FormRenderer } from "@/components/renderers/InputRenderer/LazyFormRenderer";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { formatInputsTitle, type InputsRequest } from "./helpers";
 import { Text } from "@/components/atoms/Text/Text";

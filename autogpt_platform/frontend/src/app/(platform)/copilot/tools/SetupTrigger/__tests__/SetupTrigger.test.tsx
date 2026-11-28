@@ -52,7 +52,7 @@ function part(output: unknown) {
 }
 
 describe("SetupTriggerTool", () => {
-  it("renders the credentials card for a setup_requirements output", () => {
+  it("renders the credentials card for a setup_requirements output", async () => {
     render(
       <SetupTriggerTool
         part={part({
@@ -80,7 +80,7 @@ describe("SetupTriggerTool", () => {
         })}
       />,
     );
-    expect(screen.getByTestId("credentials-grouped-view")).toBeDefined();
+    expect(await screen.findByTestId("credentials-grouped-view")).toBeDefined();
     // Trigger mode labels the credentials section "Account".
     expect(screen.getByText("Account")).toBeDefined();
   });

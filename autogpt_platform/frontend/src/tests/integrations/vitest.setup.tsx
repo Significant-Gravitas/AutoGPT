@@ -44,6 +44,34 @@ vi.mock("react", async (importActual) => {
   };
 });
 
+// The app loads the message and markdown renderers and the tool cards' form
+// after the page; tests get them loaded, so a reply or form renders the same on
+// every run and under fake timers. initial-bundle.test.ts guards the split.
+vi.mock("@/components/organisms/Message/Message", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/components/organisms/Message/Message")
+    >();
+  await actual.preloadMessageResponse();
+  return actual;
+});
+vi.mock(
+  "@/components/contextual/OutputRenderers/renderers/MarkdownRenderer",
+  async (importActual) => {
+    const actual =
+      await importActual<
+        typeof import("@/components/contextual/OutputRenderers/renderers/MarkdownRenderer")
+      >();
+    await actual.preloadMarkdownContent();
+    return actual;
+  },
+);
+vi.mock("@/components/renderers/InputRenderer/LazyFormRenderer", async () => ({
+  LazyFormRenderer: (
+    await import("@/components/renderers/InputRenderer/FormRenderer")
+  ).FormRenderer,
+}));
+
 // happy-dom aborts a request still open when its file's window is torn down
 // and logs the abort, which Vitest then fails as a late console write.
 const openRequests = new Set<Promise<unknown>>();
