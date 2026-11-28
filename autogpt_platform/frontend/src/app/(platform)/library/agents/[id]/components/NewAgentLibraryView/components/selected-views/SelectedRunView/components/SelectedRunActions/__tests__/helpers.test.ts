@@ -169,6 +169,7 @@ describe("getRefusedKeys", () => {
 describe("getRerunForm", () => {
   it("keeps the run's inputs and its keys that still exist, and leaves the deleted ones' fields to pick from their providers", () => {
     const run = {
+      id: "past-run",
       inputs: { topic: "news" },
       credential_inputs: {
         llm: key("gone", "openai", "My OpenAI key"),
@@ -179,6 +180,7 @@ describe("getRerunForm", () => {
     expect(
       getRerunForm(run, [{ field: "llm", name: "My OpenAI key" }]),
     ).toEqual({
+      runId: "past-run",
       deletedKeys: [{ field: "llm", name: "My OpenAI key" }],
       inputs: { topic: "news" },
       credentials: { jina: key("kept", "jina", "My Jina key") },

@@ -52,6 +52,9 @@ export function useSelectedRunActions({
     useState(false);
   // The run form a rerun opens to replace the run's deleted keys
   const [rerunForm, setRerunForm] = useState<RerunForm | null>(null);
+  // A refusal can come back after the user moved to another run. Its form is
+  // dropped: it would hold one run's inputs on the other's version.
+  if (rerunForm && rerunForm.runId !== run?.id) setRerunForm(null);
   // It reruns the workflow version the run ran, read when it isn't the current one
   const runVersion = useRunVersionAgent({
     agent,

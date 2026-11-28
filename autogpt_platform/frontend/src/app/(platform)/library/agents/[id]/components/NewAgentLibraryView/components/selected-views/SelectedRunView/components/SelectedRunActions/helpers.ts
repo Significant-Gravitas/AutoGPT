@@ -26,6 +26,8 @@ export interface DeletedKey {
 
 /** The run form a rerun opens when it can't run on the run's keys. */
 export interface RerunForm {
+  /** The run it reruns. */
+  runId: string;
   deletedKeys: DeletedKey[];
   inputs: Record<string, unknown>;
   credentials: Record<string, RunCredential>;
@@ -75,12 +77,13 @@ export function getRefusedKeys(
 
 /** The run's inputs and its keys that still exist; the deleted ones are left to pick. */
 export function getRerunForm(
-  run: Pick<GraphExecution, "inputs" | "credential_inputs">,
+  run: Pick<GraphExecution, "id" | "inputs" | "credential_inputs">,
   deletedKeys: DeletedKey[],
 ): RerunForm {
   const deletedFields = new Set(deletedKeys.map(({ field }) => field));
   const runCredentials = Object.entries(run.credential_inputs ?? {});
   return {
+    runId: run.id,
     deletedKeys,
     inputs: run.inputs ?? {},
     credentials: Object.fromEntries(

@@ -17,6 +17,7 @@ import CredentialsProvider, {
   CredentialsProvidersContext,
 } from "@/providers/agent-credentials/credentials-provider";
 import {
+  cleanup,
   render,
   screen,
   waitFor,
@@ -26,7 +27,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { useContext } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
 
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -62,6 +63,17 @@ const NEW_RUN_ID = "new-run";
 const RUN_INPUTS = { topic: "news" };
 // The workflow version the past run ran
 const RUN_VERSION = 1;
+// A later run, of the library's version
+const LATER_RUN_ID = "later-run";
+
+// Run requests a test holds back. Teardown unmounts the page, then answers
+// whatever a failed test left held, so none outlives its test.
+const heldAnswers: Array<() => void> = [];
+
+afterEach(() => {
+  cleanup();
+  heldAnswers.splice(0).forEach((answer) => answer());
+});
 
 type Key = { id: string; provider: string; title: string };
 
@@ -181,13 +193,15 @@ interface Setup {
   // The keys /integrations/credentials lists, read again on every request
   savedCredentials?: () => Array<Record<string, unknown>>;
   // How the server answers a run request
-  answerRun?: () => Response;
+  answerRun?: () => Response | Promise<Response>;
   // The workflow's credential field
   field?: WorkflowField;
   // The workflow's version in the library
   libraryVersion?: number;
   // How the server answers a read of the version the past run ran
   answerRunVersionRead?: () => Response;
+  // Lists a later run of the library's version above the past run
+  withLaterRun?: boolean;
 }
 
 function startedRun() {
@@ -212,6 +226,7 @@ function setup({
   field = FIRECRAWL_FIELD,
   libraryVersion = RUN_VERSION,
   answerRunVersionRead = () => HttpResponse.json(graphAt(RUN_VERSION, field)),
+  withLaterRun = false,
 }: Setup = {}) {
   const pastRun: GraphExecutionMeta = {
     id: RUN_ID,
@@ -227,6 +242,16 @@ function setup({
     ended_at: new Date("2026-11-20T10:01:00Z"),
     stats: { node_exec_count: 1, node_error_count: 0 },
   };
+  const laterRun: GraphExecutionMeta = {
+    ...pastRun,
+    id: LATER_RUN_ID,
+    graph_version: libraryVersion,
+    inputs: { query: "weather" },
+    credential_inputs: { [field.name]: usedBy(OTHER_KEY) },
+    started_at: new Date("2026-11-21T10:00:00Z"),
+    ended_at: new Date("2026-11-21T10:01:00Z"),
+  };
+  const runs = withLaterRun ? [laterRun, pastRun] : [pastRun];
   const executeBodies: ExecuteBody[] = [];
   // Recorded as each run request arrives, before its body is read
   const runRequests: string[] = [];
@@ -272,21 +297,24 @@ function setup({
         : HttpResponse.json(graphAt(libraryVersion, field));
     }),
     getGetV1ListGraphExecutionsMockHandler({
-      executions: [pastRun],
+      executions: runs,
       pagination: {
-        total_items: 1,
+        total_items: runs.length,
         total_pages: 1,
         current_page: 1,
         page_size: 20,
       },
     }),
-    getGetV1GetExecutionDetailsMockHandler(({ params }) => ({
-      ...pastRun,
-      id: String(params.graphExecId),
-      inputs: RUN_INPUTS,
-      outputs: { result: [`Output of ${params.graphExecId}`] },
-      node_executions: [],
-    })),
+    getGetV1GetExecutionDetailsMockHandler(({ params }) => {
+      const run = runs.find(({ id }) => id === params.graphExecId) ?? pastRun;
+      return {
+        ...run,
+        id: String(params.graphExecId),
+        inputs: run.inputs ?? {},
+        outputs: { result: [`Output of ${params.graphExecId}`] },
+        node_executions: [],
+      };
+    }),
     getGetV1ListExecutionSchedulesForAGraphMockHandler([]),
     getGetV2ListPresetsMockHandler({
       presets: [],
@@ -340,6 +368,11 @@ async function waitForRunView() {
 
 async function rerun() {
   await userEvent.click(screen.getByRole("button", { name: "Rerun task" }));
+}
+
+async function showTask(runId: string) {
+  await userEvent.click(screen.getByTestId(`library-run-item-${runId}`));
+  expect(await screen.findByText(`Output of ${runId}`)).toBeDefined();
 }
 
 function keyIn(body: ExecuteBody | undefined, field = FIELD) {
@@ -801,4 +834,53 @@ describe("the run form reruns the workflow version the task ran", () => {
     expect(await within(form).findByDisplayValue("news")).toBeDefined();
     expect(graphReads).toEqual([]);
   });
+});
+
+test("a refusal that comes back after the user moved to another task opens no form, there or back on the first task", async () => {
+  // Deleted in another tab: this page still lists it until it reads again
+  let saved = [PLATFORM_KEY, USED_KEY, OTHER_KEY];
+  let refuse: (() => void) | undefined;
+  const { runRequests, graphReads } = setup({
+    libraryVersion: 2,
+    withLaterRun: true,
+    savedCredentials: () => saved,
+    answerRun: () =>
+      new Promise<Response>((resolve) => {
+        refuse = () =>
+          resolve(
+            refusedOverCredentials(`Unknown credentials #${USED_KEY.id}`)(),
+          );
+        heldAnswers.push(refuse);
+      }),
+  });
+  await waitForRunView();
+  // Opened once already, so going back to it shows it at once, with the
+  // same task actions
+  await showTask(LATER_RUN_ID);
+  await showTask(RUN_ID);
+  saved = [PLATFORM_KEY, OTHER_KEY];
+
+  await rerun();
+  await waitFor(() => expect(runRequests).toHaveLength(1));
+  await showTask(LATER_RUN_ID);
+  refuse?.();
+
+  // The refusal is still told. Its toast renders in the same pass that used to
+  // open the form here, with the first task's inputs on the later task's version
+  expect(await screen.findByText("Failed to start run")).toBeDefined();
+  expect(
+    screen.getByText("A key this task used was deleted: My Firecrawl key."),
+  ).toBeDefined();
+  expect(screen.queryByRole("dialog", { name: "Rerun task" })).toBeNull();
+
+  await showTask(RUN_ID);
+  expect(screen.queryByRole("dialog", { name: "Rerun task" })).toBeNull();
+
+  // Rerun there opens the first task's form, on the version it ran
+  await rerun();
+  const form = await screen.findByRole("dialog", { name: "Rerun task" });
+  expect(await within(form).findByDisplayValue("news")).toBeDefined();
+  expect(within(form).queryByText("Search query")).toBeNull();
+  expect(graphReads).toContain(String(RUN_VERSION));
+  expect(runRequests).toHaveLength(1);
 });
