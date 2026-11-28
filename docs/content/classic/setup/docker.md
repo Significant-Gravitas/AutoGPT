@@ -63,7 +63,7 @@
         env_file:
           - .env
         ports:
-          - "8000:8000"  # remove this if you just want to run a single agent in TTY mode
+          - "127.0.0.1:8000:8000"  # remove this if you just want to run a single agent in TTY mode
         profiles: ["exclude-from-up"]
         volumes:
           - ./data:/app/data
