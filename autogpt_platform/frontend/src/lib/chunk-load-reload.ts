@@ -1,4 +1,4 @@
-import { isChunkLoadFailure } from "@/lib/sentry-filters";
+import { deploySkewKind } from "@/lib/sentry-filters";
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { DeploySkewEvent } from "@/services/analytics/posthog-events";
 
@@ -6,15 +6,14 @@ const CHUNK_RELOAD_GUARD_KEY = "chunk_reload_at";
 const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
 
 /**
- * True when the browser could not fetch code the page loads on demand. After
- * a deploy, a tab still running the old build asks for chunks the new
- * deployment no longer serves, and every later click that needs one fails
- * the same way until the page is reloaded.
+ * True when the browser could not fetch or find code the page loads on
+ * demand. After a deploy, a tab still running the old build asks for chunks
+ * the new deployment no longer serves, or for modules its own build never
+ * had, and every later click that needs one fails the same way until the page
+ * is reloaded.
  */
 export function isChunkLoadError(error: unknown): boolean {
-  return (
-    error instanceof Error && isChunkLoadFailure(error.name, error.message)
-  );
+  return skewKindOf(error) !== null;
 }
 
 /**
@@ -27,7 +26,8 @@ export function reloadForChunkLoadError(
   error: unknown,
   surface: "unhandled_rejection" | "error_boundary",
 ): boolean {
-  if (!isChunkLoadError(error)) return false;
+  const kind = skewKindOf(error);
+  if (!kind) return false;
 
   const lastReloadAt = Number(readReloadGuard());
   if (Date.now() - lastReloadAt < CHUNK_RELOAD_COOLDOWN_MS) return false;
@@ -35,6 +35,7 @@ export function reloadForChunkLoadError(
 
   capturePostHogEvent(DeploySkewEvent.CHUNK_RELOAD_TRIGGERED, {
     surface,
+    kind,
     path: window.location.pathname,
   });
   window.location.reload();
@@ -52,6 +53,17 @@ export function reloadOnUnhandledChunkLoadError() {
   window.addEventListener("unhandledrejection", onUnhandledRejection);
   return () =>
     window.removeEventListener("unhandledrejection", onUnhandledRejection);
+}
+
+function skewKindOf(error: unknown) {
+  if (!(error instanceof Error)) return null;
+  return deploySkewKind(error.name, error.message, crashingFrame(error.stack));
+}
+
+// Chrome's stack starts with the message, Safari's and Firefox's with the
+// frame that threw ("at fn (url)" and "fn@url").
+function crashingFrame(stack = "") {
+  return stack.split("\n").find((line) => /^\s*at |@/.test(line));
 }
 
 // The guard goes straight to the browser's sessionStorage, not the safe

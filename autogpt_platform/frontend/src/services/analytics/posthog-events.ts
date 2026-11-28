@@ -17,8 +17,8 @@ export const PageEvent = {
   PAGEVIEW: "$pageview",
 } as const;
 
-// Ops signal, not a user action: a tab on an older build could not load code
-// on demand after a deploy, and reloaded to pick up the current build.
+// Ops signal, not a user action: a tab on an older build could not load or
+// find code on demand after a deploy, and reloaded to pick up the current build.
 export const DeploySkewEvent = {
   CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
 } as const;
