@@ -1,6 +1,7 @@
 """Unit tests for the SDK response adapter."""
 
 import asyncio
+from typing import Any
 
 import pytest
 from claude_agent_sdk import (
@@ -46,6 +47,18 @@ from .tool_adapter import wait_for_stash
 
 def _adapter() -> SDKResponseAdapter:
     return SDKResponseAdapter(message_id="msg-1", session_id="session-1")
+
+
+def _result(**fields: Any) -> ResultMessage:
+    defaults: dict[str, Any] = {
+        "subtype": "success",
+        "duration_ms": 100,
+        "duration_api_ms": 50,
+        "is_error": False,
+        "num_turns": 1,
+        "session_id": "s1",
+    }
+    return ResultMessage(**(defaults | fields))
 
 
 # -- SystemMessage -----------------------------------------------------------
@@ -266,14 +279,7 @@ def test_result_success_emits_finish_step_and_finish():
     adapter.convert_message(
         AssistantMessage(content=[TextBlock(text="done")], model="test")
     )
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-    )
+    msg = _result()
     results = adapter.convert_message(msg)
     # TextEnd + FinishStep + StreamFinish
     assert len(results) == 3
@@ -445,15 +451,7 @@ def test_result_success_thinking_only_first_pass_defers_for_reprompt():
         )
     )
 
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=4,
-        session_id="s1",
-        result="",
-    )
+    msg = _result(num_turns=4, result="")
     results = adapter.convert_message(msg)
 
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
@@ -477,15 +475,7 @@ def test_result_success_thinking_only_after_reprompt_promotes_thinking():
     adapter._any_tool_results_seen = True
     adapter._text_since_last_tool_result = False
 
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=4,
-        session_id="s1",
-        result="",
-    )
+    msg = _result(num_turns=4, result="")
     results = adapter.convert_message(msg)
 
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
@@ -528,17 +518,7 @@ def test_result_success_thinking_only_two_rounds_with_driver_reset_emits_fallbac
             model="test",
         )
     )
-    round1 = adapter.convert_message(
-        ResultMessage(
-            subtype="success",
-            duration_ms=100,
-            duration_api_ms=50,
-            is_error=False,
-            num_turns=2,
-            session_id="s1",
-            result="",
-        )
-    )
+    round1 = adapter.convert_message(_result(num_turns=2, result=""))
     assert adapter.pending_thinking_only_reprompt is True
     assert [r for r in round1 if isinstance(r, StreamFinish)] == []
 
@@ -559,17 +539,7 @@ def test_result_success_thinking_only_two_rounds_with_driver_reset_emits_fallbac
             model="test",
         )
     )
-    round2 = adapter.convert_message(
-        ResultMessage(
-            subtype="success",
-            duration_ms=100,
-            duration_api_ms=50,
-            is_error=False,
-            num_turns=4,
-            session_id="s1",
-            result="",
-        )
-    )
+    round2 = adapter.convert_message(_result(num_turns=4, result=""))
     text_deltas = [r for r in round2 if isinstance(r, StreamTextDelta)]
     assert len(text_deltas) == 1, "second pass must emit fallback text"
     assert text_deltas[0].delta.strip()  # non-empty
@@ -616,15 +586,7 @@ def test_tool_result_clears_stale_thinking_so_fallback_does_not_leak_pre_tool_th
     # also produces nothing.  The fallback must be the placeholder, not the
     # stale pre-tool reasoning.
     adapter.thinking_only_reprompted = True
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=4,
-        session_id="s1",
-        result="",
-    )
+    msg = _result(num_turns=4, result="")
     results = adapter.convert_message(msg)
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
     assert len(text_deltas) == 1
@@ -641,15 +603,7 @@ def test_result_success_thinking_only_after_reprompt_falls_back_to_placeholder()
     adapter._any_tool_results_seen = True
     adapter._text_since_last_tool_result = False
 
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=4,
-        session_id="s1",
-        result="",
-    )
+    msg = _result(num_turns=4, result="")
     results = adapter.convert_message(msg)
 
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
@@ -685,15 +639,7 @@ def test_result_success_does_not_synthesize_when_text_already_emitted():
         AssistantMessage(content=[TextBlock(text="all done")], model="test")
     )
 
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=4,
-        session_id="s1",
-        result="all done",
-    )
+    msg = _result(num_turns=4, result="all done")
     results = adapter.convert_message(msg)
 
     # No fallback — the only TextDelta came from the previous
@@ -712,15 +658,7 @@ def test_result_success_does_not_synthesize_when_no_tools_ran():
         AssistantMessage(content=[TextBlock(text="hello")], model="test")
     )
 
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="hello",
-    )
+    msg = _result(result="hello")
     results = adapter.convert_message(msg)
     text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
     assert text_deltas == []
@@ -736,16 +674,7 @@ def test_result_empty_success_emits_error_and_finish():
     empty-completion branch must close it before emitting the error."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result=None,
-        usage={"input_tokens": 5, "output_tokens": 0},
-    )
+    msg = _result(result=None, usage={"input_tokens": 5, "output_tokens": 0})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamFinishStep" in types
@@ -763,16 +692,7 @@ def test_result_empty_success_with_empty_string_result_treated_as_empty():
     """An empty string (not just None) for ``result`` is also empty."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
@@ -786,16 +706,7 @@ def test_result_success_with_text_emits_finish_not_error():
     adapter.convert_message(
         AssistantMessage(content=[TextBlock(text="hello")], model="test")
     )
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="hello",
-        usage={"output_tokens": 5},
-    )
+    msg = _result(result="hello", usage={"output_tokens": 5})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamFinish" in types
@@ -820,16 +731,7 @@ def test_result_success_thinking_only_no_tools_emits_empty_completion():
             model="test",
         )
     )
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 50},
-    )
+    msg = _result(result="", usage={"output_tokens": 50})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamError" in types
@@ -853,16 +755,7 @@ def test_result_success_thinking_only_with_text_after_no_error():
             model="test",
         )
     )
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="here is the answer",
-        usage={"output_tokens": 50},
-    )
+    msg = _result(result="here is the answer", usage={"output_tokens": 50})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamFinish" in types
@@ -876,16 +769,7 @@ def test_result_success_with_nonzero_output_tokens_not_empty():
     keeping `_is_empty_completion()` from firing."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 50},
-    )
+    msg = _result(result="", usage={"output_tokens": 50})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamFinish" in types
@@ -894,14 +778,8 @@ def test_result_success_with_nonzero_output_tokens_not_empty():
 
 def test_result_error_emits_error_and_finish():
     adapter = _adapter()
-    msg = ResultMessage(
-        subtype="error",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=True,
-        num_turns=0,
-        session_id="s1",
-        result="Invalid API key provided",
+    msg = _result(
+        subtype="error", is_error=True, num_turns=0, result="Invalid API key provided"
     )
     results = adapter.convert_message(msg)
     # No step was open, so no FinishStep — just Error + Finish
@@ -946,13 +824,10 @@ def test_result_orphan_tool_use_then_empty_assistant_emits_empty_completion():
     # Step 3: model returns an AssistantMessage with empty content.
     adapter.convert_message(AssistantMessage(content=[], model="test"))
     # Step 4: ResultMessage with subtype="error".
-    msg = ResultMessage(
+    msg = _result(
         subtype="error",
-        duration_ms=100,
-        duration_api_ms=50,
         is_error=True,
         num_turns=3,
-        session_id="s1",
         result="model returned empty content",
         usage={"output_tokens": 0},
     )
@@ -995,16 +870,7 @@ def test_result_orphan_tool_use_with_thinking_only_assistant_does_not_fire():
             model="test",
         )
     )
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=2,
-        session_id="s1",
-        result="hmm",
-        usage={"output_tokens": 5},
-    )
+    msg = _result(num_turns=2, result="hmm", usage={"output_tokens": 5})
     results = adapter.convert_message(msg)
     err_codes = [r.code for r in results if isinstance(r, StreamError)]
     assert "empty_completion" not in err_codes, err_codes
@@ -1090,14 +956,7 @@ def test_full_conversation_flow():
     # 6. Result
     all_responses.extend(
         adapter.convert_message(
-            ResultMessage(
-                subtype="success",
-                duration_ms=500,
-                duration_api_ms=400,
-                is_error=False,
-                num_turns=2,
-                session_id="s1",
-            )
+            _result(duration_ms=500, duration_api_ms=400, num_turns=2)
         )
     )
 
@@ -1146,18 +1005,7 @@ def test_flush_unresolved_at_result_message():
         )
     )
     # 3. No UserMessage for this tool — go straight to ResultMessage
-    all_responses.extend(
-        adapter.convert_message(
-            ResultMessage(
-                subtype="success",
-                duration_ms=100,
-                duration_api_ms=50,
-                is_error=False,
-                num_turns=1,
-                session_id="s1",
-            )
-        )
-    )
+    all_responses.extend(adapter.convert_message(_result()))
 
     types = [type(r).__name__ for r in all_responses]
     assert types == [
@@ -1248,18 +1096,7 @@ def test_flush_with_stashed_output():
         )
     )
     # ResultMessage triggers flush
-    all_responses.extend(
-        adapter.convert_message(
-            ResultMessage(
-                subtype="success",
-                duration_ms=100,
-                duration_api_ms=50,
-                is_error=False,
-                num_turns=1,
-                session_id="s1",
-            )
-        )
-    )
+    all_responses.extend(adapter.convert_message(_result()))
 
     output_events = [
         r for r in all_responses if isinstance(r, StreamToolOutputAvailable)
@@ -1920,16 +1757,7 @@ def test_retry_adapter_with_prior_emitted_content_suppresses_empty_completion():
     adapter = _adapter()
     adapter.prior_attempt_emitted_visible_content = True
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamFinish" in types
@@ -1944,16 +1772,7 @@ def test_retry_adapter_without_prior_content_still_surfaces_empty_completion():
     adapter = _adapter()
     assert adapter.prior_attempt_emitted_visible_content is False
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
@@ -2046,16 +1865,7 @@ def test_empty_completion_suppressed_when_real_tool_result_already_seen():
     # (_any_orphan_flush_seen + _last_assistant_had_empty_content) and
     # emits a spurious "model returned an empty response" overlay on top
     # of the working find_block widget the user already saw.
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert adapter._any_orphan_flush_seen is True
@@ -2096,16 +1906,7 @@ def test_empty_completion_still_fires_on_orphan_with_only_empty_fallbacks():
     # fallback for t-orphan (stash empty), sets _any_orphan_flush_seen.
     # SECRT-2333 path B fires (orphan + empty last) because the gate
     # doesn't suppress (no real content was seen).
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     assert adapter._any_orphan_flush_seen is True
     err = next((r for r in results if isinstance(r, StreamError)), None)
@@ -2138,16 +1939,7 @@ def test_empty_completion_suppressed_when_text_already_streamed():
         )
     )
     adapter.convert_message(AssistantMessage(content=[], model="test"))
-    msg = ResultMessage(
-        subtype="success",
-        duration_ms=100,
-        duration_api_ms=50,
-        is_error=False,
-        num_turns=1,
-        session_id="s1",
-        result="",
-        usage={"output_tokens": 0},
-    )
+    msg = _result(result="", usage={"output_tokens": 0})
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     # Same as the prior test: success branch may hand off to thinking-only-
@@ -2205,13 +1997,9 @@ def test_error_max_budget_usd_surfaces_specific_error_not_empty_overlay():
         )
     )
     adapter.convert_message(AssistantMessage(content=[], model="test"))
-    msg = ResultMessage(
+    msg = _result(
         subtype="error_max_budget_usd",
-        duration_ms=100,
-        duration_api_ms=50,
         is_error=True,
-        num_turns=1,
-        session_id="s1",
         result="budget exhausted",
         usage={"output_tokens": 0},
     )
@@ -2231,13 +2019,10 @@ def test_error_max_turns_surfaces_specific_error():
     """``error_max_turns`` should similarly route to its own message."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
-    msg = ResultMessage(
+    msg = _result(
         subtype="error_max_turns",
-        duration_ms=100,
-        duration_api_ms=50,
         is_error=True,
         num_turns=999,
-        session_id="s1",
         result="hit cap",
         usage={"output_tokens": 0},
     )
@@ -2339,15 +2124,7 @@ def test_result_message_flush_ends_open_reasoning_before_finish_step():
         )
     )
     events += adapter.convert_message(
-        ResultMessage(
-            subtype="success",
-            duration_ms=1,
-            duration_api_ms=1,
-            is_error=False,
-            num_turns=1,
-            session_id="session-1",
-            result="done",
-        )
+        _result(duration_ms=1, duration_api_ms=1, session_id="session-1", result="done")
     )
 
     _assert_blocks_end_before_finish_step(events)
