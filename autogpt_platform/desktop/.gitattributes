@@ -1,0 +1,4 @@
+# Shell scripts run inside MSYS2 and on Unix runners; CRLF breaks them.
+build/*.sh text eol=lf
+# codesign reads these, and a test refuses CRLF in them on every system.
+resources/*.plist text eol=lf

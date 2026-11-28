@@ -1,0 +1,611 @@
+"""Gate failures stay failures; cleanup never traverses a reparse point."""
+
+import ctypes
+import importlib.util
+import io
+import json
+import os
+import runpy
+import struct
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import pytest
+
+SPEC = importlib.util.spec_from_file_location(
+    "host_fs_windows_check", Path(__file__).parents[1] / "host_fs_windows_check.py"
+)
+gate = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(gate)
+
+
+def passing_report():
+    return {
+        "collected": {name: 2 for name in gate.TESTS},
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "exit_code": 0,
+        "sources": {"fixture": "a" * 64},
+        "sources_unchanged": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"exit_code": 1},
+        {"failed": 1},
+        {"skipped": 1},
+        {"passed": 3},
+        {"collected": {}},
+        {"collected": {gate.TESTS[0]: 4}},
+        {"collected": {name: 0 for name in gate.TESTS}},
+        {"sources_unchanged": False},
+        {"sources": {}},
+    ],
+)
+def test_incomplete_native_evidence_is_rejected(changes):
+    report = passing_report()
+    sources = report["sources"]
+    assert gate.accepted(report, sources)
+    report.update(changes)
+    assert not gate.accepted(report, sources)
+
+
+def test_collection_and_runtime_skips_are_observed():
+    inventory = gate.TestInventory()
+    inventory.pytest_collectreport(SimpleNamespace(failed=False, skipped=True))
+    inventory.pytest_runtest_logreport(
+        SimpleNamespace(failed=False, skipped=True, when="setup", passed=False)
+    )
+    assert inventory.skipped == 2
+    assert inventory.passed == 0
+
+
+def test_callers_cannot_be_omitted_from_acceptance():
+    report = passing_report()
+    assert not gate.accepted(report, report["sources"], callers=True)
+    report["collected"][gate.CALLER_TEST] = 7
+    report["passed"] += 7
+    assert gate.accepted(report, report["sources"], callers=True)
+
+
+def test_caller_inventory_uses_explicit_checkout_file():
+    inventory = gate.TestInventory(callers=True)
+    path = gate.BUILD / "backend_host_fs_windows_callers.py"
+    inventory.pytest_collection_modifyitems([SimpleNamespace(path=path)])
+    assert inventory.collected[gate.CALLER_TEST] == 1
+    assert all(inventory.collected[name] == 0 for name in gate.TESTS)
+
+
+def test_caller_worker_configures_relocated_ffmpeg_before_collection(
+    tmp_path, monkeypatch
+):
+    from autogpt_desktop.layout import Bundle
+
+    bundle = Bundle((tmp_path / "runtime").resolve())
+    bundle.tools_bin.mkdir(parents=True)
+    bundle.ffmpeg.write_bytes(b"synthetic tool; not executed")
+    monkeypatch.setattr(gate.sys, "executable", str(bundle.root / "python/python.exe"))
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("PATH", "original-tools")
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "stale-host-ffmpeg")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+
+    def collect(args, plugins):
+        assert os.environ["IMAGEIO_FFMPEG_EXE"] == str(bundle.ffmpeg)
+        assert os.environ["PATH"] == os.pathsep.join(
+            [str(bundle.tools_bin), "original-tools"]
+        )
+        assert "pytest_asyncio.plugin" in args
+        assert str(gate.BUILD / "backend_host_fs_windows_callers.py") in args
+        return 0
+
+    monkeypatch.setattr(pytest, "main", collect)
+    assert gate.worker(tmp_path, callers=True) == 0
+
+
+def test_caller_worker_rejects_missing_bundled_ffmpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        gate.sys, "executable", str(tmp_path / "runtime/python/python.exe")
+    )
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "host-tool-must-not-cover-missing-bundle")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+    collect = Mock(return_value=0)
+    monkeypatch.setattr(pytest, "main", collect)
+    with pytest.raises(RuntimeError, match="bundled_ffmpeg_missing"):
+        gate.worker(tmp_path, callers=True)
+    collect.assert_not_called()
+
+
+def test_component_worker_does_not_require_or_replace_bundled_tools(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(gate.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(gate.sys, "stdin", io.StringIO("run\n"))
+    monkeypatch.setattr(gate, "require_native", lambda: None)
+    monkeypatch.setattr(gate.sys, "path", list(gate.sys.path))
+    monkeypatch.setenv("IMAGEIO_FFMPEG_EXE", "untouched")
+    monkeypatch.setenv("PATH", "original-tools")
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.setenv("PYTHON_DOTENV_DISABLED", "1")
+    monkeypatch.setattr(pytest, "main", Mock(return_value=0))
+    assert gate.worker(tmp_path) == 0
+    assert os.environ["IMAGEIO_FFMPEG_EXE"] == "untouched"
+    assert os.environ["PATH"] == "original-tools"
+
+
+@pytest.mark.parametrize("bundled_tool", [True, False])
+def test_isolated_caller_worker_bootstraps_checkout_runtime(tmp_path, bundled_tool):
+    bundle = (tmp_path / "runtime").resolve()
+    tools = bundle / "tools/bin"
+    tools.mkdir(parents=True)
+    if bundled_tool:
+        (tools / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")).write_bytes(
+            b"synthetic tool; not executed"
+        )
+    probe = """
+import importlib.util, os, sys, types
+from pathlib import Path
+assert sys.flags.isolated == 1
+assert importlib.util.find_spec('autogpt_desktop') is None
+spec = importlib.util.spec_from_file_location('gate', sys.argv[1])
+gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gate)
+gate.require_native = lambda: None
+sys.executable = sys.argv[3]
+os.environ['IMAGEIO_FFMPEG_EXE'] = 'stale-host-tool'
+original_path = os.environ.get('PATH', '')
+def collect(args, plugins):
+    from autogpt_desktop import layout, settings
+    expected = gate.BUILD.parent / 'runtime/autogpt_desktop'
+    assert Path(layout.__file__).resolve() == (expected / 'layout.py').resolve()
+    assert Path(settings.__file__).resolve() == (expected / 'settings.py').resolve()
+    bundle = layout.Bundle(Path(sys.executable).resolve().parent.parent)
+    assert os.environ['IMAGEIO_FFMPEG_EXE'] == str(bundle.ffmpeg)
+    assert os.environ['PATH'] == os.pathsep.join([str(bundle.tools_bin), original_path])
+    print('COLLECTION_STARTED')
+    return 0
+pytest = types.ModuleType('pytest')
+pytest.main = collect
+sys.modules['pytest'] = pytest
+raise SystemExit(gate.worker(Path(sys.argv[2]), callers=True))
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            probe,
+            str(gate.BUILD / "host_fs_windows_check.py"),
+            str(tmp_path),
+            str(bundle / "python/python.exe"),
+        ],
+        cwd=gate.BACKEND,
+        input="run\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if bundled_tool:
+        assert result.returncode == 0, result.stderr
+        assert "COLLECTION_STARTED" in result.stdout
+        assert json.loads((tmp_path / "worker.json").read_text())["exit_code"] == 0
+    else:
+        assert result.returncode != 0
+        assert "bundled_ffmpeg_missing" in result.stderr
+        assert "COLLECTION_STARTED" not in result.stdout
+        assert not (tmp_path / "worker.json").exists()
+
+
+class FakeProcess:
+    def __init__(self, code):
+        self.returncode = code
+        self.stdin = Mock(closed=False)
+        self._handle = Mock()
+        self.killed = False
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+        self.returncode = 1
+
+    def wait(self, timeout):
+        assert timeout <= 5
+        assert self.returncode is not None
+
+
+class FakeJob:
+    def __init__(self, active=0):
+        self.count = active
+        self.closed = False
+        self.terminated = False
+
+    def assign(self, process):
+        assert not process.stdin.write.called
+
+    def active(self):
+        return self.count
+
+    def terminate(self):
+        self.terminated = True
+        self.count = 0
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_worker_exit_code_and_handles_preserved(tmp_path, code):
+    process, job = FakeProcess(code), FakeJob()
+    report = gate.supervise(
+        tmp_path, popen=Mock(return_value=process), job_factory=lambda: job
+    )
+    assert report["exit_code"] == code
+    assert report["active_processes"] == 0
+    assert not report["forced_cleanup"]
+    process.stdin.write.assert_called_once_with(b"run\n")
+    process._handle.Close.assert_called_once()
+    assert job.closed
+
+
+def test_caller_mode_reaches_worker(tmp_path):
+    popen = Mock(return_value=FakeProcess(0))
+    gate.supervise(tmp_path, callers=True, popen=popen, job_factory=FakeJob)
+    assert popen.call_args.args[0][-1] == "--callers"
+
+
+def test_coverage_wraps_the_isolated_worker_without_bypassing_ownership(tmp_path):
+    process, job = FakeProcess(0), FakeJob()
+    popen = Mock(return_value=process)
+    result = gate.supervise(
+        tmp_path, coverage=True, popen=popen, job_factory=lambda: job
+    )
+    command = popen.call_args.args[0]
+    assert command[:6] == [sys.executable, "-I", "-B", "-m", "coverage", "run"]
+    assert "--branch" in command
+    assert command[command.index("--source") + 1] == str(gate.BACKEND / "backend")
+    assert command[command.index("--data-file") + 1] == str(tmp_path / ".coverage")
+    assert command[-3:] == [
+        str(Path(gate.__file__).resolve()),
+        "--worker",
+        str(tmp_path),
+    ]
+    process.stdin.write.assert_called_once_with(b"run\n")
+    assert result["exit_code"] == 0 and result["active_processes"] == 0
+    assert job.closed
+
+
+@pytest.mark.parametrize(
+    "tests_pass,coverage_present", [(True, True), (False, True), (True, False)]
+)
+def test_coverage_requires_passed_native_tests_and_measured_files(
+    tmp_path, monkeypatch, tests_pass, coverage_present
+):
+    report = passing_report()
+    if not tests_pass:
+        report["failed"] = 1
+    (tmp_path / "worker.json").write_text(json.dumps(report))
+    fixture = Mock(path=tmp_path)
+    measured = Mock()
+    measured.get_data.return_value.measured_files.return_value = (
+        {"backend/copilot/host_fs.py"} if coverage_present else set()
+    )
+    destination = tmp_path / "reports/coverage.xml"
+
+    def export(*, outfile):
+        assert outfile == str(destination)
+        destination.write_text("<coverage><packages /></coverage>")
+
+    measured.xml_report.side_effect = export
+    coverage_class = Mock(return_value=measured)
+    monkeypatch.setitem(
+        sys.modules, "coverage", SimpleNamespace(Coverage=coverage_class)
+    )
+    monkeypatch.setattr(gate, "require_native", Mock())
+    monkeypatch.setattr(gate, "PrivateFixture", Mock(return_value=fixture))
+    monkeypatch.setattr(gate, "source_hashes", Mock(return_value=report["sources"]))
+    supervise = Mock(
+        return_value={
+            "exit_code": 0,
+            "timed_out": False,
+            "forced_cleanup": False,
+            "active_processes": 0,
+        }
+    )
+    monkeypatch.setattr(gate, "supervise", supervise)
+    result = gate.main(
+        ["--result", str(tmp_path / "result.json"), "--coverage", str(destination)]
+    )
+    assert result == (0 if tests_pass and coverage_present else 1)
+    assert supervise.call_args.kwargs["coverage"] is True
+    assert destination.exists() is (tests_pass and coverage_present)
+    if tests_pass:
+        measured.load.assert_called_once()
+    else:
+        coverage_class.assert_not_called()
+    fixture.cleanup.assert_called_once()
+
+
+def test_coverage_export_uses_repository_paths_and_keeps_actual_hits(
+    tmp_path, monkeypatch
+):
+    import coverage
+
+    backend = tmp_path / "repo/autogpt_platform/backend"
+    source = backend / "backend/copilot/probe.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("answer = 42\nif answer == 0:\n    missing = True\n")
+    measured = coverage.Coverage(
+        data_file=str(tmp_path / ".coverage"),
+        source=[str(backend / "backend")],
+        branch=True,
+        config_file=False,
+    )
+    measured.start()
+    runpy.run_path(str(source))
+    measured.stop()
+    measured.save()
+    monkeypatch.setattr(gate, "BACKEND", backend)
+    monkeypatch.chdir(tmp_path)
+    destination = tmp_path / "reports/coverage.xml"
+    gate.export_coverage(tmp_path, destination)
+    report = ET.parse(destination)
+    assert [item.text for item in report.findall("sources/source")] == ["."]
+    classes = report.findall(".//class")
+    assert [item.attrib["filename"] for item in classes] == [
+        "autogpt_platform/backend/backend/copilot/probe.py"
+    ]
+    hits = {
+        int(item.attrib["number"]): int(item.attrib["hits"])
+        for item in classes[0].findall("lines/line")
+    }
+    assert hits == {1: 1, 2: 1, 3: 0}
+    assert int(report.getroot().attrib["branches-valid"]) == 2
+    assert int(report.getroot().attrib["branches-covered"]) == 1
+
+
+def test_timeout_terminates_only_owned_job_and_worker(tmp_path):
+    process, job = FakeProcess(None), FakeJob(1)
+    report = gate.supervise(
+        tmp_path, timeout=0, popen=Mock(return_value=process), job_factory=lambda: job
+    )
+    assert report["timed_out"] and report["forced_cleanup"]
+    assert job.terminated and process.killed and job.closed
+    assert report["active_processes"] == 0
+
+
+def test_leaked_child_fails_even_when_pytest_exits_zero(tmp_path):
+    process, job = FakeProcess(0), FakeJob(1)
+    report = gate.supervise(
+        tmp_path, popen=Mock(return_value=process), job_factory=lambda: job
+    )
+    assert report["exit_code"] == 0
+    assert report["forced_cleanup"] and job.terminated
+
+
+def test_assignment_failure_never_releases_worker(tmp_path):
+    process, job = FakeProcess(None), FakeJob()
+    job.assign = Mock(side_effect=OSError("assignment failed"))
+    with pytest.raises(OSError):
+        gate.supervise(
+            tmp_path, popen=Mock(return_value=process), job_factory=lambda: job
+        )
+    process.stdin.write.assert_not_called()
+    assert process.killed and job.closed
+
+
+def test_log_bound_terminates_owned_worker(tmp_path):
+    process, job = FakeProcess(None), FakeJob(1)
+    with patch.object(gate, "MAX_LOG_BYTES", -1), pytest.raises(
+        RuntimeError, match="worker_log_limit"
+    ):
+        gate.supervise(
+            tmp_path, popen=Mock(return_value=process), job_factory=lambda: job
+        )
+    assert process.killed and job.terminated and job.closed
+
+
+def fake_handles(attrs):
+    return SimpleNamespace(
+        DELETE=0x10000,
+        READ_ATTRIBUTES=0x80,
+        DIRECTORY=0x10,
+        REPARSE=0x400,
+        FILE_OPEN=1,
+        relative=Mock(return_value=2),
+        attributes=Mock(return_value=attrs),
+        set_info=Mock(return_value=True),
+        close=Mock(),
+    )
+
+
+@pytest.mark.parametrize("attrs", [0, 0x400, 0x410])
+def test_cleanup_unlinks_leaf_or_reparse_without_traversal(attrs):
+    wh = fake_handles(attrs)
+    with patch.object(gate, "directory_names", return_value=iter(["child"])) as names:
+        gate.remove_contents(wh, 1, float("inf"), [1])
+    names.assert_called_once_with(wh, 1)
+    assert wh.relative.call_args.kwargs == {"allow_link": True}
+    wh.set_info.assert_called_once()
+    wh.close.assert_called_once_with(2)
+
+
+def test_cleanup_uses_retained_handle_for_directory_enumeration():
+    wh = fake_handles(0x10)
+    with patch.object(
+        gate, "directory_names", side_effect=[iter(["child"]), iter([])]
+    ) as names:
+        gate.remove_contents(wh, 1, float("inf"), [1])
+    assert [call.args[1] for call in names.call_args_list] == [1, 2]
+    wh.set_info.assert_called_once()
+    wh.close.assert_called_once_with(2)
+
+
+@pytest.mark.parametrize("deadline,budget", [(0, 10), (float("inf"), 0)])
+def test_cleanup_bounds_precede_child_open(deadline, budget):
+    wh = fake_handles(0)
+    with patch.object(
+        gate, "directory_names", return_value=iter(["child"])
+    ), pytest.raises(RuntimeError, match="cleanup_budget"):
+        gate.remove_contents(wh, 1, deadline, [budget])
+    wh.relative.assert_not_called()
+
+
+def test_cleanup_failure_closes_owned_handle():
+    wh = fake_handles(0)
+    wh.set_info.return_value = False
+    with patch.object(
+        gate, "directory_names", return_value=iter(["child"])
+    ), pytest.raises(RuntimeError, match="cleanup_delete"):
+        gate.remove_contents(wh, 1, float("inf"), [1])
+    wh.close.assert_called_once_with(2)
+
+
+def test_cleanup_retries_transient_kernel_handle_release():
+    error = OSError("sharing")
+    error.winerror = 32
+    operation = Mock(side_effect=[error, 5])
+    with patch.object(gate.time, "sleep"):
+        assert gate.retry_sharing(operation, float("inf")) == 5
+    assert operation.call_count == 2
+
+
+@pytest.mark.parametrize("code,deadline", [(32, 0), (5, float("inf"))])
+def test_cleanup_retry_preserves_deadline_and_other_errors(code, deadline):
+    error = OSError("failure")
+    error.winerror = code
+    operation = Mock(side_effect=error)
+    with pytest.raises(OSError):
+        gate.retry_sharing(operation, deadline)
+    operation.assert_called_once()
+
+
+def test_directory_record_rejects_escape_component():
+    def read(handle, kind, buffer, size):
+        record = bytearray(size)
+        name = "../outside".encode("utf-16-le")
+        struct.pack_into("<I", record, 60, len(name))
+        record[104 : 104 + len(name)] = name
+        ctypes.memmove(buffer, bytes(record), size)
+        return True
+
+    with pytest.raises(RuntimeError, match="invalid_directory_name"):
+        list(gate.directory_names(SimpleNamespace(get_info=read), 1))
+
+
+@pytest.mark.parametrize(
+    "test_ok,cleanup_ok,expected", [(True, True, 0), (False, True, 1), (True, False, 1)]
+)
+def test_main_preserves_test_and_cleanup_failures(
+    tmp_path, test_ok, cleanup_ok, expected
+):
+    report = passing_report()
+    if not test_ok:
+        report["skipped"] = 1
+    (tmp_path / "worker.json").write_text(json.dumps(report))
+    (tmp_path / "pytest.log").write_text("test diagnostics")
+    fixture = Mock(path=tmp_path)
+    if not cleanup_ok:
+        fixture.cleanup.side_effect = OSError("injected cleanup")
+    worker = {
+        "exit_code": 0,
+        "timed_out": False,
+        "forced_cleanup": False,
+        "active_processes": 0,
+    }
+    with patch.object(gate, "require_native"), patch.object(
+        gate, "PrivateFixture", return_value=fixture
+    ), patch.object(
+        gate, "source_hashes", return_value=report["sources"]
+    ), patch.object(
+        gate, "supervise", return_value=worker
+    ):
+        code = gate.main(["--result", str(tmp_path / "result.json")])
+    assert code == expected
+    saved = json.loads((tmp_path / "result.json").read_text())
+    assert saved["cleanup"] == ("passed" if cleanup_ok else "failed")
+    fixture.cleanup.assert_called_once()
+
+
+@pytest.mark.parametrize("report_state", ["missing", "malformed", "worker-exit"])
+def test_main_prints_bounded_worker_diagnostics_before_cleanup(
+    tmp_path, capsys, report_state
+):
+    report = passing_report()
+    if report_state != "missing":
+        (tmp_path / "worker.json").write_text(
+            "{" if report_state == "malformed" else json.dumps(report), encoding="utf-8"
+        )
+    log = tmp_path / "pytest.log"
+    log.write_text(
+        "EXCLUDED_PREFIX\n" + "x" * 20000 + "\nWORKER_STARTUP_FAILURE\n",
+        encoding="utf-8",
+    )
+    fixture = Mock(path=tmp_path)
+    fixture.cleanup.side_effect = log.unlink
+    worker = {
+        "exit_code": 1,
+        "timed_out": False,
+        "forced_cleanup": False,
+        "active_processes": 0,
+    }
+    with patch.object(gate, "require_native"), patch.object(
+        gate, "PrivateFixture", return_value=fixture
+    ), patch.object(
+        gate, "source_hashes", return_value=report["sources"]
+    ), patch.object(
+        gate, "supervise", return_value=worker
+    ):
+        assert gate.main(["--result", str(tmp_path / "result.json")]) == 1
+    captured = capsys.readouterr()
+    assert "WORKER_STARTUP_FAILURE" in captured.err
+    assert "EXCLUDED_PREFIX" not in captured.err
+    assert len(captured.err) < 17000
+    saved = json.loads((tmp_path / "result.json").read_text())
+    assert saved["status"] == "failed"
+    assert saved["cleanup"] == "passed"
+    assert saved["worker"] == worker
+    fixture.cleanup.assert_called_once()
+
+
+def test_unproven_process_cleanup_retains_fixture(tmp_path):
+    fixture = Mock(path=tmp_path)
+    with patch.object(gate, "require_native"), patch.object(
+        gate, "PrivateFixture", return_value=fixture
+    ), patch.object(gate, "source_hashes", return_value={}), patch.object(
+        gate, "supervise", side_effect=RuntimeError("owned_processes_survived")
+    ):
+        assert gate.main(["--result", str(tmp_path / "result.json")]) == 1
+    fixture.cleanup.assert_not_called()
+    assert json.loads((tmp_path / "result.json").read_text())["cleanup"] == "failed"
+
+
+def test_unsafe_parent_rejected_without_worker_or_cleanup(tmp_path):
+    with patch.object(gate, "require_native"), patch.object(
+        gate, "PrivateFixture", side_effect=PermissionError("unsafe ancestry")
+    ), patch.object(gate, "source_hashes", return_value={}), patch.object(
+        gate, "supervise"
+    ) as supervise:
+        assert gate.main(["--result", str(tmp_path / "result.json")]) == 1
+    supervise.assert_not_called()
+    assert (
+        json.loads((tmp_path / "result.json").read_text())["cleanup"] == "not_created"
+    )

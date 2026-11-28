@@ -1,0 +1,2 @@
+# `git apply` refuses a patch whose lines end in CRLF against LF sources.
+*.patch text eol=lf
