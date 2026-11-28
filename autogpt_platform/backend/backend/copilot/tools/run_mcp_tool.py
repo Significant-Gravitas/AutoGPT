@@ -15,6 +15,8 @@ from backend.blocks.mcp.helpers import (
     parse_mcp_content,
     server_host,
 )
+from backend.copilot.gate import gate_active
+from backend.copilot.gate.mcp_learned import remember_listing
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FILE_REF_PREFIX,
@@ -354,7 +356,9 @@ class RunMCPToolTool(BaseTool):
 
             if not tool_name:
                 # Stage 1: Discover available tools
-                return await self._discover_tools(client, server_url, session_id)
+                return await self._discover_tools(
+                    client, server_url, session_id, user_id, session
+                )
             else:
                 # Stage 2: Execute the selected tool
                 return await self._execute_tool(
@@ -445,6 +449,8 @@ class RunMCPToolTool(BaseTool):
         client: MCPClient,
         server_url: str,
         session_id: str,
+        user_id: str | None = None,
+        session: ChatSession | None = None,
     ) -> MCPToolsDiscoveredResponse:
         """List available tools from an already-initialized MCPClient.
 
@@ -453,6 +459,9 @@ class RunMCPToolTool(BaseTool):
         inspect tool schemas and choose one to execute in a follow-up call.
         """
         tools = await client.list_tools()
+        if session is not None and await gate_active(user_id, session):
+            # So the gate knows what each tool does before the first call of it.
+            await remember_listing(session.session_id, server_url, tools)
         # Full input schemas are deliberately omitted: a server like Notion
         # exposes 20 tools whose schemas total ~67KB (~17K tokens) — enough
         # to trigger context compaction on its own. The compact per-tool

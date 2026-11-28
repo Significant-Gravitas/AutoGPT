@@ -132,6 +132,8 @@ class MCPTool(BaseModel):
     name: str
     description: str
     input_schema: dict[str, Any]
+    # The server's own hints about the tool (``readOnlyHint``, ...); its word only.
+    annotations: dict[str, Any] = Field(default_factory=dict)
 
 
 class MCPCallResult(BaseModel):
@@ -856,6 +858,11 @@ class MCPClient:
                     # than omitting the key, and the model requires a string.
                     description=tool_data.get("description") or "",
                     input_schema=input_schema,
+                    annotations=(
+                        marks
+                        if isinstance(marks := tool_data.get("annotations"), dict)
+                        else {}
+                    ),
                 )
             )
         return tools

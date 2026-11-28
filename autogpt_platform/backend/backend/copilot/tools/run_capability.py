@@ -27,6 +27,7 @@ from backend.copilot.capabilities.sources import skill_name
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.context import get_current_permissions
 from backend.copilot.gate import METERED, gate_active
+from backend.copilot.gate.mcp_learned import learned_effect
 from backend.copilot.gate.subject import NO_OP, Subject, block_subject, mcp_subject
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
@@ -129,11 +130,13 @@ class RunCapabilityTool(BaseTool):
             return NO_OP
         entry = await resolve_session_entry(user_id, session, capability_id)
         if entry is None and capability_id.strip().lower().startswith("https://"):
-            return _mcp_subject(capability_id.strip(), payload or {})
+            return await _mcp_subject(session, capability_id.strip(), payload or {})
         if entry is None:
             return NO_OP
         if entry.kind == "mcp_server":
-            return _mcp_subject(entry.implementations[0].ref, payload or {})
+            return await _mcp_subject(
+                session, entry.implementations[0].ref, payload or {}
+            )
         if entry.kind != "block" or (payload or {}).get("connect", False):
             return NO_OP
         block_id = next(
@@ -368,13 +371,16 @@ async def _run_block(
     )
 
 
-def _mcp_subject(server_url: str, payload: dict[str, Any]) -> Subject:
+async def _mcp_subject(
+    session: ChatSession, server_url: str, payload: dict[str, Any]
+) -> Subject:
     """Listing a server's tools runs none of them, and a catalogued server
     that needs its URL answers with setup help."""
     tool = str(payload.get("tool") or "").strip()
     if not tool or not server_url:
         return NO_OP
-    return mcp_subject(server_url, tool)
+    learned = await learned_effect(session.session_id, server_url, tool)
+    return mcp_subject(server_url, tool, learned)
 
 
 async def _describe_tool(
