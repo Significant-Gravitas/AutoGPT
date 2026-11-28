@@ -442,6 +442,35 @@ class TestClaudeCodeTmpdir:
         assert result["ANTHROPIC_API_KEY"] == ""
 
 
+# Every environment build_sdk_env() produces, one per mode.
+_EVERY_MODE = [
+    pytest.param({"use_openrouter": False}, {}, id="direct"),
+    pytest.param(
+        {
+            "use_openrouter": True,
+            "api_key": "sk-or-test-key",
+            "base_url": "https://openrouter.ai/api/v1",
+        },
+        {},
+        id="openrouter",
+    ),
+    pytest.param({"use_claude_code_subscription": True}, {}, id="subscription"),
+    pytest.param(
+        {"use_openrouter": False},
+        {
+            "codex_gateway_url": "http://127.0.0.1:43210",
+            "codex_gateway_token": "loopback-capability",
+        },
+        id="codex-gateway",
+    ),
+    pytest.param(
+        {"use_openrouter": False},
+        {"stand_in_model_url": "http://scripted-model:4010/api/v1"},
+        id="stand-in-model",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS — sub-agents run in the foreground
 # ---------------------------------------------------------------------------
@@ -451,39 +480,30 @@ class TestBackgroundTasksDisabled:
     """A background sub-agent is killed when the turn closes the CLI, so every
     mode must keep sub-agents in the foreground (subagent_turn_end_test.py)."""
 
-    @pytest.mark.parametrize(
-        "overrides, kwargs",
-        [
-            pytest.param({"use_openrouter": False}, {}, id="direct"),
-            pytest.param(
-                {
-                    "use_openrouter": True,
-                    "api_key": "sk-or-test-key",
-                    "base_url": "https://openrouter.ai/api/v1",
-                },
-                {},
-                id="openrouter",
-            ),
-            pytest.param({"use_claude_code_subscription": True}, {}, id="subscription"),
-            pytest.param(
-                {"use_openrouter": False},
-                {
-                    "codex_gateway_url": "http://127.0.0.1:43210",
-                    "codex_gateway_token": "loopback-capability",
-                },
-                id="codex-gateway",
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("overrides, kwargs", _EVERY_MODE)
     @patch("backend.copilot.sdk.env.validate_subscription")
     def test_set_in_every_mode(self, _mock_validate, overrides, kwargs):
-        cfg = _make_config(**overrides)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env(**kwargs)
+        result = _build_in_mode(overrides, kwargs)
 
         assert result["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
+
+
+class TestSubagentsRunOnTheTurnsModel:
+    """Every mode pins sub-agents to the turn's model, whatever model the Agent
+    call or its agent type names (subagent_turn_end_test.py)."""
+
+    @pytest.mark.parametrize("overrides, kwargs", _EVERY_MODE)
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_set_in_every_mode(self, _mock_validate, overrides, kwargs):
+        result = _build_in_mode(overrides, kwargs)
+
+        assert result["CLAUDE_CODE_SUBAGENT_MODEL"] == "inherit"
+        assert result["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"] == "1"
+
+
+def _build_in_mode(overrides: dict, kwargs: dict) -> dict[str, str]:
+    with patch("backend.copilot.sdk.env.config", _make_config(**overrides)):
+        return build_sdk_env(**kwargs)
 
 
 # ---------------------------------------------------------------------------
