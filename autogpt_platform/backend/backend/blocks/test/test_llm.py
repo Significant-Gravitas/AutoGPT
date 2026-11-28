@@ -2399,6 +2399,8 @@ def test_stagehand_keeps_remote_model_credentials_required(block_name):
         ({"name": "clean", " name": "padded"}, {"name": "clean"}),
         ({" name": "first", "name ": "second"}, {"name": "first"}),
         ({"\ufeffname\u00a0": "Ada"}, {"name": "Ada"}),
+        ({"\ufeff name \ufeff": "Ada"}, {"name": "Ada"}),
+        ({" first  name ": "Ada"}, {"first  name": "Ada"}),
         ({"   ": "blank", "name": "Ada"}, {"name": "Ada"}),
         ({}, {}),
     ],

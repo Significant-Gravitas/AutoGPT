@@ -81,9 +81,6 @@ settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
-# str.strip() keeps U+FEFF, which the builder's JavaScript trim() removes.
-_KEY_PADDING = re.compile(r"^[\s\ufeff]+|[\s\ufeff]+$")
-
 
 def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
     """Strip whitespace around prompt-value keys so `{{name}}` finds `name `.
@@ -94,10 +91,20 @@ def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
     """
     stripped: dict[str, str] = {}
     for key, value in values.items():
-        clean = _KEY_PADDING.sub("", key)
+        clean = _strip_key_padding(key)
         if clean and (clean == key or clean not in values):
             stripped.setdefault(clean, value)
     return stripped
+
+
+def _strip_key_padding(key: str) -> str:
+    # str.strip() keeps U+FEFF, which the builder's JavaScript trim() removes.
+    start, end = 0, len(key)
+    while start < end and (key[start].isspace() or key[start] == "\ufeff"):
+        start += 1
+    while end > start and (key[end - 1].isspace() or key[end - 1] == "\ufeff"):
+        end -= 1
+    return key[start:end]
 
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
