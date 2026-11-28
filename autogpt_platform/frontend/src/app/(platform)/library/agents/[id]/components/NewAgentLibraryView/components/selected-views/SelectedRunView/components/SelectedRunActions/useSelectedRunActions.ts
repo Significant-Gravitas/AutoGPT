@@ -19,7 +19,7 @@ import {
   CredentialsProvidersContext,
 } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useContext, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { formatValidationError } from "../../../../modals/RunAgentModal/errorHelpers";
 import {
   describeDeletedKeys,
@@ -47,6 +47,12 @@ export function useSelectedRunActions({
   const { toast } = useToast();
   const allProviders = useContext(CredentialsProvidersContext);
   const credentialsActions = useContext(CredentialsActionsContext);
+  // The saved keys as they are now: a refusal can come back after they loaded,
+  // to a Rerun pressed while they were still loading
+  const latestProviders = useRef(allProviders);
+  useEffect(() => {
+    latestProviders.current = allProviders;
+  });
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] =
@@ -159,8 +165,9 @@ export function useSelectedRunActions({
         const id = checkedRun.credential_inputs?.[field]?.id;
         return id === undefined || !savedIDs.has(id);
       });
-      // The page's own list catches up with the keys it didn't know of
-      if (deleted.length < missing.length) credentialsActions?.reload();
+      // The page's own list catches up with what the read found, keys saved
+      // since included, so the form's pickers offer them
+      credentialsActions?.reload();
       return deleted;
     } catch {
       return [];
@@ -175,7 +182,7 @@ export function useSelectedRunActions({
     const refusedKeys = getRefusedKeys(
       error,
       failedRun.credential_inputs,
-      allProviders,
+      latestProviders.current,
     );
     if (refusedKeys.length > 0) {
       credentialsActions?.reload();
@@ -187,7 +194,7 @@ export function useSelectedRunActions({
       });
       return;
     }
-    // Each step's problem, not only how many there are
+    // Lists each step's error from node_errors, not just the summary message
     toast({
       title: "Failed to start run",
       description:

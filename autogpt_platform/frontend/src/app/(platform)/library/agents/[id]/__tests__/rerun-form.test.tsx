@@ -444,8 +444,11 @@ describe("three bugs", () => {
   test("a key added outside this page after it loaded is not called deleted: the rerun starts on it", async () => {
     // The page reads the user's saved keys once, when the app loads
     let onServer = [FIRECRAWL_PLATFORM, FIRECRAWL_OTHER];
-    const { executeBodies } = setup({ savedCredentials: () => onServer });
+    const { executeBodies, credentialReads } = setup({
+      savedCredentials: () => onServer,
+    });
     await waitForRunView();
+    const readsBefore = credentialReads();
     // Another tab adds the key and runs the task with it: the server holds
     // it, and would start a rerun on it
     onServer = [FIRECRAWL_PLATFORM, FIRECRAWL_USED, FIRECRAWL_OTHER];
@@ -453,6 +456,8 @@ describe("three bugs", () => {
     await rerun();
 
     await waitFor(() => expect(executeBodies).toHaveLength(1));
+    // Rerun read the keys again before deciding
+    expect(credentialReads()).toBeGreaterThan(readsBefore);
     expect(
       executeBodies[0].credentials_inputs?.[FIRECRAWL_FIELD.name]?.id,
     ).toBe(FIRECRAWL_USED.id);
@@ -524,13 +529,13 @@ describe("three bugs", () => {
       FIRECRAWL_OTHER.id,
     );
     const github = await picker(form, "Github");
+    expect(github.value).toBe("__none__");
     await clickWhenEnabled("Start Task", form);
 
     await waitFor(() => expect(executeBodies).toHaveLength(1));
     expect(
       executeBodies[0].credentials_inputs?.[GITHUB_FIELD.name],
     ).toBeUndefined();
-    expect(github.value).toBe("__none__");
   });
 });
 

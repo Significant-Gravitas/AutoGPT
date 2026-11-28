@@ -9,10 +9,10 @@ import { toDisplayName } from "@/providers/agent-credentials/helper";
 export const RERUN_FORM_TITLE = "Rerun task";
 
 // How the server refuses a key it doesn't hold for the user
-const UNKNOWN_KEY_PREFIX = "Unknown credentials #";
+export const UNKNOWN_KEY_PREFIX = "Unknown credentials #";
 // A provider's own key on the platform, such as "firecrawl-default": the
 // server never gives a user's key an id like it
-const SDK_KEY_SUFFIX = "-default";
+export const SDK_KEY_SUFFIX = "-default";
 
 type RunCredentials = GraphExecution["credential_inputs"];
 type RunCredential = NonNullable<RunCredentials>[string];

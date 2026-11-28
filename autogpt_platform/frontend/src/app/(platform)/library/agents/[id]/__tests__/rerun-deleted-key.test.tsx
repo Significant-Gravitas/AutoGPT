@@ -105,6 +105,14 @@ const OTHER_KEY = {
   title: "Other Firecrawl key",
   is_system: false,
 };
+// A key saved in another tab after the page loaded
+const NEW_KEY = {
+  id: "new-firecrawl-key",
+  provider: "firecrawl",
+  type: "api_key",
+  title: "New Firecrawl key",
+  is_system: false,
+};
 
 interface WorkflowField {
   name: string;
@@ -204,7 +212,10 @@ interface Setup {
   // The key the past run used
   runKey?: Key;
   // The keys /integrations/credentials lists, read again on every request
-  savedCredentials?: () => Array<Record<string, unknown>>;
+  savedCredentials?: () =>
+    | Array<Record<string, unknown>>
+    | Promise<Array<Record<string, unknown>>>
+    | Response;
   // How the server answers a run request
   answerRun?: () => Response | Promise<Response>;
   // The workflow's credential field
@@ -302,9 +313,10 @@ function setup({
     http.get("*/api/integrations/providers/system", () =>
       HttpResponse.json(field.providers),
     ),
-    http.get("*/api/integrations/credentials", () =>
-      HttpResponse.json(savedCredentials()),
-    ),
+    http.get("*/api/integrations/credentials", async () => {
+      const answer = await savedCredentials();
+      return answer instanceof Response ? answer : HttpResponse.json(answer);
+    }),
     http.get("*/api/graphs/:graphId", ({ request }) => {
       const version = new URL(request.url).searchParams.get("version");
       graphReads.push(version);
@@ -590,6 +602,89 @@ test("a key deleted after the page loaded is named when the server refuses it, a
   await waitFor(() => expect(executeBodies).toHaveLength(2));
   expect(keyIn(executeBodies[1])).toBe(OTHER_KEY.id);
   expect(executeBodies[1].inputs).toEqual({ topic: "news" });
+});
+
+test("a Rerun pressed while the saved keys load opens the form when the server refuses a deleted key", async () => {
+  // The page's first read of the user's keys is held until the test answers
+  let answerKeys: (() => void) | undefined;
+  const keysRead = new Promise<void>((resolve) => {
+    answerKeys = resolve;
+    heldAnswers.push(resolve);
+  });
+  let refuse: (() => void) | undefined;
+  const { runRequests } = setup({
+    savedCredentials: async () => {
+      await keysRead;
+      return [PLATFORM_KEY, OTHER_KEY];
+    },
+    answerRun: () =>
+      new Promise<Response>((resolve) => {
+        refuse = () =>
+          resolve(
+            refusedOverCredentials(`Unknown credentials #${USED_KEY.id}`)(),
+          );
+        heldAnswers.push(refuse);
+      }),
+  });
+  expect(await screen.findByText(`Output of ${RUN_ID}`)).toBeDefined();
+  expect(screen.queryByText("Saved keys loaded")).toBeNull();
+
+  // Nothing is known to be deleted yet, so the rerun is sent
+  await rerun();
+  await waitFor(() => expect(runRequests).toHaveLength(1));
+  answerKeys?.();
+  expect(await screen.findByText("Saved keys loaded")).toBeDefined();
+  refuse?.();
+
+  // The refusal is read against the keys as they are now, not as they were
+  // when Rerun was pressed
+  expect(
+    await screen.findByText(
+      "A key this task used was deleted: My Firecrawl key.",
+    ),
+  ).toBeDefined();
+  expect(
+    await screen.findByRole("dialog", { name: "Rerun task" }),
+  ).toBeDefined();
+});
+
+test("when the keys can't be read again, the rerun goes to the server on the task's key", async () => {
+  // The page's list doesn't have the task's key; the read that would confirm
+  // it is gone fails
+  let readsFail = false;
+  const { executeBodies } = setup({
+    savedCredentials: () =>
+      readsFail
+        ? HttpResponse.json({ detail: "Unavailable" }, { status: 500 })
+        : [PLATFORM_KEY, OTHER_KEY],
+  });
+  await waitForRunView();
+  readsFail = true;
+
+  await rerun();
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0])).toBe(USED_KEY.id);
+  expect(screen.queryByRole("dialog", { name: "Rerun task" })).toBeNull();
+});
+
+test("the form offers a key saved in another tab since the page loaded", async () => {
+  let saved = [PLATFORM_KEY, OTHER_KEY];
+  setup({ savedCredentials: () => saved });
+  await waitForRunView();
+  saved = [PLATFORM_KEY, OTHER_KEY, NEW_KEY];
+
+  await rerun();
+
+  const form = await screen.findByRole("dialog", { name: "Rerun task" });
+  const picker = await within(form).findByRole("combobox", { name: PICKER });
+  // The read that confirmed the task's key is gone also brought the page's
+  // keys up to date
+  expect(
+    await within(picker).findByRole("option", {
+      name: /^New Firecrawl key \(/,
+    }),
+  ).toBeDefined();
 });
 
 describe("which keys are the platform's is decided by their ids", () => {
