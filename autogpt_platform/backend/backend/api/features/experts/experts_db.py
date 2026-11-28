@@ -159,10 +159,7 @@ _WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
 # agent was deleted (or orphaned with no source) would link to a page that 404s.
 LIVE_WORKFLOWS: prisma.types.ExpertWorkflowWhereInput = {
     "OR": [
-        {
-            "libraryAgentId": None,
-            "StoreListingVersion": {"is": {"isDeleted": False}},
-        },
+        {"libraryAgentId": None, "NOT": [{"storeListingVersionId": None}]},
         {"LibraryAgent": {"is": {"isDeleted": False}}},
     ]
 }
