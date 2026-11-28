@@ -246,6 +246,13 @@ class TestMergedWithParent:
         assert not merged.tools_exclude  # stored as whitelist
         assert set(merged.tools) == {"run_block", "web_fetch"}
 
+    def test_a_parents_denial_holds_against_what_a_merged_entry_implies(self):
+        parent = CopilotPermissions(tools=["run_capability"], tools_exclude=True)
+        merged = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
+        effective = merged.effective_allowed_tools(ALL_TOOL_NAMES)
+        assert "run_capability" not in effective
+        assert "web_fetch" in effective
+
     def test_block_parent_stored(self):
         all_t = frozenset(["run_block"])
         parent = CopilotPermissions(blocks=["HTTP Request"], blocks_exclude=True)

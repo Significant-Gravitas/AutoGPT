@@ -611,6 +611,54 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_turn_puts_a_merged_filters_ceilings_on_the_queued_entry() -> (
+    None
+):
+    parent = CopilotPermissions(
+        tools=["run_capability"], blocks=["SendWebRequestBlock"]
+    )
+    queue = MagicMock(publish_message=AsyncMock())
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+    ):
+        await utils.dispatch_turn(
+            MagicMock(),
+            session_id="s1",
+            user_id="u1",
+            turn_id="t1",
+            message="hi",
+            permissions=CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES),
+        )
+
+    entry = CoPilotExecutionEntry.model_validate_json(
+        queue.publish_message.await_args.kwargs["message"]
+    )
+    assert entry.permissions is not None
+    assert not entry.permissions.is_block_allowed(
+        "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+    )
+    assert "run_capability" not in entry.permissions.effective_allowed_tools(
+        ALL_TOOL_NAMES
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("user_id", ["u1", None])
 async def test_schedule_turn_hands_impersonation_to_the_turn(
     user_id: str | None,

@@ -570,7 +570,8 @@ class CopilotPermissions(BaseModel):
         """Return a new instance that is at most as permissive as *parent*.
 
         - Tools: intersection of effective-allowed sets, stored as a whitelist
-          (a blacklist of every tool when none is left).
+          of the entries whose implied grants it holds too (a blacklist of
+          every tool when none is left).
         - Blocks: the parent's own filter and its ceilings join this one's
           ceilings, all applied by :meth:`is_block_allowed`.
         - Providers: the effective ceiling of the whole chain, written out.
@@ -578,6 +579,13 @@ class CopilotPermissions(BaseModel):
         merged_tools = self.effective_allowed_tools(
             all_tools
         ) & parent.effective_allowed_tools(all_tools)
+        # A whitelist entry also allows what it implies (``_IMPLIED_GRANTS``),
+        # so keep only the entries whose grants both sides allow.
+        kept_tools = frozenset(
+            tool
+            for tool in merged_tools
+            if _with_implied_grants(frozenset({tool})) & all_tools <= merged_tools
+        )
         parent_filter = (
             [BlockFilter(blocks=parent.blocks, blocks_exclude=parent.blocks_exclude)]
             if parent.blocks
@@ -585,8 +593,8 @@ class CopilotPermissions(BaseModel):
         )
         result = CopilotPermissions(
             # An empty whitelist reads as no filter; nothing left denies all.
-            tools=sorted(merged_tools or all_tools),
-            tools_exclude=not merged_tools,
+            tools=sorted(kept_tools or all_tools),
+            tools_exclude=not kept_tools,
             blocks=self.blocks,
             blocks_exclude=self.blocks_exclude,
             block_ceilings=[
