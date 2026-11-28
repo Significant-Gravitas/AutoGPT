@@ -86,7 +86,7 @@ export function CredentialRow({
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-[20rem] items-center gap-3 rounded-medium border border-border-base bg-surface p-3 transition-colors",
+        "flex min-w-[min(20rem,100%)] items-center gap-3 rounded-medium border border-border-base bg-surface p-3 transition-colors",
         asSelectTrigger && isNodeVariant
           ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
           : asSelectTrigger
@@ -113,10 +113,7 @@ export function CredentialRow({
           <Text
             variant="body"
             tracking="tight"
-            className={cn(
-              "min-w-0 shrink",
-              isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
-            )}
+            className="min-w-0 shrink truncate"
           >
             {getCredentialDisplayName(credential, displayName)}
           </Text>

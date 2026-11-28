@@ -28,7 +28,9 @@ export function RunActions({
     defaultRunType === "manual-trigger";
 
   return (
-    <div className="flex justify-end gap-3">
+    // Too narrow for one row, as on a phone, Simulate goes on a row of its
+    // own and the main actions stay together below it
+    <div className="flex flex-wrap items-center justify-end gap-3">
       {!isTrigger && onSimulate && (
         <Button
           variant="ghost"
@@ -41,15 +43,17 @@ export function RunActions({
           Simulate
         </Button>
       )}
-      {scheduleButton}
-      <Button
-        variant="primary"
-        onClick={onRun}
-        disabled={!isRunReady || isExecuting || isSettingUpTrigger}
-        loading={isExecuting || isSettingUpTrigger}
-      >
-        {isTrigger ? "Set up Trigger" : "Start Task"}
-      </Button>
+      <div className="flex gap-3">
+        {scheduleButton}
+        <Button
+          variant="primary"
+          onClick={onRun}
+          disabled={!isRunReady || isExecuting || isSettingUpTrigger}
+          loading={isExecuting || isSettingUpTrigger}
+        >
+          {isTrigger ? "Set up Trigger" : "Start Task"}
+        </Button>
+      </div>
     </div>
   );
 }
