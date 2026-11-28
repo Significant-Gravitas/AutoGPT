@@ -7,6 +7,7 @@ from typing import Any
 import sqlparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import URL
+from sqlparse.exceptions import SQLParseError
 
 
 class DatabaseType(str, Enum):
@@ -61,6 +62,17 @@ _DATABASE_TYPE_TO_DRIVER = {
 # timeout configured via SET commands inside _configure_session().
 _CONNECT_TIMEOUT_SECONDS = 10
 
+# Longest query accepted, in characters; checked before the query is parsed.
+_MAX_QUERY_LENGTH = 100_000
+
+# Longest database error kept, in characters; the rest is cut before scrubbing.
+_MAX_ERROR_LENGTH = 4_000
+
+# Whole numbers outside the range the JSON serializer (orjson) takes as an int
+# are returned as strings.
+_JSON_INT_MIN = -(2**63)
+_JSON_INT_MAX = 2**64 - 1
+
 # Default ports for each database type.
 # The scheme of a database login's scope (see backend/data/credential_scope.py).
 _DATABASE_TYPE_SCOPE_SCHEME = {
@@ -100,7 +112,10 @@ def _sanitize_error(
     - The database username
     - The database port number
     - The database name
+
+    Messages longer than ``_MAX_ERROR_LENGTH`` are cut first.
     """
+    error_msg = _truncate_error(error_msg)
     sanitized = error_msg.replace(connection_string, "<connection_string>")
     sanitized = re.sub(r"password=[^\s&]+", "password=***", sanitized)
     sanitized = re.sub(r"://[^@]+@", "://***:***@", sanitized)
@@ -116,7 +131,7 @@ def _sanitize_error(
     sanitized = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", "<ip>", sanitized)
 
     # Replace bracketed IPv6 addresses (e.g. "[::1]", "[fe80::1%eth0]")
-    sanitized = re.sub(r"\[[0-9a-fA-F:]+(?:%[^\]]+)?\]", "<ip>", sanitized)
+    sanitized = re.sub(r"\[[0-9a-fA-F:]{1,45}(?:%[^\]]{1,64})?\]", "<ip>", sanitized)
 
     # Replace the database username (handles double-quoted, single-quoted,
     # and unquoted formats across PostgreSQL, MySQL, and MSSQL error messages).
@@ -149,6 +164,15 @@ def _sanitize_error(
         sanitized = re.sub(r"\b" + re.escape(database) + r"\b", "<database>", sanitized)
 
     return sanitized
+
+
+def _truncate_error(error_msg: str) -> str:
+    if len(error_msg) <= _MAX_ERROR_LENGTH:
+        return error_msg
+    # Cut between words: a host or user name cut in half would not be scrubbed.
+    whole_words = re.match(r"(?s).*\s", error_msg[: _MAX_ERROR_LENGTH + 1])
+    kept = whole_words.group().rstrip() if whole_words else ""
+    return f"{kept} ... [truncated]".lstrip()
 
 
 def _extract_keyword_tokens(parsed: sqlparse.sql.Statement) -> list[str]:
@@ -256,32 +280,42 @@ def _validate_single_statement(
     Returns (error_message, parsed_statement). If error_message is not None,
     the query is invalid and parsed_statement will be None.
     """
+    if len(query) > _MAX_QUERY_LENGTH:
+        return f"Query is too long (max {_MAX_QUERY_LENGTH:,} characters).", None
+
     stripped = query.strip().rstrip(";").strip()
     if not stripped:
         return "Query is empty.", None
 
-    # Parse the SQL using sqlparse for proper tokenization
-    statements = sqlparse.parse(stripped)
-
-    # Filter out empty statements and comment-only statements
-    statements = [
-        s
-        for s in statements
-        if s.tokens
-        and str(s).strip()
-        and not all(
-            t.is_whitespace or t.ttype in sqlparse.tokens.Comment for t in s.flatten()
-        )
-    ]
+    # Parse lazily, skipping empty and comment-only statements, so a second
+    # statement is refused before the rest of the query is parsed.
+    statements: list[sqlparse.sql.Statement] = []
+    try:
+        for s in sqlparse.parsestream(stripped):
+            if _is_blank_statement(s):
+                continue
+            statements.append(s)
+            # Reject multiple statements -- prevents injection via semicolons
+            if len(statements) > 1:
+                return "Only single statements are allowed.", None
+    except SQLParseError as e:
+        return f"Could not parse the query: {e}", None
 
     if not statements:
         return "Query is empty.", None
 
-    # Reject multiple statements -- prevents injection via semicolons
-    if len(statements) > 1:
-        return "Only single statements are allowed.", None
-
     return None, statements[0]
+
+
+def _is_blank_statement(stmt: sqlparse.sql.Statement) -> bool:
+    return not (
+        stmt.tokens
+        and str(stmt).strip()
+        and not all(
+            t.is_whitespace or t.ttype in sqlparse.tokens.Comment
+            for t in stmt.flatten()
+        )
+    )
 
 
 def _serialize_value(value: Any) -> Any:
@@ -292,7 +326,11 @@ def _serialize_value(value: Any) -> Any:
             return str(value)
         # Use int for whole numbers; use str for fractional to preserve exact
         # precision (float would silently round high-precision analytics values).
-        if value == value.to_integral_value():
+        # Range first, so neither conversion runs on a value outside it.
+        if (
+            _JSON_INT_MIN <= value <= _JSON_INT_MAX
+            and value == value.to_integral_value()
+        ):
             return int(value)
         return str(value)
     if isinstance(value, (datetime, date, time)):
@@ -301,6 +339,9 @@ def _serialize_value(value: Any) -> Any:
         return bytes(value).hex()
     if isinstance(value, bytes):
         return value.hex()
+    if isinstance(value, list):
+        # PostgreSQL arrays arrive as (nested) lists of the element type.
+        return [_serialize_value(item) for item in value]
     return value
 
 
