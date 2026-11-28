@@ -36,6 +36,7 @@ import binascii
 import functools
 import json as json_module
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
@@ -76,7 +77,7 @@ from backend.util.openai_responses import (
     extract_responses_tool_calls,
     extract_responses_usage,
 )
-from backend.util.request import parse_url, validate_url_host
+from backend.util.request import ResponseTooLargeError, parse_url, validate_url_host
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -818,6 +819,8 @@ async def _call_groq(
 
 _OLLAMA_DEFAULT_PORT = 11434
 _SCHEME_PORTS = {"http": 80, "https": 443}
+# A chat answer is one JSON object holding the completion's text.
+_OLLAMA_MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 
 
 def _ollama_url(host: str) -> str:
@@ -958,9 +961,10 @@ async def _send_ollama_chat(
     client_kwargs: dict[str, Any] = {
         "host": host,
         "timeout": request_timeout(timeout_seconds),
+        "headers": {"Accept-Encoding": "identity"},
         "event_hooks": {
             "request": [_scope_ollama_key, record_http_request],
-            "response": [record_http_response],
+            "response": [record_http_response, _bound_ollama_response],
         },
     }
     if not is_trusted:
@@ -989,6 +993,38 @@ async def _send_ollama_chat(
             f"Could not connect to Ollama at {host}: it is unreachable or "
             "not on a public address."
         ) from e
+
+
+async def _bound_ollama_response(response: httpx.Response) -> None:
+    """Refuse an answer compressed against the request's ``Accept-Encoding:
+    identity``, and stop reading one past ``_OLLAMA_MAX_RESPONSE_BYTES``.
+
+    Runs before httpx reads the body, so the count is of bytes as they arrive."""
+    encoding = response.headers.get("content-encoding", "identity").strip().lower()
+    if encoding not in ("", "identity"):
+        raise ValueError(f"Ollama answered with a {encoding!r}-encoded body")
+    # An AsyncClient's response stream is always an async one.
+    stream = cast(httpx.AsyncByteStream, response.stream)
+    response.stream = _CappedStream(stream, _OLLAMA_MAX_RESPONSE_BYTES)
+
+
+class _CappedStream(httpx.AsyncByteStream):
+    """A response body that raises once it passes *limit* bytes."""
+
+    def __init__(self, stream: httpx.AsyncByteStream, limit: int) -> None:
+        self._stream = stream
+        self._limit = limit
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        received = 0
+        async for chunk in self._stream:
+            received += len(chunk)
+            if received > self._limit:
+                raise ResponseTooLargeError(self._limit)
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._stream.aclose()
 
 
 def _trusted_ollama_hostnames() -> list[str]:
