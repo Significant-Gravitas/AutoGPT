@@ -277,3 +277,59 @@ async def test_system_labels_still_need_their_exact_name():
     removed = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "unread")
     assert removed == {"status": "Label not found", "label_id": ""}
     assert fake.called("messages.modify") == []
+
+
+_WITH_FIXED_LABELS = {
+    "labels": [
+        *_LABELS["labels"],
+        {"id": "DRAFT", "name": "DRAFT", "type": "system"},
+        {"id": "SENT", "name": "SENT", "type": "system"},
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_remove_label_refuses_a_label_only_gmail_can_remove(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    fake = _FakeGmail(
+        {
+            "labels.list": _WITH_FIXED_LABELS,
+            "messages.get": {"id": "m1", "threadId": "t1", "labelIds": ["DRAFT"]},
+            "messages.modify": _http_error(400, "Invalid label: DRAFT"),
+        }
+    )
+    block = GmailRemoveLabelBlock()
+    monkeypatch.setattr(block, "_build_service", lambda *args, **kwargs: fake)
+    input_data = GmailRemoveLabelBlock.Input(
+        credentials=TEST_CREDENTIALS_INPUT,  # type: ignore[arg-type]
+        message_id="m1",
+        label_name="DRAFT",
+    )
+    # A ValueError reaches the user as a block execution error with this
+    # message, where Gmail's 400 became an unknown error.
+    with pytest.raises(ValueError, match='remove the "DRAFT" label. A draft keeps'):
+        async for _ in block.run(input_data, credentials=TEST_CREDENTIALS):
+            pass
+    assert fake.called("messages.modify") == []
+
+
+@pytest.mark.asyncio
+async def test_add_label_refuses_a_label_only_gmail_can_add():
+    fake = _FakeGmail(
+        {
+            "labels.list": _WITH_FIXED_LABELS,
+            "messages.modify": _http_error(400, "Invalid label: SENT"),
+        }
+    )
+    with pytest.raises(ValueError, match='add or remove the "SENT" label'):
+        await GmailAddLabelBlock()._add_label(fake, "m1", "SENT")
+    assert fake.called("labels.create") == []
+    assert fake.called("messages.modify") == []
+
+
+@pytest.mark.asyncio
+async def test_user_labels_still_change_beside_labels_only_gmail_can_change():
+    fake = _FakeGmail({"labels.list": _WITH_FIXED_LABELS, "messages.modify": _MODIFIED})
+    result = await GmailAddLabelBlock()._add_label(fake, "m1", "Todo")
+    assert result == {"status": "Label added successfully", "label_id": "Label_7"}

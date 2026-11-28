@@ -408,6 +408,23 @@ class GmailBase(Block, ABC):
         return None
 
 
+# System labels only Gmail itself puts on or takes off a message; a modify
+# call naming one fails with "Invalid label".
+_LABELS_GMAIL_MANAGES = {
+    "DRAFT": "A draft keeps it until it is sent or deleted.",
+    "SENT": "Gmail puts it on every message you send.",
+    "CHAT": "Gmail puts it on chat messages.",
+}
+
+
+def _ensure_label_can_change(label_id: str) -> None:
+    reason = _LABELS_GMAIL_MANAGES.get(label_id)
+    if reason:
+        raise ValueError(
+            f'Gmail doesn\'t let you add or remove the "{label_id}" label. {reason}'
+        )
+
+
 class GmailReadBlock(GmailBase):
     class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
@@ -921,6 +938,7 @@ class GmailAddLabelBlock(GmailBase):
 
     async def _add_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_or_create_label(service, label_name)
+        _ensure_label_can_change(label_id)
         result = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -1024,6 +1042,7 @@ class GmailRemoveLabelBlock(GmailBase):
         label_id = await self._get_label_id(service, label_name)
         if not label_id:
             return {"status": "Label not found", "label_id": ""}
+        _ensure_label_can_change(label_id)
         # The modify response can't say whether the label was there before
         # (Gmail omits labelIds once none are left), so check first.
         message = await asyncio.to_thread(
