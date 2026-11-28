@@ -173,6 +173,24 @@ describe("useEditScheduleModal", () => {
     await waitFor(() => expect(body).toEqual({ name: "Renamed" }));
   });
 
+  test("a stored name over 200 characters asks for a shorter name instead of saving", () => {
+    const { result } = renderHook(
+      () =>
+        useEditScheduleModal("graph-xyz", {
+          ...schedule,
+          name: "n".repeat(201),
+        }),
+      { wrapper },
+    );
+    act(() => {
+      result.current.handleSave();
+    });
+
+    expect(result.current.errors.scheduleName).toBe(
+      "Shorten the schedule name to 200 characters or fewer",
+    );
+  });
+
   test("weekly with no days asks for a day instead of saving a daily schedule", () => {
     const { result } = renderHook(
       () => useEditScheduleModal("graph-xyz", schedule),

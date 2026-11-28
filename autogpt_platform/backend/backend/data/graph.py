@@ -63,8 +63,8 @@ from backend.util.request import parse_url
 from backend.util.text import split_camelcase
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
+    MAX_GRAPH_NAME_LENGTH,
     MAX_INSTRUCTIONS_LENGTH,
-    MAX_LONG_NAME_LENGTH,
 )
 
 from .block import BlockInput
@@ -298,7 +298,7 @@ def _holds_picked_file(annotation: Any) -> bool:
 # Checked at the save rather than on the model, because `GraphMeta` and
 # `GraphModel` read stored rows through it.
 GRAPH_TEXT_MAX_LENGTHS = {
-    "name": MAX_LONG_NAME_LENGTH,
+    "name": MAX_GRAPH_NAME_LENGTH,
     "description": MAX_INSTRUCTIONS_LENGTH,
     "instructions": MAX_INSTRUCTIONS_LENGTH,
     "recommended_schedule_cron": MAX_CRON_LENGTH,
