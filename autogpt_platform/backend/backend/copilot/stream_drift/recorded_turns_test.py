@@ -45,7 +45,13 @@ from backend.data.user import get_or_create_user
 from backend.util.testing import is_tcp_port_reachable
 
 from .recording import check_fixture, persisted_session, record_turn
-from .scripted import baseline_turn, provider_round, sdk_service_turn, sdk_turn
+from .scripted import (
+    baseline_turn,
+    provider_round,
+    sdk_service_turn,
+    sdk_turn,
+    streamed,
+)
 
 pytestmark = pytest.mark.skipif(
     not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
@@ -516,3 +522,59 @@ async def test_sdk_consecutive_tools_turn(user_id: str) -> None:
     )
 
     check_fixture("sdk-consecutive-tools-turn", recorded)
+
+
+async def test_sdk_hidden_preamble_turn(user_id: str) -> None:
+    """With one of two parallel results in, the model's next words are all
+    inside thinking tags, which the engine hides; then it answers."""
+    session = await persisted_session(user_id, "Compare the two reports")
+    messages = [
+        SystemMessage(subtype="init", data={}),
+        *streamed(
+            [
+                ToolUseBlock(id="read-1", name="bash_exec", input={"command": "cat a"}),
+                ToolUseBlock(id="read-2", name="bash_exec", input={"command": "cat b"}),
+            ]
+        ),
+        UserMessage(content=[ToolResultBlock(tool_use_id="read-1", content="A: 3")]),
+        *streamed([TextBlock(text="<thinking>One report is enough.</thinking>")]),
+        *streamed([TextBlock(text="Report A has three entries.")]),
+        _success(num_turns=3),
+    ]
+
+    recorded = await record_turn(
+        sdk_turn(session, messages), session=session, turn_id=str(uuid.uuid4())
+    )
+
+    check_fixture("sdk-hidden-preamble-turn", recorded)
+
+
+async def test_sdk_hidden_reply_turn(user_id: str) -> None:
+    """The model's whole closing reply sits inside thinking tags."""
+    session = await persisted_session(user_id, "Archive the old report")
+    messages = [
+        SystemMessage(subtype="init", data={}),
+        *streamed(
+            [ToolUseBlock(id="mv-1", name="bash_exec", input={"command": "mv a old/"})]
+        ),
+        UserMessage(content=[ToolResultBlock(tool_use_id="mv-1", content="")]),
+        *streamed([TextBlock(text="<thinking>Moved. Nothing to add.</thinking>")]),
+        _success(num_turns=2),
+    ]
+
+    recorded = await record_turn(
+        sdk_turn(session, messages), session=session, turn_id=str(uuid.uuid4())
+    )
+
+    check_fixture("sdk-hidden-reply-turn", recorded)
+
+
+def _success(num_turns: int) -> ResultMessage:
+    return ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=num_turns,
+        session_id="drift",
+    )
