@@ -53,12 +53,16 @@ export function withoutDuplicateKeyMethod(
   return authMethods.length ? { ...server, auth_methods: authMethods } : server;
 }
 
+/** "an Etsy", "a Printify": the article English puts before a name. */
+export function withArticle(name: string): string {
+  return `${/^[aeiou]/i.test(name) ? "an" : "a"} ${name}`;
+}
+
 export function getSignInFallbackLabel(provider: ConnectableProvider): string {
   if (provider.mcpServer?.auth_methods.includes("oauth")) {
     return `Use the ${provider.name} sign-in instead`;
   }
-  const article = /^[aeiou]/i.test(provider.name) ? "an" : "a";
-  return `Use ${article} ${provider.name} token instead`;
+  return `Use ${withArticle(provider.name)} token instead`;
 }
 
 export function toConnectableProviders(
