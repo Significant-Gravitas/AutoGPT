@@ -38,7 +38,7 @@ type Params = {
   onSelectCredential: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
   onLoaded?: (loaded: boolean) => void;
-  readOnly?: boolean;
+  allowAutomaticChanges: boolean;
   isOptional?: boolean;
   autoSelect?: boolean;
 };
@@ -49,7 +49,7 @@ export function useCredentialsInput({
   onSelectCredential,
   siblingInputs,
   onLoaded,
-  readOnly = false,
+  allowAutomaticChanges,
   isOptional = false,
   autoSelect = true,
 }: Params) {
@@ -112,7 +112,7 @@ export function useCredentialsInput({
   }, [credentials, onLoaded]);
 
   useEffect(() => {
-    if (readOnly) return;
+    if (!allowAutomaticChanges) return;
     if (!credentials) return;
     const availableCreds = credentials.savedCredentials;
     if (
@@ -148,7 +148,7 @@ export function useCredentialsInput({
     credentials,
     isDeletingCredential,
     onSelectCredential,
-    readOnly,
+    allowAutomaticChanges,
     selectedCredential,
   ]);
 
@@ -156,7 +156,7 @@ export function useCredentialsInput({
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
-      if (readOnly || !autoSelect) return;
+      if (!allowAutomaticChanges || !autoSelect) return;
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
@@ -185,7 +185,7 @@ export function useCredentialsInput({
     [
       credentials,
       selectedCredential?.id,
-      readOnly,
+      allowAutomaticChanges,
       autoSelect,
       isOptional,
       onSelectCredential,

@@ -137,6 +137,51 @@ afterEach(() => {
   cleanup();
 });
 
+describe("credential choices on a workflow step", () => {
+  const key = {
+    id: "key-a",
+    title: "My Google key",
+    provider: "google",
+    type: "oauth2",
+  } as const;
+
+  it.each([undefined, { ...key, id: "old", title: "Old key" }])(
+    "waits for an edit after credentials load, including after undo (%j)",
+    async (saved) => {
+      const edit = vi.fn();
+      const picker = (value?: CredentialsMetaInput) => (
+        <CredentialsInput
+          schema={baseSchema}
+          selectedCredentials={value}
+          onSelectCredentials={edit}
+          variant="node"
+          requireExplicitSelection
+        />
+      );
+      mockUseCredentials.mockReturnValue(null);
+      const { rerender } = render(picker(saved));
+      mockUseCredentials.mockReturnValue(
+        makeCredentialsReturn({
+          savedCredentials: [key],
+          allProviderCredentials: [key],
+        }),
+      );
+      rerender(picker(saved));
+
+      expect(edit).not.toHaveBeenCalled();
+      const select = screen.getByRole("combobox", {
+        name: "Select Google credential",
+      });
+      fireEvent.change(select, { target: { value: key.id } });
+      expect(edit.mock.calls).toEqual([[key]]);
+
+      rerender(picker(key));
+      rerender(picker(saved));
+      expect(edit).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
 // These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
 // abort/supersede handling). variant="node" wires the add-credential button
 // straight to that flow; the default variant routes through

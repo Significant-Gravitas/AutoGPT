@@ -82,6 +82,7 @@ type Props = {
   /** Every key saved for the provider, to tell a filtered-out key from a deleted one. */
   allProviderCredentials?: Credential[];
   selectedCredential?: CredentialsMetaInput;
+  requireExplicitSelection?: boolean;
   actionButtonText: string;
   isOptional: boolean;
   showTitle: boolean;
@@ -100,6 +101,7 @@ export function CredentialsFlatView({
   credentials,
   allProviderCredentials = [],
   selectedCredential,
+  requireExplicitSelection = false,
   actionButtonText,
   isOptional,
   showTitle,
@@ -161,7 +163,10 @@ export function CredentialsFlatView({
 
       {hasCredentials ? (
         <>
-          {(credentials.length > 1 || isOptional) && !readOnly ? (
+          {(credentials.length > 1 ||
+            isOptional ||
+            (requireExplicitSelection && !selectedCredential)) &&
+          !readOnly ? (
             <CredentialsSelect
               credentials={credentials}
               provider={provider}
