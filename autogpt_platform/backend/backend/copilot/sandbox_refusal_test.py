@@ -3,7 +3,7 @@ failed for any other reason, ends with an error on both engines, and never runs
 its commands on the local fallback."""
 
 import contextlib
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, call, patch
 
 import pytest
 
@@ -17,6 +17,7 @@ from backend.copilot.response_model import StreamError, StreamStart
 from backend.copilot.sdk import retry_scenarios_test as scenarios
 from backend.copilot.sdk.cli_prelaunch_turn_test import _patched_turn
 from backend.copilot.sdk.service import stream_chat_completion_sdk
+from backend.copilot.tool_image import ToolImage
 from backend.copilot.tools.e2b_sandbox import SandboxUnavailableError
 from backend.util.sandbox_limits import SandboxLimitError
 
@@ -40,41 +41,39 @@ _WENT_ON = AssertionError("the turn went on without its sandbox")
 async def test_the_sdk_engine_ends_a_turn_whose_sandbox_cannot_start(
     raised: Exception, shown: SandboxLimitError | SandboxUnavailableError
 ):
-    svc = "backend.copilot.sdk.service"
-    turns = scenarios.TestStreamChatCompletionRetryIntegration()
-    launches: list[dict] = []
-
-    def client(*_args, **kwargs):
-        launches.append(kwargs)
-        return turns._make_client_mock(result_message=turns._make_result_message())
-
-    session = turns._make_session()
-    events = []
-    with contextlib.ExitStack() as stack:
-        stack.enter_context(_patched_turn(client, session))
-        stack.enter_context(patch(f"{svc}.config.active_e2b_api_key", "e2b-key"))
-        stack.enter_context(
-            patch(f"{svc}.get_or_create_sandbox", AsyncMock(side_effect=raised))
-        )
-        stack.enter_context(patch(f"{svc}.workspace_volume_mounts", MagicMock()))
-        forgot = stack.enter_context(patch(f"{svc}.forget_turn_ceiling", AsyncMock()))
-        stack.enter_context(
-            patch(f"{svc}.approval_mode_supplement", MagicMock(side_effect=_WENT_ON))
-        )
-        async for event in stream_chat_completion_sdk(
-            session_id="test-session-id",
-            message="hello",
-            is_user_message=True,
-            user_id="test-user",
-            session=session,
-        ):
-            events.append(event)
+    events, session, launches, forgot, _ = await _sdk_turn(raised)
 
     assert [e for e in events if isinstance(e, StreamError)] == [_error(shown)]
     assert not [e for e in events if isinstance(e, StreamStart)]
     assert launches == []
     assert session.messages[-1].content == _marker(shown)
     forgot.assert_awaited_once_with("test-session-id", session.expert_id)
+
+
+@pytest.mark.parametrize("image, requeued", [(True, True), (False, False)])
+async def test_an_auto_continue_refused_its_sandbox_requeues_a_batch_with_images(
+    image: bool, requeued: bool
+):
+    """Its rows are already saved as text: only the queue keeps an image."""
+    batch = [
+        PendingMessage(
+            content="Approved screenshot",
+            model_image=(
+                ToolImage(mime_type="image/png", data_base64="cGl4ZWxz")
+                if image
+                else None
+            ),
+        )
+    ]
+
+    events, _, _, _, requeue = await _sdk_turn(
+        RuntimeError("E2B API returned 500"), batch
+    )
+
+    assert [e for e in events if isinstance(e, StreamError)] == [_error(_UNAVAILABLE)]
+    assert requeue.await_args_list == (
+        [call("test-session-id", batch)] if requeued else []
+    )
 
 
 @_CASES
@@ -129,6 +128,50 @@ async def test_the_baseline_engine_ends_a_turn_whose_sandbox_cannot_start(
     saved.assert_awaited_once_with(session)
     assert session.messages[-1].content == _marker(shown)
     forgot.assert_awaited_once_with(session.session_id, session.expert_id)
+
+
+async def _sdk_turn(
+    raised: Exception, continued_pending: list[PendingMessage] | None = None
+) -> tuple[list, ChatSession, list[dict], AsyncMock, AsyncMock]:
+    """One SDK turn whose sandbox setup raises *raised*: its events, session,
+    CLI launches, and the ceiling and requeue mocks."""
+    svc = "backend.copilot.sdk.service"
+    turns = scenarios.TestStreamChatCompletionRetryIntegration()
+    launches: list[dict] = []
+
+    def client(*_args, **kwargs):
+        launches.append(kwargs)
+        return turns._make_client_mock(result_message=turns._make_result_message())
+
+    session = turns._make_session()
+    events = []
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(_patched_turn(client, session))
+        stack.enter_context(patch(f"{svc}.config.active_e2b_api_key", "e2b-key"))
+        stack.enter_context(
+            patch(f"{svc}.get_or_create_sandbox", AsyncMock(side_effect=raised))
+        )
+        stack.enter_context(patch(f"{svc}.workspace_volume_mounts", MagicMock()))
+        forgot = stack.enter_context(patch(f"{svc}.forget_turn_ceiling", AsyncMock()))
+        stack.enter_context(
+            patch(f"{svc}.persist_pending_as_user_rows", AsyncMock(return_value=True))
+        )
+        requeue = stack.enter_context(
+            patch(f"{svc}.restore_pending_messages", AsyncMock())
+        )
+        stack.enter_context(
+            patch(f"{svc}.approval_mode_supplement", MagicMock(side_effect=_WENT_ON))
+        )
+        async for event in stream_chat_completion_sdk(
+            session_id="test-session-id",
+            message="hello",
+            is_user_message=True,
+            user_id="test-user",
+            session=session,
+            continued_pending=continued_pending,
+        ):
+            events.append(event)
+    return events, session, launches, forgot, requeue
 
 
 def _error(shown: SandboxLimitError | SandboxUnavailableError) -> StreamError:

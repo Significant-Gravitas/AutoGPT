@@ -5677,6 +5677,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # rather than running its commands on the local fallback.  The
             # finally below saves the marker, so a reloaded chat shows why.
             _append_error_marker(session, str(e2b_refusal), retryable=True)
+            if continued_pending and any(pm.model_image for pm in continued_pending):
+                # Its rows were saved as text only; requeued, the next turn's
+                # drain finds them saved and attaches just their images.
+                try:
+                    await restore_pending_messages(session_id, continued_pending)
+                except Exception:
+                    logger.exception(f"{log_prefix} Could not requeue image batch")
             yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
             return
 
