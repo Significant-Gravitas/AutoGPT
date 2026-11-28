@@ -16,7 +16,11 @@ from httpx import ASGITransport, AsyncClient
 from backend.api.features.blocks.routes import router
 from backend.blocks._base import Block
 from backend.executor import direct_block_run_parent
-from backend.executor.direct_block_execution import start_run_parent, stop_run_parent
+from backend.executor.direct_block_execution import (
+    DirectBlockExecutionBusyError,
+    start_run_parent,
+    stop_run_parent,
+)
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -59,7 +63,7 @@ class _Computes(_Block):
 
 class _ComputesForLonger(_Computes):
     id = name = "computes-for-longer"
-    direct_run_timeout_seconds = 2
+    direct_run_timeout_seconds = 3
 
 
 class _TakesLongerThanTheDefault(_Block):
@@ -138,7 +142,8 @@ async def test_the_block_runs_in_a_process_of_its_own(
 async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
     run_parent, mocker: pytest_mock.MockFixture, tmp_path: Path
 ):
-    mocker.patch.object(Block, "direct_run_timeout_seconds", 1)
+    # Long enough for the child to start on a slow runner.
+    mocker.patch.object(Block, "direct_run_timeout_seconds", 2)
     mocker.patch(
         "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
         1,
@@ -156,8 +161,7 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
         run = asyncio.create_task(
             client.post("/blocks/computes/execute", json={"beats": str(beats)})
         )
-        while not beats.exists():
-            await asyncio.sleep(0.02)
+        await _started(beats, run)
         health = await client.get("/health")
         response = await asyncio.wait_for(run, timeout=30)
         stopped_at = beats.stat().st_size
@@ -166,7 +170,7 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
 
     assert health.status_code == 200
     assert response.status_code == 504
-    assert "did not finish within 1 seconds" in response.json()["detail"]
+    assert "did not finish within 2 seconds" in response.json()["detail"]
     assert beats.stat().st_size == stopped_at
     # The user's one slot is free again.
     assert again.status_code == 200
@@ -216,9 +220,26 @@ async def test_a_block_with_a_longer_deadline_gets_a_504_at_its_own_deadline(
     await asyncio.sleep(0.5)
 
     assert response.status_code == 504
-    assert "did not finish within 2 seconds" in response.json()["detail"]
-    assert elapsed >= 2
+    assert "did not finish within 3 seconds" in response.json()["detail"]
+    assert elapsed >= 3
     assert beats.stat().st_size == stopped_at
+
+
+@pytest.mark.asyncio
+async def test_a_run_parent_lost_after_the_claim_gets_a_503(
+    run_parent, mocker: pytest_mock.MockFixture
+):
+    _serve_blocks(mocker)
+    mocker.patch(
+        "backend.api.features.blocks.routes.run_block_in_child",
+        side_effect=DirectBlockExecutionBusyError(),
+    )
+
+    async with _client() as client:
+        response = await client.post("/blocks/reports-its-process/execute", json={})
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -267,3 +288,18 @@ async def test_a_server_without_a_run_parent_gets_a_503_before_any_charge(
 
     assert response.status_code == 503
     charge.assert_not_called()
+
+
+async def _started(beats: Path, run: asyncio.Task) -> None:
+    """Wait until the block has written its first beat, failing if the run ends
+    first or the block never starts."""
+    try:
+        async with asyncio.timeout(30):
+            while not beats.exists():
+                if run.done():
+                    run.result()
+                    raise AssertionError("The run ended before its block started")
+                await asyncio.sleep(0.02)
+    except BaseException:
+        run.cancel()
+        raise

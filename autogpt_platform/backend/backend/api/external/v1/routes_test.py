@@ -16,6 +16,7 @@ from backend.blocks._base import DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.executor.direct_block_execution import DirectBlockExecutionBusyError
 from backend.util.exceptions import InsufficientBalanceError
 
 pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
@@ -220,6 +221,25 @@ def test_execute_block_past_the_time_budget_returns_504(
 
     assert response.status_code == 504, f"got {response.status_code}: {response.text}"
     assert "did not finish within 0.5 seconds" in response.json()["detail"]
+
+
+def test_execute_block_with_the_run_parent_lost_after_the_claim_returns_503(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    block = _stub_block(name="UnstartedBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.run_block_in_child",
+        AsyncMock(side_effect=DirectBlockExecutionBusyError()),
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 503, f"got {response.status_code}: {response.text}"
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 def test_execute_block_over_the_run_cap_returns_429_before_charging(

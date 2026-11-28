@@ -197,6 +197,13 @@ async def _run_direct_block(
         block_type = obj.__class__.__name__
         record_block_execution(block_type=block_type, status="error", duration=duration)
         raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
+    except DirectBlockExecutionBusyError as e:
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
     except Exception:
         # Record failed block execution
         duration = time.time() - start_time

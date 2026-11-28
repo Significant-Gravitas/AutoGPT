@@ -2,6 +2,7 @@
 running at its deadline and kills it if it outlasts the cancel."""
 
 import asyncio
+import errno
 import gc
 import os
 import signal
@@ -131,6 +132,12 @@ def run_parent_with_alarms_at_the_deadline(monkeypatch: pytest.MonkeyPatch):
     yield from _run_parent(monkeypatch)
 
 
+@pytest.fixture
+def run_parent_whose_first_fork_fails(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(direct_block_run_parent, "os", _ForksAfterOneFailure())
+    yield from _run_parent(monkeypatch)
+
+
 def _run_parent(monkeypatch: pytest.MonkeyPatch):
     # Set before the fork: the run parent and its children see the process as it is now.
     monkeypatch.setattr(direct_block_run_parent, "get_blocks", lambda: _BLOCKS)
@@ -172,10 +179,25 @@ async def test_the_run_parent_outlives_a_run_it_has_reaped(run_parent):
 
 
 @pytest.mark.asyncio
+async def test_a_run_that_cannot_be_forked_fails_and_the_next_one_runs(
+    run_parent_whose_first_fork_fails,
+):
+    with pytest.raises(RuntimeError, match="ended unexpectedly"):
+        await run_block_in_child(_ReportsItsProcess(), {}, execution_context=_context())
+
+    outputs = await run_block_in_child(
+        _ReportsItsProcess(), {"n": 2}, execution_context=_context()
+    )
+
+    assert outputs["input"] == [{"n": 2}]
+
+
+@pytest.mark.asyncio
 async def test_a_block_computing_past_its_budget_is_killed(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 0.5)
+    # Long enough for the child to start on a slow runner.
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 2)
     # Past the cancel's grace, and short of the child's own alarm.
     monkeypatch.setattr(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS", 4
@@ -186,7 +208,7 @@ async def test_a_block_computing_past_its_budget_is_killed(
     beats = tmp_path / "beats"
 
     with claim_direct_block_execution_slot("user-a"):
-        with pytest.raises(DirectBlockExecutionTimeoutError, match="0.5 seconds"):
+        with pytest.raises(DirectBlockExecutionTimeoutError, match="2 seconds"):
             await run_block_in_child(_Computes(), {"beats": str(beats)})
 
     assert beats.stat().st_size > 0
@@ -201,7 +223,7 @@ async def test_a_block_computing_past_its_budget_is_killed(
 async def test_a_run_past_its_deadline_ends_the_helpers_it_started(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 0.5)
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 2)
     pid_file = tmp_path / "helper.pid"
 
     with pytest.raises(DirectBlockExecutionTimeoutError):
@@ -221,14 +243,13 @@ async def test_a_run_outliving_its_run_parent_ends_at_its_own_alarm(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 1)
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 2)
     monkeypatch.setattr(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS", 3
     )
     beats = tmp_path / "beats"
     run = asyncio.create_task(run_block_in_child(_Computes(), {"beats": str(beats)}))
-    while not beats.exists():
-        await asyncio.sleep(0.02)
+    await _started(beats, run)
 
     os.kill(run_parent_with_alarms_at_the_deadline.pid, signal.SIGKILL)
 
@@ -251,8 +272,7 @@ async def test_under_memory_pressure_the_kernel_kills_a_run_first(run_parent):
 async def test_stopping_the_run_parent_kills_its_runs(run_parent, tmp_path: Path):
     beats = tmp_path / "beats"
     run = asyncio.create_task(run_block_in_child(_Computes(), {"beats": str(beats)}))
-    while not beats.exists():
-        await asyncio.sleep(0.02)
+    await _started(beats, run)
 
     stop_run_parent()
 
@@ -341,3 +361,35 @@ def _running(pid: int) -> bool:
         return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
     except FileNotFoundError:
         return False
+
+
+class _ForksAfterOneFailure:
+    """The run parent's ``os``, whose first fork fails as it does when the machine
+    is out of processes."""
+
+    def __init__(self) -> None:
+        self.failed = False
+
+    def __getattr__(self, name: str):
+        return getattr(os, name)
+
+    def fork(self) -> int:
+        if not self.failed:
+            self.failed = True
+            raise BlockingIOError(errno.EAGAIN, "Resource temporarily unavailable")
+        return os.fork()
+
+
+async def _started(beats: Path, run: asyncio.Task) -> None:
+    """Wait until the block has written its first beat, failing if the run ends
+    first or the block never starts."""
+    try:
+        async with asyncio.timeout(30):
+            while not beats.exists():
+                if run.done():
+                    run.result()
+                    raise AssertionError("The run ended before its block started")
+                await asyncio.sleep(0.02)
+    except BaseException:
+        run.cancel()
+        raise

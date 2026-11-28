@@ -14,7 +14,6 @@ import logging
 import math
 import os
 import pickle
-import resource
 import selectors
 import signal
 import socket
@@ -32,6 +31,9 @@ from backend.data.block import BlockOutput, CompletedBlockOutput
 from backend.data.llm_registry import load_catalog
 from backend.integrations.managed_providers import register_all
 from backend.sdk.registry import AutoRegistry
+
+if sys.platform != "win32":
+    import resource
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +135,13 @@ def _start_run(control: socket.socket, runs: _Runs) -> bool:
     (budget,) = RUN_ORDER.unpack(order)
     # Refreshes the registry's hourly cache here, not once in every child.
     get_blocks()
-    pid = os.fork()
+    try:
+        pid = os.fork()
+    except OSError:
+        # Out of processes or memory for now: this run fails, the rest still run.
+        logger.exception("Could not fork a direct block run")
+        conn.close()
+        return True
     if pid == 0:
         control.close()
         _run(conn, budget)
@@ -173,7 +181,7 @@ async def _answer(request: bytes) -> bytes:
         block_id, input_data, execute_kwargs = pickle.loads(request)
         block = get_blocks()[block_id]()
         outputs = await _collect(block.execute(input_data, **execute_kwargs))
-        body = _OUTPUTS.dump_json(outputs)
+        body = _OUTPUTS.dump_json(outputs, by_alias=True)
     except Exception as error:
         if _ran_out_of_memory(error):
             limit = DIRECT_BLOCK_EXECUTION_MEMORY_LIMIT // 2**20
