@@ -42,6 +42,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import GraphModel, missing_inputs, unknown_inputs
 from backend.data.model import CredentialsMetaInput
+from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_database_manager_async_client, get_scheduler_client
@@ -1385,6 +1386,12 @@ class RunAgentTool(BaseTool):
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",
+                session_id=session_id,
+            ).from_outside()
+        if len(schedule_name) > MAX_SCHEDULE_NAME_LENGTH:
+            return ErrorResponse(
+                message=f"schedule_name is {len(schedule_name):,} characters; "
+                f"shorten it to at most {MAX_SCHEDULE_NAME_LENGTH} and try again",
                 session_id=session_id,
             ).from_outside()
         if not cron:

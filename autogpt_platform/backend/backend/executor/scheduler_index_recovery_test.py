@@ -119,14 +119,22 @@ def test_reconcile_does_not_trust_snapshot_before_failed_upsert():
     scheduler.scheduler.add_job.return_value = new_job
     scheduler.scheduler.get_job.return_value = old_job
 
+    writing = False
+
     def scan_before_concurrent_write(*args, **kwargs):
-        with patch.object(index, "upsert", side_effect=RuntimeError("write failed")):
-            scheduler._persist_schedule(
-                dispatch_func=MagicMock(),
-                job_args=new_args,
-                trigger=MagicMock(),
-                name="new",
-            )
+        nonlocal writing
+        # The write's own read of the jobstore sees the scan's snapshot.
+        if not writing:
+            writing = True
+            with patch.object(
+                index, "upsert", side_effect=RuntimeError("write failed")
+            ):
+                scheduler._persist_schedule(
+                    dispatch_func=MagicMock(),
+                    job_args=new_args,
+                    trigger=MagicMock(),
+                    name="new",
+                )
         return [old_job]
 
     scheduler.scheduler.get_jobs.side_effect = scan_before_concurrent_write

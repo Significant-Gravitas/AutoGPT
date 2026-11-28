@@ -105,8 +105,10 @@ Sub-workflows, the workflows a run starts as one of its steps, count toward the 
 
 You can have up to 200 schedules, paused ones included. A new one past that is refused with a message saying you have reached the most one account can have; delete one to add another. If creating a schedule from a workflow's schedule dialog, in the library or the builder, gets no answer, trying again with the same details in the same tab returns the schedule the first try made instead of counting a second one. If your browser blocks site storage, that holds only until the page reloads.
 
-- **Counted per:** account.
-- **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`).
+Each schedule stores at most 1 MiB of inputs, measured as JSON (for a follow-up Otto set up, its message), and at most 10,000 items in them, where every list item, object field and plain value counts as one. A larger one is refused when it is created or edited, with a message saying it is too large or has too many items. Your schedules and your organization's may also store at most 64 MiB together, each string counted at the size the server holds it in and every other value as 64 bytes; a new schedule or an edit that would go past that is refused with a message saying how much they would store.
+
+- **Counted per:** account for the number of schedules; schedule for its size; account and its organization together for what they store.
+- **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`), `MAX_SCHEDULE_PAYLOAD_BYTES` (default `1048576`), `MAX_SCHEDULE_PAYLOAD_VALUES` (default `10000`) and `MAX_SCHEDULE_STORAGE_BYTES` (default `67108864`).
 
 ### Generated workflow images
 

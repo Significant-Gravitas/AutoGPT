@@ -1,9 +1,18 @@
 import { z } from "zod";
 
 export const timeRegex = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+// The backend's limit, which counts code points as Array.from does.
+export const MAX_SCHEDULE_NAME_LENGTH = 200;
 
 export const scheduleFormSchema = z.object({
-  scheduleName: z.string().trim().min(1, "Schedule name is required"),
+  scheduleName: z
+    .string()
+    .trim()
+    .min(1, "Schedule name is required")
+    .refine(
+      (name) => Array.from(name).length <= MAX_SCHEDULE_NAME_LENGTH,
+      `Shorten the schedule name to ${MAX_SCHEDULE_NAME_LENGTH} characters or fewer`,
+    ),
   time: z.string().trim().regex(timeRegex, "Use HH:MM (24h)").optional(),
 });
 
@@ -25,4 +34,14 @@ export function validateSchedule(
     if (path && !fieldErrors[path]) fieldErrors[path] = issue.message;
   }
   return fieldErrors;
+}
+
+export function defaultScheduleNameFor(workflowName: string): string {
+  const name = Array.from(`Run ${workflowName}`);
+  if (name.length <= MAX_SCHEDULE_NAME_LENGTH) return name.join("");
+  const kept = name
+    .slice(0, MAX_SCHEDULE_NAME_LENGTH - 1)
+    .join("")
+    .trimEnd();
+  return `${kept}…`;
 }
