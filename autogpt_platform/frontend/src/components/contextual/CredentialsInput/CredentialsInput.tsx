@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import {
@@ -45,6 +46,8 @@ type Props = {
   isOptional?: boolean;
   /** Whether an empty field picks its only saved key itself. */
   autoSelect?: boolean;
+  /** Canvas inputs are persisted edits. Offer changes for the user to apply. */
+  requireExplicitSelection?: boolean;
   showTitle?: boolean;
   variant?: "default" | "node";
 };
@@ -59,6 +62,7 @@ export function CredentialsInput({
   readOnly = false,
   isOptional = false,
   autoSelect = true,
+  requireExplicitSelection = false,
   showTitle = true,
   variant = "default",
 }: Props) {
@@ -68,7 +72,7 @@ export function CredentialsInput({
     onSelectCredential,
     siblingInputs,
     onLoaded,
-    readOnly,
+    allowAutomaticChanges: !readOnly && !requireExplicitSelection,
     isOptional,
     autoSelect,
   });
@@ -127,7 +131,9 @@ export function CredentialsInput({
   const selectedCredentialIsSystem =
     selectedCredential && isSystemCredential(selectedCredential);
 
+  const explicitSelection = requireExplicitSelection && !readOnly;
   const allCredentials = [...userCredentials, ...systemCredentials];
+  const savedKeyUnavailable = explicitSelection && hookData.savedKeyUnavailable;
 
   if (readOnly && selectedCredentialIsSystem) {
     return null;
@@ -135,13 +141,39 @@ export function CredentialsInput({
 
   return (
     <div className={cn("mb-6", className)}>
+      {savedKeyUnavailable && selectedCredential && (
+        <Alert variant="warning">
+          <AlertDescription>
+            <Text variant="body">
+              {hookData.savedKeyRemoved
+                ? getRemovedCredentialMessage(
+                    selectedCredential.title || displayName,
+                    undefined,
+                    displayName,
+                  )
+                : "The saved credential is unavailable for this step."}
+            </Text>
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              onClick={handleClearCredential}
+            >
+              Clear saved credential
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
       <CredentialsFlatView
         schema={schema}
         provider={provider}
         displayName={displayName}
         credentials={allCredentials}
         allProviderCredentials={hookData.allProviderCredentials}
-        selectedCredential={selectedCredential}
+        selectedCredential={
+          savedKeyUnavailable ? undefined : selectedCredential
+        }
+        requireExplicitSelection={explicitSelection}
         onSelectCredential={handleCredentialSelect}
         onClearCredential={handleClearCredential}
         onAddCredential={
@@ -247,7 +279,7 @@ export function CredentialsInput({
             />
           )}
 
-          {removedCredentialTitle && (
+          {!explicitSelection && removedCredentialTitle && (
             <Alert variant="warning" aria-live="polite" className="mt-2">
               <AlertDescription>
                 <Text variant="body">
@@ -261,7 +293,7 @@ export function CredentialsInput({
             </Alert>
           )}
 
-          {hasRefusedPlatformKey && (
+          {!explicitSelection && hasRefusedPlatformKey && (
             <Alert variant="warning" aria-live="polite" className="mt-2">
               <AlertDescription>
                 <Text variant="body">

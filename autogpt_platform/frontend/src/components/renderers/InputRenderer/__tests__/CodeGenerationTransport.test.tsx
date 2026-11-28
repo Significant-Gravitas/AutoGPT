@@ -9,7 +9,8 @@ import {
   type CredentialsProviderData,
 } from "@/providers/agent-credentials/credentials-provider";
 import { render } from "@/tests/integrations/test-utils";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import type { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import type { RJSFSchema } from "@rjsf/utils";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -174,6 +175,109 @@ beforeEach(() => {
 });
 
 describe("Code Generation transport fields", () => {
+  const openaiKey = {
+    id: "openai-key",
+    provider: "openai",
+    type: "api_key" as const,
+    title: "My OpenAI key",
+  };
+  const providers = {
+    openai: makeProvider("openai", "OpenAI", [openaiKey]),
+    codex: makeProvider("codex", "Codex", [codexCredential]),
+  };
+
+  it("leaves the saved graph and its history untouched when connections finish loading", async () => {
+    const schema = {
+      ...codeGenerationSchema,
+      properties: {
+        transport: codeGenerationSchema.properties!.transport,
+        credentials: codeGenerationSchema.properties!.credentials,
+      },
+    };
+    const node = createCodeGenerationNode();
+    node.data.inputSchema = schema;
+    node.data.hardcodedValues = { transport: "openai_api" };
+    useNodeStore.setState({ nodes: [node] });
+    const saved = useNodeStore.getState().getBackendNodes();
+    function canvas(connections: typeof providers | null) {
+      return (
+        <CredentialsProvidersContext.Provider value={connections}>
+          <FormCreator
+            jsonSchema={schema}
+            nodeId={node.id}
+            uiType={BlockUIType.STANDARD}
+            showHandles={false}
+          />
+        </CredentialsProvidersContext.Provider>
+      );
+    }
+    const { rerender } = render(canvas(null));
+    rerender(canvas(providers));
+    expect(
+      await screen.findByRole("button", { name: "Use My OpenAI key" }),
+    ).toBeDefined();
+    expect(useNodeStore.getState().getBackendNodes()).toEqual(saved);
+    expect(useHistoryStore.getState().past).toHaveLength(0);
+  });
+
+  it("resolves each transport edit and preserves the unconfigured step across undo and redo", async () => {
+    renderTransport(providers);
+    const values = () =>
+      useNodeStore.getState().getBackendNodes()[0].input_default;
+    const history = () => useHistoryStore.getState();
+    expect(values()).not.toHaveProperty("credentials");
+    const initialEntries = history().past.length;
+
+    async function switchTransport(index: string) {
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("Transport"), {
+          target: { value: index },
+        });
+      });
+    }
+
+    await switchTransport("1");
+    expect(values()).toMatchObject({
+      transport: "codex_app_server",
+      credentials: { id: codexCredential.id },
+    });
+    await switchTransport("0");
+    expect(values()).toMatchObject({
+      transport: "openai_api",
+      credentials: openaiKey,
+    });
+    expect(history().past).toHaveLength(initialEntries + 2);
+    await act(async () => history().undo());
+    expect(values()).toMatchObject({ credentials: { id: codexCredential.id } });
+    await act(async () => history().undo());
+    expect(values()).not.toHaveProperty("credentials");
+    expect(history().future).toHaveLength(2);
+    await act(async () => history().redo());
+    expect(values()).toMatchObject({ credentials: { id: codexCredential.id } });
+  });
+
+  it("adds the only matching key with the block in one undo entry", async () => {
+    useNodeStore.setState({ nodes: [] });
+    const block = {
+      id: "codegen",
+      name: "Code Generation",
+      inputSchema: codeGenerationSchema,
+      uiType: BlockUIType.STANDARD,
+    } as BlockInfo;
+    const node = useNodeStore
+      .getState()
+      .addBlock(block, {}, { x: 0, y: 0 }, providers);
+    await Promise.resolve();
+    expect(node.data.hardcodedValues.credentials).toEqual(openaiKey);
+    expect(useHistoryStore.getState().past).toHaveLength(1);
+    useHistoryStore.getState().undo();
+    expect(useNodeStore.getState().nodes).toHaveLength(0);
+    useHistoryStore.getState().redo();
+    expect(
+      useNodeStore.getState().getBackendNodes()[0].input_default,
+    ).toMatchObject({ credentials: openaiKey });
+  });
+
   it("keeps Transport visible and selects the saved Codex OAuth credential", async () => {
     const providers = {
       openai: makeProvider("openai", "OpenAI", []),

@@ -137,6 +137,69 @@ afterEach(() => {
   cleanup();
 });
 
+describe("credential choices on a workflow step", () => {
+  const key = {
+    id: "key-a",
+    title: "My Google key",
+    provider: "google",
+    type: "oauth2",
+  } as const;
+
+  function loadStep(saved?: CredentialsMetaInput) {
+    const edit = vi.fn();
+    const picker = (value?: CredentialsMetaInput) => (
+      <CredentialsInput
+        schema={baseSchema}
+        selectedCredentials={value}
+        onSelectCredentials={edit}
+        variant="node"
+        requireExplicitSelection
+      />
+    );
+    mockUseCredentials.mockReturnValue(null);
+    const { rerender } = render(picker(saved));
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        savedCredentials: [key],
+        allProviderCredentials: [key],
+      }),
+    );
+    rerender(picker(saved));
+
+    expect(edit).not.toHaveBeenCalled();
+    return {
+      edit,
+      restore: (value?: CredentialsMetaInput) => rerender(picker(value)),
+    };
+  }
+
+  it("waits for an edit after credentials load and after undo", () => {
+    const { edit, restore } = loadStep();
+    fireEvent.click(screen.getByRole("button", { name: "Use My Google key" }));
+    expect(edit.mock.calls).toEqual([[key]]);
+
+    restore(key);
+    restore(undefined);
+    expect(edit).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a replacement for a removed key without writing it", () => {
+    const { edit } = loadStep({ ...key, id: "old", title: "Old key" });
+    expect(screen.getByText(/Old key was removed/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use My Google key" }));
+    expect(edit.mock.calls).toEqual([[key]]);
+  });
+
+  it("lets the user clear a saved key from a different provider", () => {
+    const { edit } = loadStep({ ...key, provider: "github" });
+    expect(screen.getByText(/saved credential is unavailable/i)).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear saved credential" }),
+    );
+    expect(edit.mock.calls).toEqual([[undefined]]);
+  });
+});
+
 // These cover useCredentialsInput's direct OAuth flow (pre-opened popup,
 // abort/supersede handling). variant="node" wires the add-credential button
 // straight to that flow; the default variant routes through
@@ -713,6 +776,26 @@ describe("CredentialsInput – blocks that refuse the platform's keys", () => {
       }),
     );
   }
+
+  it("waits for a builder edit to replace a refused platform key", () => {
+    const edit = vi.fn();
+    mockExa([systemCredential, ownCredential]);
+
+    render(
+      <CredentialsInput
+        schema={{ ...exaSchema, refuses_platform_credentials: true }}
+        selectedCredentials={systemCredential}
+        onSelectCredentials={edit}
+        variant="node"
+        requireExplicitSelection
+      />,
+    );
+
+    expect(edit).not.toHaveBeenCalled();
+    expect(screen.getByText(/saved credential is unavailable/i)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Use My Exa key" }));
+    expect(edit.mock.calls).toEqual([[ownCredential]]);
+  });
 
   it("does not auto-select the system credential for such a block", async () => {
     const onSelectionChange = vi.fn();

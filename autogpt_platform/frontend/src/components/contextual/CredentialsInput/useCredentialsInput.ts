@@ -26,6 +26,7 @@ import {
   getScopeShortfallMessage,
   getSupportedTypes,
   getSystemCredentials,
+  getUsableKeys,
   isSystemCredential,
   processCredentialDeletion,
   resolveActionTarget,
@@ -39,7 +40,7 @@ type Params = {
   onSelectCredential: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
   onLoaded?: (loaded: boolean) => void;
-  readOnly?: boolean;
+  allowAutomaticChanges: boolean;
   isOptional?: boolean;
   autoSelect?: boolean;
 };
@@ -50,7 +51,7 @@ export function useCredentialsInput({
   onSelectCredential,
   siblingInputs,
   onLoaded,
-  readOnly = false,
+  allowAutomaticChanges,
   isOptional = false,
   autoSelect = true,
 }: Params) {
@@ -93,6 +94,19 @@ export function useCredentialsInput({
     selectedCredential?.provider,
   );
   const hasAttemptedAutoSelect = useRef(false);
+  const usableKeys = getUsableKeys(schema, credentials?.savedCredentials ?? []);
+  const onlyKey = usableKeys.length === 1 ? usableKeys[0] : undefined;
+  const selectedRecord = credentials?.allProviderCredentials.find(
+    (key) =>
+      key.id === selectedCredential?.id &&
+      key.provider === selectedCredential?.provider,
+  );
+  const savedKeyUnavailable = Boolean(
+    credentials &&
+      selectedCredential &&
+      (selectedCredential.provider !== credentials.provider ||
+        !usableKeys.some((key) => key.id === selectedCredential.id)),
+  );
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
   const oauthFlowIdRef = useRef(0);
   const preOpenedWindowRef = useRef<Window | null>(null);
@@ -120,13 +134,10 @@ export function useCredentialsInput({
   }, [credentials, onLoaded]);
 
   useEffect(() => {
-    if (readOnly) return;
+    if (!allowAutomaticChanges) return;
     if (!credentials) return;
     // A block that refuses the platform's shared keys can't run on a system
     // credential, so one it was given is let go like a key that's gone
-    const availableCreds = schema.refuses_platform_credentials
-      ? filterSystemCredentials(credentials.savedCredentials)
-      : credentials.savedCredentials;
     if (
       selectedCredential &&
       selectedCredential.provider !== credentials.provider
@@ -136,15 +147,7 @@ export function useCredentialsInput({
       return;
     }
 
-    if (!selectedCredential) return;
-    const stillUsable = availableCreds.some(
-      (credential) => credential.id === selectedCredential.id,
-    );
-    if (stillUsable) return;
-
-    const selectedRecord = credentials.allProviderCredentials.find(
-      (credential) => credential.id === selectedCredential.id,
-    );
+    if (!selectedCredential || !savedKeyUnavailable) return;
     const stillExists = selectedRecord !== undefined;
 
     const isDeletingSelected =
@@ -162,10 +165,7 @@ export function useCredentialsInput({
         isSystemCredential(selectedRecord) &&
         schema.refuses_platform_credentials,
     );
-    const replacement =
-      isRefusedPlatformKey && availableCreds.length === 1
-        ? availableCreds[0]
-        : undefined;
+    const replacement = isRefusedPlatformKey ? onlyKey : undefined;
     if (isRefusedPlatformKey) {
       setRefusedPlatformKeyNotice({
         selectedId: replacement?.id,
@@ -189,9 +189,12 @@ export function useCredentialsInput({
     credentials,
     isDeletingCredential,
     onSelectCredential,
-    readOnly,
+    allowAutomaticChanges,
     schema.refuses_platform_credentials,
     selectedCredential,
+    selectedRecord,
+    savedKeyUnavailable,
+    onlyKey,
   ]);
 
   useEffect(
@@ -215,40 +218,36 @@ export function useCredentialsInput({
   // Once a user has made a selection, we don't override it
   useEffect(
     function autoSelectCredential() {
-      if (readOnly || !autoSelect) return;
+      if (!allowAutomaticChanges || !autoSelect) return;
       if (!credentials) return;
       if (selectedCredential?.id) return;
 
       // A block that refuses the platform's shared keys would fail on a
       // system credential, so only the user's own credentials are candidates.
-      const savedCreds = schema.refuses_platform_credentials
-        ? filterSystemCredentials(credentials.savedCredentials)
-        : credentials.savedCredentials;
-      if (savedCreds.length === 0) return;
+      if (usableKeys.length === 0) return;
 
       if (hasAttemptedAutoSelect.current) return;
       hasAttemptedAutoSelect.current = true;
 
       // Auto-select only when there is exactly one saved credential.
       // With multiple options the user must choose — regardless of optional/required.
-      if (savedCreds.length > 1) return;
-
-      const cred = savedCreds[0];
+      if (!onlyKey) return;
       onSelectCredential({
-        id: cred.id,
-        type: cred.type,
+        id: onlyKey.id,
+        type: onlyKey.type,
         provider: credentials.provider,
-        title: cred.title,
+        title: onlyKey.title,
       });
     },
     [
       credentials,
       selectedCredential?.id,
-      readOnly,
+      allowAutomaticChanges,
       autoSelect,
       isOptional,
       onSelectCredential,
-      schema.refuses_platform_credentials,
+      usableKeys.length,
+      onlyKey,
     ],
   );
 
@@ -599,6 +598,9 @@ export function useCredentialsInput({
     isSystemProvider,
     userCredentials,
     systemCredentials,
+    savedKeyUnavailable,
+    savedKeyRemoved:
+      selectedCredential?.provider === provider && !selectedRecord,
     allCredentials: savedCredentials,
     // Every key saved for the provider, including the ones the field's type,
     // scope and host filters leave out

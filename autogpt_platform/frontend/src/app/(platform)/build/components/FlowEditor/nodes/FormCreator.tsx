@@ -10,6 +10,7 @@ import { gateDiscriminatorOptions } from "@/components/renderers/InputRenderer/c
 import { credentialNotApplicable } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import type { CustomNodeData } from "./CustomNode/CustomNode";
+import { resolveStepCredentials } from "../../../helpers/resolveStepCredentials";
 
 const NO_HARDCODED_VALUES: CustomNodeData["hardcodedValues"] = {};
 
@@ -52,9 +53,15 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
     const isAgent = uiType === BlockUIType.AGENT;
 
     const handleChange = ({
-      formData,
+      formData: nextInputs,
     }: IChangeEvent<Record<string, unknown>>) => {
-      if (!formData) return;
+      if (!nextInputs) return;
+      const formData = resolveStepCredentials(
+        jsonSchema,
+        nextInputs,
+        credentialsProviders,
+        initialValues,
+      );
 
       // RJSF seeds `const` provider/type into default form state, so an
       // untouched credential field arrives as {provider, type} with no id.

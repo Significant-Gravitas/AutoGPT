@@ -171,6 +171,7 @@ export const CredentialsField = (props: FieldProps) => {
       )}
       <CredentialsInput
         schema={schema as BlockIOCredentialsSubSchema}
+        requireExplicitSelection={Boolean(nodeId)}
         selectedCredentials={selectedCredentials}
         onSelectCredentials={handleSelectCredentials}
         siblingInputs={hardcodedValues}

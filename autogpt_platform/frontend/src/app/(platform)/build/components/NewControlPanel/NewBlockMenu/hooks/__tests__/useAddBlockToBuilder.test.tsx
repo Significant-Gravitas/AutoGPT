@@ -137,6 +137,7 @@ describe("useAddBlockToBuilder", () => {
       expect.anything(),
       hardcoded,
       expect.any(Object),
+      null,
     );
   });
 
