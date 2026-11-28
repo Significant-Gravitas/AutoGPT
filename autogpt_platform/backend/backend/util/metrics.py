@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -37,12 +38,14 @@ from backend.util.url_redaction import (
     request_credentials,
 )
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 
 class DiscordChannel(str, Enum):
     PLATFORM = "platform"  # For platform/system alerts
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
+    SECURITY = "security"  # For security alerts
 
 
 _USER_AUTH_KEYWORDS = [
@@ -859,10 +862,15 @@ async def discord_send_alert(
         channel_name = settings.config.platform_alert_discord_channel
     elif channel == DiscordChannel.PRODUCT:
         channel_name = settings.config.product_alert_discord_channel
+    elif channel == DiscordChannel.SECURITY:
+        channel_name = (
+            settings.config.security_alert_discord_channel
+            or settings.config.platform_alert_discord_channel
+        )
     else:
         channel_name = settings.config.platform_alert_discord_channel
 
-    return await SendDiscordMessageBlock().run_once(
+    status = await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
             credentials=CredentialsMetaInput(
                 id=creds.id,
@@ -876,3 +884,20 @@ async def discord_send_alert(
         "status",
         credentials=creds,
     )
+    # The block reports a failed send in its status rather than raising.
+    if status != "Message sent":
+        logger.error(
+            f"Discord alert to {channel_name!r} was not sent: {_unsent_reason(status)}"
+        )
+    return status
+
+
+def _unsent_reason(status: str) -> str:
+    """Fixed wording, not the block's status, which code scanning treats as secret."""
+    if status.startswith("Channel not found"):
+        return "channel not found"
+    if "cannot receive messages" in status:
+        return "not a text channel"
+    if "lacks permission" in status:
+        return "the bot lacks permission"
+    return "the send failed"

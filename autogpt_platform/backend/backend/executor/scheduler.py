@@ -119,6 +119,7 @@ from backend.copilot.scheduled_chats.notices import (
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
+from backend.data.api_activity import no_plan_report_enabled
 from backend.data.db_accessors import experts_db, orgs_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
@@ -142,6 +143,7 @@ from backend.monitoring import (
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
+from backend.monitoring.no_plan_activity_monitor import report_no_plan_api_activity
 from backend.util import product_analytics
 from backend.util.clients import (
     get_database_manager_async_client,
@@ -1744,6 +1746,7 @@ def _morning_briefing_crontab(user_id: str) -> str:
 
 
 _POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+_NO_PLAN_ACTIVITY_REPORT_JOB_ID = "report_no_plan_api_activity"
 RECORDING_PURGE_JOB_ID = "purge_expired_brain_dump_recordings"
 
 
@@ -2389,6 +2392,11 @@ def cleanup_auth_ip_events():
         return await db.delete_expired_ip_events(config.auth_ip_event_retention_days)
 
     run_async(_cleanup())
+
+
+def no_plan_api_activity_report():
+    """Post the daily report of API activity by accounts without a plan."""
+    return run_async(report_no_plan_api_activity())
 
 
 def cleanup_failed_push_subscriptions():
@@ -3452,6 +3460,7 @@ class Scheduler(AppService):
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
+            self._register_no_plan_activity_report()
             self._register_recording_purge()
             self._register_memory_cron_reconcile()
             self._register_community_sweep()
@@ -4881,6 +4890,11 @@ class Scheduler(AppService):
         return report_orphaned_auth_identities()
 
     @expose
+    def execute_report_no_plan_api_activity(self):
+        """Manually post yesterday's report of no-plan API activity."""
+        return no_plan_api_activity_report()
+
+    @expose
     def execute_report_stalled_account_erasures(self):
         """Manually trigger the check for stalled account erasures."""
         return report_stalled_account_erasures()
@@ -5076,6 +5090,27 @@ class Scheduler(AppService):
             sync_posthog_lifecycles,
             trigger,
             id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_no_plan_activity_report(self) -> None:
+        """Daily just after the UTC day it reports ends, wherever it can list
+        anyone. Registered like the PostHog sweep, so a restart after 00:05
+        can't push that day's overdue report to tomorrow."""
+        if not no_plan_report_enabled():
+            return
+        trigger = CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC"))
+        existing = self.scheduler.get_job(
+            _NO_PLAN_ACTIVITY_REPORT_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            no_plan_api_activity_report,
+            trigger,
+            id=_NO_PLAN_ACTIVITY_REPORT_JOB_ID,
             replace_existing=True,
             max_instances=1,
             jobstore=Jobstores.EXECUTION.value,

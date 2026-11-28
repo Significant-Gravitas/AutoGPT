@@ -15,6 +15,7 @@ from backend.api.external.auth_rate_limit import (
     refund_api_key_validate_rate_limit,
 )
 from backend.api.features.orgs.db import get_user_default_team, is_active_member
+from backend.data.api_activity import record_api_request
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -31,6 +32,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 _REQUEST_AUTH = "external_api_auth"
+_REQUEST_COUNTED = "external_api_request_counted"
 
 FORMER_MEMBER_DETAIL = (
     "These credentials belong to an organization or team you are not an active "
@@ -143,6 +145,8 @@ async def resolve_request_auth(
             detail=verified.rejection.detail,
             headers=verified.rejection.headers,
         )
+    if verified.auth is not None:
+        _count_request(scope, verified.auth)
     return verified.auth
 
 
@@ -213,6 +217,15 @@ async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
     """Whether the account a credential belongs to is banned; for verifiers that
     resolve credentials outside `resolve_auth_info`, such as v2's MCP server."""
     return await is_user_banned(auth.user_id)
+
+
+def _count_request(scope: Scope, auth: APIAuthorizationInfo) -> None:
+    """Counts toward the daily report of what accounts without a plan did, once
+    per request: the rate limiter and the route each ask for the caller."""
+    state = scope.setdefault("state", {})
+    if not state.get(_REQUEST_COUNTED):
+        state[_REQUEST_COUNTED] = True
+        record_api_request(auth.user_id, "external")
 
 
 async def _refuse_former_member(auth: APIAuthorizationInfo) -> None:
