@@ -1,9 +1,15 @@
 """Tests for fire-and-forget Web Push delivery."""
 
+import base64
 import hashlib
+import json
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pywebpush
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from backend.api.model import NotificationPayload
 from backend.data import push_sender
@@ -70,8 +76,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["type"] == "agent_run"
         assert parsed["event"] == "completed"
@@ -85,8 +89,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["execution_id"] == "exec-1"
         assert parsed["graph_id"] == "graph-1"
@@ -99,8 +101,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert "custom_field" not in parsed
 
@@ -110,16 +110,12 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert isinstance(parsed["type"], str)
         assert isinstance(parsed["event"], str)
 
     def test_includes_unique_id_per_call(self):
         """Each push gets a fresh UUID so repeats don't collapse under the same SW tag."""
-        import json
-
         payload = _make_payload(type="agent_run", event="completed")
 
         first = json.loads(push_sender._build_push_payload(payload))
@@ -263,6 +259,37 @@ class TestSendPushForUser:
         mock_db_client.delete_push_subscription.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_signs_each_request_for_its_own_push_service(
+        self, mocker, mock_db_client
+    ):
+        # Real pywebpush with only its HTTP transport faked: pywebpush writes `aud`
+        # into the claims dict it is given, which a mocked `webpush` never does.
+        mocker.patch.object(
+            push_sender, "_settings", _make_settings(private=_make_vapid_private_key())
+        )
+        mocker.patch.object(push_sender, "validate_push_endpoint", AsyncMock())
+        chrome = "https://fcm.googleapis.com/fcm/send/made-up-chrome"
+        safari = "https://web.push.apple.com/made-up-safari"
+        mock_db_client.get_user_push_subscriptions.return_value = [
+            _make_browser_subscription(chrome),
+            _make_browser_subscription(safari),
+        ]
+        transport = MagicMock()
+        transport.post.return_value = MagicMock(status_code=201)
+        mocker.patch.object(pywebpush, "requests", transport)
+
+        await push_sender.send_push_for_user("user-1", _make_payload())
+
+        audiences = {
+            call.args[0]: _jwt_claims(call.kwargs["headers"]["Authorization"])["aud"]
+            for call in transport.post.call_args_list
+        }
+        assert audiences == {
+            chrome: "https://fcm.googleapis.com",
+            safari: "https://web.push.apple.com",
+        }
+
+    @pytest.mark.asyncio
     async def test_removes_subscription_on_410_gone(self, mocker, mock_db_client):
         from pywebpush import WebPushException
 
@@ -389,3 +416,33 @@ class TestSendPushForUser:
 
         await push_sender.send_push_for_user("user-1", _make_payload())
         assert mock_db_client.get_user_push_subscriptions.await_count == 2
+
+
+def _make_vapid_private_key() -> str:
+    """A raw P-256 scalar in base64url, the form `make init-env` writes."""
+    key = ec.generate_private_key(ec.SECP256R1())
+    return _b64url(key.private_numbers().private_value.to_bytes(32, "big"))
+
+
+def _make_browser_subscription(endpoint: str) -> PushSubscriptionDTO:
+    """A subscription with real browser keys, so pywebpush can encrypt to it."""
+    public_point = (
+        ec.generate_private_key(ec.SECP256R1())
+        .public_key()
+        .public_bytes(
+            serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+        )
+    )
+    return _make_subscription(
+        endpoint=endpoint, p256dh=_b64url(public_point), auth=_b64url(os.urandom(16))
+    )
+
+
+def _jwt_claims(authorization: str) -> dict:
+    token = authorization.removeprefix("vapid t=").split(",")[0]
+    claims = token.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))
+
+
+def _b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
