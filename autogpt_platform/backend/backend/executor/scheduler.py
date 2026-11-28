@@ -178,6 +178,7 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
+from backend.util.timezone_utils import check_timezone_length
 
 if TYPE_CHECKING:
     from backend.copilot.dream.nightly_batch import NightlyBatchResult
@@ -2984,6 +2985,7 @@ def _build_trigger(
 ) -> Union[CronTrigger, DateTrigger]:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
+    check_timezone_length(user_timezone)
     try:
         if cron is not None:
             return validate_cron(cron, user_timezone)
