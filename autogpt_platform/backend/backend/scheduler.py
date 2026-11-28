@@ -1,5 +1,5 @@
 from backend.app import run_processes
-from backend.executor.scheduler import Scheduler
+from backend.scheduler_service import scheduler_service
 
 
 def main():
@@ -7,7 +7,7 @@ def main():
     Run all the processes required for the AutoGPT-server Scheduling System.
     """
     run_processes(
-        Scheduler(),
+        scheduler_service(),
     )
 
 

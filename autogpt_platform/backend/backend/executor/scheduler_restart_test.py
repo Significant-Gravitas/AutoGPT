@@ -12,6 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import Jobstores, Scheduler
+from backend.scheduler_service import SYSTEM_JOBS
 
 _PERSISTENT = (Jobstores.EXECUTION.value, Jobstores.BATCHED_NOTIFICATIONS.value)
 # Due at every start on purpose: the start-up embedding backfill.
@@ -75,7 +76,7 @@ def _interval_jobs_after_a_start(
     def start_paused(self, *args, **kwargs):
         real_start(self, paused=True)
 
-    service = Scheduler(register_system_tasks=True)
+    service = Scheduler(system_jobs=SYSTEM_JOBS)
     with (
         patch.object(Scheduler, "_jobstore_database", return_value=(None, jobstore)),
         patch.object(Scheduler, "_start_schedule_index_backfill"),

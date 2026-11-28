@@ -17,6 +17,7 @@ from backend.executor.scheduler import (
     execute_copilot_turn,
     execute_graph,
 )
+from backend.scheduler_service import SYSTEM_JOBS
 
 _EXECUTION = "execution"
 _SKILL_LEARNING_GRACE = _MEMORY_CRON_MISFIRE_GRACE[SKILL_LEARNING_JOB_PREFIX]
@@ -100,7 +101,7 @@ def test_the_scheduler_drops_stored_graces_once_it_has_started(tmp_path, monkeyp
     for name in ("_event_loop", "_event_loop_thread", "_scheduler_instance"):
         monkeypatch.setattr(scheduler_module, name, getattr(scheduler_module, name))
     real_start = BackgroundScheduler.start
-    service = Scheduler(register_system_tasks=True)
+    service = Scheduler(system_jobs=SYSTEM_JOBS)
     with (
         patch.object(
             Scheduler, "_jobstore_database", return_value=(None, database_url)

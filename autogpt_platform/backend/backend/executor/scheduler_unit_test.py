@@ -69,6 +69,7 @@ from backend.executor.scheduler import (
     send_trial_last_calls,
 )
 from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
+from backend.scheduler_service import SYSTEM_JOBS
 from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -2013,7 +2014,7 @@ def _registered_jobs(
             side_effect=lambda: at_readiness.append(embedding_backfill.call_count),
         ),
     ):
-        Scheduler(register_system_tasks=True).run_service()
+        Scheduler(system_jobs=SYSTEM_JOBS).run_service()
     return _StartupRun(
         mock_scheduler.add_job.call_args_list,
         embedding_backfill,

@@ -42,15 +42,16 @@ def main(**kwargs):
     from backend.copilot.executor.manager import CoPilotExecutor
     from backend.copilot.swap_service import SwapCredentialService
     from backend.data.db_manager import DatabaseManager
-    from backend.executor import ExecutionManager, Scheduler
+    from backend.executor import ExecutionManager
     from backend.executor.batch_executor import BatchExecutor
     from backend.notifications.notifications import NotificationManager
     from backend.platform_linking.manager import PlatformLinkingManager
+    from backend.scheduler_service import scheduler_service
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
         SwapCredentialService().set_log_level("warning"),
-        Scheduler(),
+        scheduler_service(),
         # BatchExecutor polls submitted LLM batches (Anthropic today) and
         # dispatches results to caller-registered namespace handlers.
         # The dream pass uses it when an anthropic key is configured;

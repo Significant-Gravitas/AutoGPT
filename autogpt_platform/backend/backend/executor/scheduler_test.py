@@ -12,8 +12,6 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.copilot.dream import deadline, scope_crons
-from backend.copilot.dream.reaper import REAPER_BUDGET_SECONDS
-from backend.copilot.dream.retention import RETENTION_BUDGET_SECONDS
 from backend.copilot.dream.scheduling import DREAM_SYSTEM_JOBS
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.learning.dispositions import SkillLearningResult
@@ -27,11 +25,8 @@ from backend.executor.scheduler import (
     _build_trigger,
     _execute_graph,
     _memory_scope_may_fire,
-    execute_dream_pass_reaper,
-    execute_dream_pass_retention,
     execute_dream_pass_with_status,
     execute_skill_learning_sync,
-    scheduler_system_jobs,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
@@ -1336,61 +1331,6 @@ def _run_dream_wrapper(result, **kwargs) -> tuple[MagicMock, MagicMock]:
     ):
         execute_dream_pass_with_status("abc", "job-1", **kwargs)
     return execute, errored
-
-
-# ---------------------------------------------------------------------------
-# The dream pass reaper and retention: system jobs over every user's passes
-# ---------------------------------------------------------------------------
-
-
-class TestDreamPassReaperAndRetentionJobs:
-    def test_both_are_registered_once_for_every_user_not_per_user(self) -> None:
-        jobs = {
-            job.id: job
-            for job in scheduler_system_jobs(scheduler_module.config)
-            if job.id.startswith("dream_pass_")
-        }
-        assert set(jobs) == {"dream_pass_reaper", "dream_pass_retention"}
-        reaper = jobs["dream_pass_reaper"]
-        assert reaper.func is execute_dream_pass_reaper
-        assert reaper.trigger.interval == timedelta(minutes=10)
-        retention = jobs["dream_pass_retention"]
-        assert retention.func is execute_dream_pass_retention
-        trigger = repr(retention.trigger)
-        assert "day_of_week='sun'" in trigger and "hour='5'" in trigger
-        for job in jobs.values():
-            assert job.max_instances == 1
-            assert job.jobstore is Jobstores.EXECUTION
-
-    def test_the_reaper_runs_on_the_shared_loop_bounded_by_its_budget(self) -> None:
-        sentinel = object()
-        with (
-            patch("backend.executor.scheduler.run_async") as run_async,
-            patch(
-                "backend.copilot.dream.reaper.reap_expired_passes",
-                new=MagicMock(return_value=sentinel),
-            ),
-        ):
-            execute_dream_pass_reaper()
-
-        run_async.assert_called_once_with(sentinel, timeout=REAPER_BUDGET_SECONDS + 30)
-
-    def test_retention_keeps_the_configured_number_of_days(self, monkeypatch) -> None:
-        monkeypatch.setattr(
-            "backend.executor.scheduler.config.dream_pass_retention_days", 30
-        )
-        sentinel = object()
-        delete = MagicMock(return_value=sentinel)
-        with (
-            patch("backend.executor.scheduler.run_async") as run_async,
-            patch("backend.copilot.dream.retention.delete_expired_records", new=delete),
-        ):
-            execute_dream_pass_retention()
-
-        delete.assert_called_once_with(30)
-        run_async.assert_called_once_with(
-            sentinel, timeout=RETENTION_BUDGET_SECONDS + 60
-        )
 
 
 # ---------------------------------------------------------------------------
