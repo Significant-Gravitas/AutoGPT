@@ -57,20 +57,14 @@ export function ExpertIdentityDetails({
       >
         <Text
           as={size === "page" ? "h1" : "span"}
-          variant={
-            size === "page"
-              ? "heading-md"
-              : compact
-                ? "body-medium"
-                : "lead-semibold"
-          }
+          variant={size === "page" ? "heading-md" : compact ? "body" : "lead"}
           tone="primary"
-          weight={size === "page" ? "semibold" : undefined}
+          weight={size !== "page" && compact ? "medium" : "semibold"}
+          leading={compact ? "4.5" : undefined}
           data-slot="expert-identity-name"
           className={cn(
             "min-w-0",
             size === "page" ? "max-w-full break-words" : "truncate",
-            compact && "leading-4.5",
           )}
         >
           {name}
@@ -78,9 +72,10 @@ export function ExpertIdentityDetails({
         {titleOnNameLine ? (
           <Text
             as="span"
-            variant={size === "card" ? "body-sm-medium-inherit" : "body"}
+            variant={size === "card" ? "body-sm" : "body"}
             tone="secondary"
             weight={size === "card" ? "normal" : undefined}
+            leading={size === "card" ? "inherit" : undefined}
             data-slot="expert-identity-title"
             className={cn(
               "min-w-0",
@@ -101,8 +96,8 @@ export function ExpertIdentityDetails({
                     size === "page" && "text-lead",
                   )}
                   style={{
-                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the primary role
-                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-action))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-action))))`,
+                    // oxlint-disable-next-line design-system/no-inline-styles -- gradient mixes the runtime category colour with the emphasis text colour
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, rgb(var(--color-foreground-emphasis))), color-mix(in srgb, ${areaColor} 85%, rgb(var(--color-foreground-emphasis))))`,
                     // oxlint-disable-next-line design-system/no-inline-styles -- glow in the runtime category colour
                     filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
                   }}
@@ -132,7 +127,8 @@ export function ExpertIdentityDetails({
       {compact && area ? (
         <Text
           as="span"
-          variant="small-tight"
+          variant="small"
+          leading="4"
           data-slot="expert-identity-area"
           tone="secondary"
           // oxlint-disable-next-line design-system/require-static-classes -- forwards the caller's areaClassName

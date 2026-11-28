@@ -15,7 +15,8 @@ export function RunningForMessage({ startedAt }: Props) {
   return (
     <OverflowText
       value={runningMessage(AgentExecutionStatus.RUNNING, startedAt, nowMs)}
-      variant="small-lh-tight"
+      variant="small"
+      leading="tight"
       tone="muted"
     />
   );

@@ -5,6 +5,7 @@ import type {
   Response,
 } from "@playwright/test";
 import { createUniqueAgentName } from "../pages/build.page";
+import { markChangelogSeen } from "../utils/changelog";
 import {
   assertRunOutputValue,
   waitForAgentPageLoad,
@@ -63,6 +64,7 @@ const test = journeyTest.extend<{ visitor: Page; backend: APIRequestContext }>({
       storageState: { cookies: [], origins: [] },
       userAgent: JOURNEY_USER_AGENT,
     });
+    await markChangelogSeen(context);
     // A revoked link's run read answers 404; each check asserts when it must.
     const guard = watchForUnexpectedErrors(context, [
       { status: 404, method: "GET", url: PUBLIC_RUN_READ },

@@ -107,6 +107,21 @@ def test_websocket_server_limits_incoming_message_size(mocker) -> None:
     assert serve_websockets.call_args.kwargs["ws_max_size"] <= 16384
 
 
+def test_websocket_server_keeps_idle_connections_as_long_as_the_api(
+    mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "false")
+    serve_websockets = mocker.patch("backend.api.ws_api.uvicorn.run")
+
+    with (
+        override_config(settings, "app_env", AppEnvironment.LOCAL),
+        override_config(settings, "server_keep_alive_timeout_seconds", 777),
+    ):
+        WebsocketServer().run()
+
+    assert serve_websockets.call_args.kwargs["timeout_keep_alive"] == 777
+
+
 def test_websocket_server_trusts_x_forwarded_for_from_trusted_proxies(
     mocker, monkeypatch: pytest.MonkeyPatch
 ) -> None:

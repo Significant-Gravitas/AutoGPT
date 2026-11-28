@@ -16,6 +16,7 @@ import {
 } from "../helpers";
 import { STAGGER_CAP, STAGGER_STEP_S } from "../ArtifactsTable/row-layout";
 import { CardPreview } from "./CardPreview";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   file: WorkspaceFileItem;
@@ -34,8 +35,8 @@ const CARD_VARIANTS: Variants = {
     scale: 1,
     filter: "blur(0px)",
     transition: {
-      duration: 0.4,
-      ease: [0.16, 1, 0.3, 1],
+      duration: duration.slower,
+      ease: ease.emphasized,
       delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
     },
   }),
@@ -43,7 +44,7 @@ const CARD_VARIANTS: Variants = {
 
 const REDUCED_CARD_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };
 
 export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
@@ -64,16 +65,16 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
       onDragEndCapture={handleDragEnd}
     >
       {/* Full-card click target: opening the file is the primary action.
-          Sits behind the content (z-0); the content is pointer-events-none so
+          Sits behind the content (z-base); the content is pointer-events-none so
           clicks fall through, except the kebab menu which re-enables them. */}
       <button
         type="button"
         onClick={() => onOpen(file)}
         aria-label={`Open ${file.name}`}
-        className="absolute inset-0 z-0 cursor-pointer"
+        className="absolute inset-0 z-base cursor-pointer"
         data-testid="artifacts-card-open"
       />
-      <div className="pointer-events-none relative z-10">
+      <div className="pointer-events-none relative z-raised">
         <CardPreview file={file} />
         <div className="flex items-center gap-3 p-3">
           <span className="flex shrink-0 text-foreground-tertiary">
@@ -81,7 +82,8 @@ export function ArtifactCard({ file, onOpen, index = 0 }: Props) {
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
             <Text
-              variant="body-medium"
+              variant="body"
+              weight="medium"
               tone="primary"
               className="truncate"
               title={file.name}

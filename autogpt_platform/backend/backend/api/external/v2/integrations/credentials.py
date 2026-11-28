@@ -88,6 +88,9 @@ async def create_credential(
             provider=request.provider,
             title=request.title,
             api_key=SecretStr(request.api_key),
+            expires_at=(
+                int(request.expires_at.timestamp()) if request.expires_at else None
+            ),
         )
     elif request.type == "user_password":
         credentials = UserPasswordCredentials(

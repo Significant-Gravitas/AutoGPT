@@ -40,12 +40,12 @@ export function GraphSearchContent({
         onKeyDown={handleKeyDown}
       />
 
-      <Separator className="h-[1px] w-full text-foreground-disabled" />
+      <Separator className="h-[1px] w-full" />
 
       <div className="flex-1 overflow-hidden">
         {trimmedQuery && (
           <div className="px-4 pt-3">
-            <Text variant="small-tight" as="div" tone="muted">
+            <Text variant="small" leading="4" as="div" tone="muted">
               Found {filteredNodes.length} node
               {filteredNodes.length !== 1 ? "s" : ""}
             </Text>
@@ -55,7 +55,8 @@ export function GraphSearchContent({
           <div role="listbox" className="space-y-3 px-4 py-4">
             {filteredNodes.length === 0 ? (
               <Text
-                variant="body-tight"
+                variant="body"
+                leading="5"
                 as="div"
                 tone="muted"
                 className="flex h-32 items-center justify-center"
@@ -102,7 +103,8 @@ export function GraphSearchContent({
                     <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
                       <div className="flex items-center gap-2">
                         <Text
-                          variant="body-medium"
+                          variant="body"
+                          weight="medium"
                           as="span"
                           tone="emphasis"
                           className="line-clamp-1"
@@ -112,7 +114,8 @@ export function GraphSearchContent({
                         {hasCustomName && (
                           <span className="shrink-0 rounded-xl bg-surface-active px-2">
                             <Text
-                              variant="small-loose"
+                              variant="small"
+                              leading="5"
                               as="span"
                               tone="muted"
                               className="block"
@@ -124,7 +127,8 @@ export function GraphSearchContent({
                       </div>
                       {description && (
                         <Text
-                          variant="small-loose"
+                          variant="small"
+                          leading="5"
                           as="span"
                           tone="muted"
                           className="line-clamp-1"
@@ -133,7 +137,7 @@ export function GraphSearchContent({
                         </Text>
                       )}
                     </div>
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-foreground-body">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-fill-bold">
                       <Icon
                         icon={CornerUpRightIcon}
                         tone="inverse"

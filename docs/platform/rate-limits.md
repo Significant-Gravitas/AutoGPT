@@ -28,11 +28,11 @@ Every message you send to Otto or an Expert uses part of your chat allowance, me
 - **Counted per:** account.
 - **On AutoGPT Cloud**, each plan has its own allowance, which can change without a new release. The **Usage limits** popover in the chat shows how much of each window you have used and when it resets.
 - **Free trial:** a trial has one allowance for the whole trial instead, to use at any pace. It doesn't reset, and it can't be reset with credits.
-- **What counts:** chat messages, tasks you continue, replies read aloud in voice mode, and messages to Otto from chat apps you've linked, such as Telegram or Discord. Messages answered through your own connected ChatGPT or Microsoft 365 Copilot account don't count.
-- **What you see:** the chat says you've reached your daily or weekly usage limit and when it resets, and your message isn't sent. You can have a paused task resume, or a message send, when the allowance comes back. The API answers `429`, with the window and its reset time in the response body.
+- **What counts:** chat messages, tasks you continue, replies read aloud in voice mode, messages to Otto from chat apps you've linked, such as Telegram or Discord, and starting a computer's desktop from a chat or an Expert's page, which counts the running time it gives the computer, at about $0.08 an hour. Messages answered through your own connected ChatGPT or Microsoft 365 Copilot account don't count.
+- **What you see:** the chat says you've reached your daily or weekly usage limit and when it resets, and your message isn't sent. You can have a paused task resume, or a message send, when the allowance comes back. The API answers `429`, with the window and its reset time in the response body. Starting a computer's desktop is refused with `429` and the same message.
 - **Reset with credits:** when the daily window is used up and the weekly one isn't, you can spend $5.00 of credits to reset the daily window, up to 5 times per UTC day. A sixth attempt is refused with `429`.
 
-**Self-hosting:** set `CHAT_DAILY_COST_LIMIT_MICRODOLLARS` and `CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS` on the backend, in microdollars (1 USD = `1000000`). The defaults are `2500000` and `5000000`. A negative value such as `-1` removes that window's limit, and `0` allows nothing. The [single-container image](single-container.md#autopilot-spend-caps) sets both to `-1`. Resets with credits need the credit system on (`ENABLE_CREDIT=true`). `CHAT_RATE_LIMIT_RESET_COST` sets the price of a reset in cents (`500`; `0` turns resets off), and `CHAT_MAX_DAILY_RESETS` the number per UTC day (`5`; `0` means no limit).
+**Self-hosting:** set `CHAT_DAILY_COST_LIMIT_MICRODOLLARS` and `CHAT_WEEKLY_COST_LIMIT_MICRODOLLARS` on the backend, in microdollars (1 USD = `1000000`). The defaults are `2500000` and `5000000`. A negative value such as `-1` removes that window's limit, and `0` allows nothing. The [single-container image](single-container.md#autopilot-spend-caps) sets both to `-1`. Resets with credits need the credit system on (`ENABLE_CREDIT=true`). `CHAT_RATE_LIMIT_RESET_COST` sets the price of a reset in cents (`500`; `0` turns resets off), and `CHAT_MAX_DAILY_RESETS` the number per UTC day (`5`; `0` means no limit). `CHAT_E2B_DESKTOP_USD_PER_HOUR` sets what a desktop's running time counts at (`0.08`; `0` counts none).
 
 ### Tasks running at once
 
@@ -247,6 +247,8 @@ Requests to the authentication API under `/api/auth/` are limited per IP address
 | Every other path                                               | 100 per 10 seconds |
 
 Each path counts on its own. A path allows that many requests in a row, and starts counting again once a whole window has passed since the last request it let through. Past the limit, the answer is `429` with `{"message":"Too many requests. Please try again later."}` and an `X-Retry-After` header in seconds.
+
+Opening an admin page reads your role from your signed session cookie and counts toward none of these. Once that cookie has expired (it lasts five minutes), the frontend asks `/get-session` on your behalf, and that request is counted the same way as your own, by your IP address, when the authentication API can tell it. Where it can't (behind a proxy not listed in `TRUSTED_PROXIES`, or on a direct install whose browsers send no `X-Forwarded-For`), every visitor's lookups share one count; see [Client IP Addresses](client-ip.md). If that lookup is refused, for example past this limit, the admin page sends you to Home until a lookup is allowed again.
 
 These limits apply to production builds of the frontend and aren't configurable. On a self-hosted install behind a reverse proxy, see [Client IP Addresses](client-ip.md).
 

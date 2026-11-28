@@ -1,4 +1,4 @@
-"""Pagination bounds on the builder routes (#15277)."""
+"""Builder routes: pagination bounds (#15277) and the batch block lookup."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,6 +14,7 @@ from autogpt_libs.auth.models import RequestContext
 
 from backend.api.features.builder import model as builder_model
 from backend.api.features.builder import routes as builder_routes
+from backend.blocks import load_all_blocks
 from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
@@ -100,3 +101,26 @@ def test_max_page_size_is_accepted(mock_db, route):
         route, params={"page": 1, "page_size": builder_routes.MAX_PAGE_SIZE}
     )
     assert response.status_code == 200, response.text
+
+
+def test_blocks_batch_answers_in_request_order():
+    """Ids asked for out of registry order come back in request order: a repeated
+    id once per ask, an unknown id left out."""
+    registry = load_all_blocks()
+    registered_ids = list(registry)
+    first = registered_ids[0]
+    middle = registered_ids[len(registered_ids) // 2]
+    last = registered_ids[-1]
+    unknown = "00000000-0000-4000-8000-000000000000"
+    assert unknown not in registry
+
+    response = client.get(
+        "/blocks/batch",
+        params={"block_ids": [last, first, unknown, middle, last]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        registry[block_id]().get_info().model_dump(mode="json")
+        for block_id in [last, first, middle, last]
+    ]

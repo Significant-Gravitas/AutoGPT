@@ -62,7 +62,7 @@ export function ExpertWorkflowCard({
         <NextLink
           href={libraryHref}
           aria-label={`Open ${name} tasks`}
-          className="absolute inset-0 z-0 rounded-xl"
+          className="absolute inset-0 z-base rounded-xl"
         />
       ) : null}
 
@@ -88,7 +88,7 @@ export function ExpertWorkflowCard({
             </div>
           </>
         )}
-        <div className="pointer-events-auto absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100">
+        <div className="pointer-events-auto absolute top-2 right-2 z-raised flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100">
           <ExpertWorkflowActions
             workflow={workflow}
             expertId={expertId}
@@ -104,7 +104,8 @@ export function ExpertWorkflowCard({
       <div className="pointer-events-none relative flex flex-1 flex-col px-3 pt-2.5 pb-3">
         <div className="hyphens-auto">
           <Text
-            variant="large-medium"
+            variant="large"
+            weight="medium"
             tone="primary"
             className="line-clamp-2 break-words"
           >
@@ -140,7 +141,7 @@ export function ExpertWorkflowCard({
           </span>
         </div>
         {libraryAgent ? (
-          <div className="relative z-10 mt-auto flex items-center justify-between gap-3 pt-3">
+          <div className="relative z-raised mt-auto flex items-center justify-between gap-3 pt-3">
             <WorkflowCredentialStack providers={credentialProviders} />
             <span className="pointer-events-auto ml-auto">
               <ExpertWorkflowRunButton

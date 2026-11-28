@@ -17,7 +17,9 @@ export function PackageFiles({ before, after }: Props) {
       data-slot="skill-learning-sheet-package-files"
       className="flex min-w-0 flex-col gap-2"
     >
-      <Text variant="small-medium">Package file changes</Text>
+      <Text variant="small" weight="medium">
+        Package file changes
+      </Text>
       {changes.map((change) => (
         <details
           key={change.path}

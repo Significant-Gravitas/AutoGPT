@@ -8,6 +8,7 @@ import { SignedOutError } from "@/lib/auth/errors";
 import { confirmSession, endSession } from "@/lib/auth/nativeSession";
 import { clearAccessToken } from "@/lib/auth/token";
 import { PERSIST_MAX_AGE_MS, queryPersister } from "@/lib/queryPersist";
+import { clearSharedFiles } from "@/lib/sharedFiles";
 
 const SIGN_OUT_TIMEOUT_MS = 8_000;
 
@@ -77,6 +78,7 @@ async function clearSession() {
   void queryClient.cancelQueries();
   queryClient.clear();
   void queryPersister.removeClient();
+  clearSharedFiles();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SIGN_OUT_TIMEOUT_MS);
   try {

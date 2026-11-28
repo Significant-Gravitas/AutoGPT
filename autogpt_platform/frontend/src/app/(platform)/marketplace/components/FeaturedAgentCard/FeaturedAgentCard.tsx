@@ -28,10 +28,10 @@ interface Props {
 /* oxlint-disable design-system/no-arbitrary-values -- the card washes are radial gradients with no token */
 const WASHES: Record<string, string> = {
   violet:
-    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-brand)/0.10),transparent_70%)]",
   blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-info)/0.10),transparent_70%)]",
   green:
-    "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
+    "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-success)/0.10),transparent_70%)]",
 };
 /* oxlint-enable design-system/no-arbitrary-values */
 
@@ -55,8 +55,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
 
   return (
     <div
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
-      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lift"
       data-testid="featured-store-card"
     >
       <div

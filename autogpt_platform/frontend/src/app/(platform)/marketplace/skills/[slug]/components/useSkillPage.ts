@@ -17,11 +17,11 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { okData } from "@/app/api/helpers";
-import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { connectedProviders } from "./helpers";
 
 /** Two others, so the shelf under the body is one row. */
 const MORE_SKILLS_PAGE_SIZE = 3;
@@ -63,9 +63,7 @@ export function useSkillPage(slug: string) {
       select: (response) => okData(response) ?? [],
     },
   });
-  const connected = new Set(
-    (credentials.data ?? []).map((credential) => credential.provider),
-  );
+  const connected = connectedProviders(credentials.data ?? []);
 
   const more = useGetV2ListMarketplaceSkills(
     { page_size: MORE_SKILLS_PAGE_SIZE },
@@ -135,9 +133,9 @@ export function useSkillPage(slug: string) {
       install({ slug, params: { expert_id: expert.id } }),
     // Connecting is a next step, never a precondition: the list only offers
     // what is still worth setting up, after the install landed.
-    pendingConnections: requiredProviders
-      .filter((provider) => !connected.has(provider))
-      .map(formatProviderName),
+    pendingConnections: requiredProviders.filter(
+      (provider) => !connected.has(provider),
+    ),
     moreSkills: (more.data ?? []).filter((skill) => skill.slug !== slug),
     files: query.data?.files ?? [],
     openFilePath,

@@ -1,3 +1,5 @@
+import { fetchRetryingDroppedConnection } from "@/lib/dropped-connection-retry";
+import { routeTemplate } from "@/lib/route-template";
 import * as Sentry from "@sentry/nextjs";
 
 interface RequestFailure {
@@ -63,12 +65,15 @@ export function logServerRequestFailure(failure: RequestFailure) {
  * (BUILDER-95D beside BUILDER-95C). The integration captures before fetch
  * resolves, so while the request is in flight `isLoggedRequestFailure` can
  * pick that copy out for `beforeSend` to drop.
+ *
+ * On the server, a read whose pooled connection to the backend was dead is
+ * sent once more. A browser's fetch error carries no cause to go by.
  */
 export async function fetchWithFailureLog(url: string, init: RequestInit) {
   const key = requestKey(init.method ?? "GET", url);
   inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
   try {
-    return await fetch(url, init);
+    return await fetchRetryingDroppedConnection(url, init);
   } finally {
     const remaining = (inFlight.get(key) ?? 1) - 1;
     if (remaining > 0) inFlight.set(key, remaining);
@@ -168,25 +173,4 @@ function statusClass(status: number) {
   return status >= 100 && status < 600
     ? `${Math.floor(status / 100)}xx`
     : "0xx";
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HEX_ID = /^[0-9a-f]{8,}$/i;
-
-// An opaque ID (UUID, number, hash, nanoid) becomes {id} so every agent, run
-// and session shares one route. A word or a short slug stays as it is.
-function isOpaqueID(segment: string) {
-  if (UUID.test(segment) || /^\d+$/.test(segment) || HEX_ID.test(segment)) {
-    return true;
-  }
-  if (segment.includes("@") || segment.includes("%")) return true;
-  return segment.length >= 12 && /\d/.test(segment);
-}
-
-export function routeTemplate(url: string) {
-  const path = url.split(/[?#]/)[0] || "/";
-  return path
-    .split("/")
-    .map((segment) => (segment && isOpaqueID(segment) ? "{id}" : segment))
-    .join("/");
 }

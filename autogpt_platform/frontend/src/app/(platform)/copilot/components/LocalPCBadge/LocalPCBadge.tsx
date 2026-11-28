@@ -66,8 +66,8 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
           aria-live="polite"
           className={
             connected
-              ? "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-success/40 bg-success-surface px-2.5 py-1 text-left text-success-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
-              : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-warning-border bg-warning-surface px-2.5 py-1 text-left text-warning-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              ? "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-pill border border-success/40 bg-success-surface px-2.5 py-1 text-left text-success-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-pill border border-warning-border bg-warning-surface px-2.5 py-1 text-left text-warning-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           }
         >
           <Icon
@@ -75,7 +75,12 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
             className="h-3.5 w-3.5 shrink-0"
             aria-hidden="true"
           />
-          <Text variant="small-medium-tight" className="min-w-0 break-words">
+          <Text
+            variant="small"
+            weight="medium"
+            leading="4"
+            className="min-w-0 break-words"
+          >
             {label}
           </Text>
         </button>

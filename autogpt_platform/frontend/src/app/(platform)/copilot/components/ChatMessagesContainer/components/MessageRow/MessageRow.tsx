@@ -134,11 +134,7 @@ export const MessageRow = memo(function MessageRow({
   // fall through to normal rendering).
   if (runMetadata) {
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
         </MessageContent>
@@ -152,11 +148,7 @@ export const MessageRow = memo(function MessageRow({
   if (notice) {
     if (readOnly) return null;
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
@@ -187,11 +179,7 @@ export const MessageRow = memo(function MessageRow({
     !hasErrorMarker;
 
   return (
-    <Message
-      from={message.role}
-      data-message-id={message.id}
-      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-    >
+    <Message from={message.role} data-message-id={message.id} entrance="rise">
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
           <ChainMessageParts

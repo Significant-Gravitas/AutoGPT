@@ -35,17 +35,17 @@ export function AccountMenuActivityRow() {
           data-testid="account-menu-activity-trigger"
         >
           <span
-            className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-full bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
+            className="absolute top-1/2 left-0 h-5 w-[3px] -translate-y-1/2 rounded-pill bg-action-hover opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100"
             aria-hidden="true"
           />
-          <span className="relative z-10 flex shrink-0 items-center">
+          <span className="relative z-raised flex shrink-0 items-center">
             <Icon icon={Pulse01Icon} className="h-[18px] w-[18px] shrink-0" />
           </span>
-          <span className="relative z-10 truncate">Activity</span>
+          <span className="relative z-raised truncate">Activity</span>
           {totalCount > 0 && (
             <span
               data-testid="account-menu-activity-total"
-              className="relative z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-surface-active px-1.5 text-caption-sm leading-inherit font-semibold text-foreground-body"
+              className="relative z-raised flex h-5 min-w-5 items-center justify-center rounded-pill bg-surface-active px-1.5 text-caption-sm leading-inherit font-semibold text-foreground-body"
             >
               {formatNotificationCount(totalCount)}
             </span>
@@ -54,7 +54,7 @@ export function AccountMenuActivityRow() {
           <Icon
             icon={ArrowRight01Icon}
             tone="body"
-            className="relative z-10 shrink-0"
+            className="relative z-raised shrink-0"
             size={16}
             aria-hidden="true"
           />
@@ -66,7 +66,8 @@ export function AccountMenuActivityRow() {
         side="right"
         align="end"
         sideOffset={12}
-        className="w-80 rounded-2xl border border-border-base p-0 shadow-lg"
+        variant="menu"
+        className="w-80"
         data-testid="account-menu-activity-popover"
       >
         <ActivityDropdown

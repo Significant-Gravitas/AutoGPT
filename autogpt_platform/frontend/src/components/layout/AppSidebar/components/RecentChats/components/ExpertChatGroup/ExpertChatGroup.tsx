@@ -143,7 +143,7 @@ export function ExpertChatGroup({
         </GroupBody>
       )}
 
-      <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+      <CollapsibleContent motion="height" className="overflow-hidden">
         <GroupBody>
           <SidebarMenu>{visibleSessions.map(renderItem)}</SidebarMenu>
           {hasMore && (
@@ -186,7 +186,14 @@ function ShowMoreButton({
       onClick={onClick}
       className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
     >
-      <Text as="span" variant="small-medium-tight-touch" tone="inherit">
+      <Text
+        as="span"
+        variant="small"
+        weight="medium"
+        leading="4"
+        narrowSize="body"
+        tone="inherit"
+      >
         {loadFailed ? "Couldn't load. Try again" : "Show more"}
       </Text>
       {isLoading && <LoadingSpinner size="small" />}
@@ -216,18 +223,14 @@ export function ExpertGroupIdentity({
   return (
     <>
       {isAutopilot ? (
-        <AutopilotAvatar
-          size={32}
-          transparent
-          className="rounded-full border border-border-base"
-        />
+        <AutopilotAvatar size={32} transparent frame="outline" />
       ) : (
         <ExpertAvatar
           name={label}
           avatarUrl={avatarUrl}
           color={color}
           size={32}
-          className="rounded-full border border-border-base"
+          frame="outline"
         />
       )}
       <ExpertIdentityDetails
@@ -248,7 +251,7 @@ function SessionCount({ id, count }: { id: string; count: number }) {
   return (
     <span
       id={id}
-      className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
+      className="shrink-0 rounded-pill bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
     >
       {count}
     </span>
@@ -284,12 +287,7 @@ function NewChatIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
-    return (
-      <LoadingSpinner
-        size="small"
-        className="!size-4 text-foreground-tertiary"
-      />
-    );
+    return <LoadingSpinner size="small" tone="muted" className="!size-4" />;
   }
 
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;

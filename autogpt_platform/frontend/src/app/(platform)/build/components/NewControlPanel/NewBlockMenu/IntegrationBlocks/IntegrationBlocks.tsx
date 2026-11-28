@@ -34,9 +34,7 @@ export const IntegrationBlocks = () => {
       <div className="w-full space-y-3 p-4">
         {Array.from({ length: 3 }).map((_, blockIndex) => (
           <Fragment key={blockIndex}>
-            {blockIndex > 0 && (
-              <Skeleton className="my-4 h-[1px] w-full text-surface-hover" />
-            )}
+            {blockIndex > 0 && <Skeleton className="my-4 h-[1px] w-full" />}
             {[0, 1, 2].map((index) => (
               <IntegrationBlock.Skeleton key={`${blockIndex}-${index}`} />
             ))}
@@ -83,18 +81,18 @@ export const IntegrationBlocks = () => {
                 setIntegration(undefined);
               }}
             >
-              <Text variant="body-medium" as="span" tone="inherit">
+              <Text variant="body" weight="medium" as="span" tone="inherit">
                 Integrations
               </Text>
             </button>
-            <Text variant="body-medium" tone="emphasis">
+            <Text variant="body" weight="medium" tone="emphasis">
               /
             </Text>
-            <Text variant="body-medium" tone="emphasis">
+            <Text variant="body" weight="medium" tone="emphasis">
               {integration}
             </Text>
           </div>
-          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-full bg-surface-hover p-1.5">
+          <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-pill bg-surface-hover p-1.5">
             <Text variant="body" as="span" tone="muted" className="block">
               {totalBlocks}
             </Text>

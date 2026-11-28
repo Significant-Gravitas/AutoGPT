@@ -75,7 +75,7 @@ export default function MarketplaceScreen() {
     if (!screen.hasTemplates) return renderNotice("No experts yet", "Pull down to check again.");
     if (screen.isSearching) {
       if (!screen.matches.length) return renderNotice("No experts match.");
-      return <RowCard background={colors.panelCard}>{screen.matches.map(renderRow)}</RowCard>;
+      return <RowCard>{screen.matches.map(renderRow)}</RowCard>;
     }
     return (
       <>

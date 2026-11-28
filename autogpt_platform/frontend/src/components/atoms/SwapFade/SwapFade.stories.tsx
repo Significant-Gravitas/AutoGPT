@@ -43,7 +43,7 @@ export const Basic: Story = {
         </SwapFade>
         <button
           type="button"
-          className="rounded-full border border-border-strong px-3 py-1 text-body"
+          className="rounded-pill border border-border-strong px-3 py-1 text-body"
           onClick={() =>
             setLabel(label === "Tap to talk" ? "Listening..." : "Tap to talk")
           }

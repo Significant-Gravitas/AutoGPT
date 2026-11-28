@@ -34,7 +34,7 @@ export function StackSection({
           where the row content inside does. */}
       <div className="mb-1.5 flex items-center gap-1.5 px-3">
         <Icon icon={icon} size={14} tone="muted" aria-hidden />
-        <Text tone="body" variant="small-medium">
+        <Text tone="body" variant="small" weight="medium">
           {title}
           {count === undefined ? "" : ` (${count})`}
         </Text>

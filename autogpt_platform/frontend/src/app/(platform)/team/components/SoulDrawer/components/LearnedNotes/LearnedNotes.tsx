@@ -1,9 +1,9 @@
 "use client";
 
-import { formatWhen } from "@/app/(platform)/settings/memory/helpers";
 import type { MemoryFact } from "@/app/api/__generated__/models/memoryFact";
 import { Button } from "@/components/atoms/Button/Button";
 import { Link } from "@/components/atoms/Link/Link";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { SoulSectionTitle } from "../../SoulSectionTitle";
@@ -72,7 +72,7 @@ function NotesList({
                 {fact.fact || `${fact.source} → ${fact.target}`}
               </Text>
               <Text variant="small" as="span" tone="subtle">
-                {formatWhen(fact.created_at)}
+                <RelativeTime date={fact.created_at} />
               </Text>
             </div>
             <Button
@@ -92,8 +92,8 @@ function NotesList({
       <Link
         href={`/settings/memory?expert=${encodeURIComponent(expertId)}`}
         variant="secondary"
-        // oxlint-disable-next-line design-system/no-restyle -- Link has no secondary-colour tone (src/components is P9's)
-        className="mt-3 inline-block text-foreground-secondary"
+        tone="secondary"
+        className="mt-3 inline-block"
       >
         See all in memory settings
       </Link>

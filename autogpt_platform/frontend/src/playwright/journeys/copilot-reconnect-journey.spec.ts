@@ -1,4 +1,9 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type {
+  BrowserContext,
+  Page,
+  Request as PlaywrightRequest,
+  Route,
+} from "@playwright/test";
 import {
   currentSessionID,
   cutChatStreams,
@@ -6,10 +11,12 @@ import {
   isChatStream,
   recordChatStreams,
   savedAssistantTexts,
+  savedMessages,
   startChat,
 } from "./copilot-chat";
 import { expect, test } from "./fixtures";
 import type { JourneyUser } from "./journey-user";
+import droppedSendScript from "./model-scripts/dropped-send.json";
 import slowAnswerScript from "./model-scripts/slow-answer.json";
 import {
   expectChargedWhatWasBilled,
@@ -28,6 +35,11 @@ const SCRIPT: ModelScript = slowAnswerScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
 const HELD_AFTER_WORDS = slowAnswerScript.turns[0].stream.hold_after_words;
 const STREAMING_WORDS = Math.floor(HELD_AFTER_WORDS / 2);
+
+const DROPPED_SEND_SCRIPT: ModelScript = droppedSendScript;
+const DROPPED_SEND_ANSWER = DROPPED_SEND_SCRIPT.turns[0].text ?? "";
+// A send, not a resume: a resume's URL carries its turn and cursor.
+const CHAT_SEND = /\/api\/chat\/sessions\/[^/]+\/stream$/;
 
 test.describe("copilot reconnect journey", () => {
   // A resume after the turn finished finds its cursor trimmed, and the chat
@@ -69,6 +81,81 @@ test.describe("copilot reconnect journey", () => {
     });
   });
 });
+
+test.describe("copilot reconnect journey, a dropped send", () => {
+  test.beforeAll(requireScriptedModel);
+
+  test("a message the network drops before it leaves goes again on Send again, once", async ({
+    page,
+    journeyUser,
+  }) => {
+    const run = scriptedRun("dropped-send");
+    const message = `Answer me once. ${run.marker}`;
+    // The first send fails as it does offline, before it reaches the server;
+    // later requests go through untouched, a CORS preflight included.
+    async function dropFirstSend(route: Route) {
+      if (route.request().method() !== "POST") return route.fallback();
+      await route.abort("internetdisconnected");
+      await page.unroute(CHAT_SEND, dropFirstSend);
+    }
+    await page.route(CHAT_SEND, dropFirstSend);
+    const dropped = page.waitForRequest(isChatStream("POST"));
+    void dropped.catch(() => undefined);
+    await startChat(page, message);
+    const firstID = messageIDOf(await dropped);
+    expect(firstID, "the send should name its message id").toBeTruthy();
+
+    // The chat reads the session, finds no row for the message, and says so.
+    const banner = page.getByTestId("chat-error-banner");
+    await expect(
+      banner.getByText(
+        "The connection dropped before your message was sent. Check your connection and send it again.",
+      ),
+      "the chat should say the message didn't go",
+    ).toBeVisible({ timeout: 30_000 });
+    const resent = page.waitForRequest(isChatStream("POST"));
+    void resent.catch(() => undefined);
+    await banner.getByRole("button", { name: "Send again" }).click();
+    expect(
+      messageIDOf(await resent),
+      "Send again should post the message under its first id",
+    ).toBe(firstID);
+
+    await expect(
+      page.getByRole("log").getByText(DROPPED_SEND_ANSWER, { exact: true }),
+      "the answer should show, once",
+    ).toHaveCount(1);
+    await expect(banner, "the banner should go once it's sent").toHaveCount(0);
+    const sessionID = await currentSessionID(page);
+    await expect
+      .poll(() => savedConversation(page, sessionID), {
+        message: "the chat should save the message and its answer, once each",
+      })
+      .toEqual([
+        ["user", message],
+        ["assistant", DROPPED_SEND_ANSWER],
+      ]);
+    await page.reload();
+    await expect(
+      page.getByRole("log").getByText(DROPPED_SEND_ANSWER, { exact: true }),
+      "the reloaded chat should show the answer once",
+    ).toHaveCount(1);
+
+    expectEachTurnOnce(await readJournal(run.nonce), DROPPED_SEND_SCRIPT);
+    if (!journeyUser.id) throw new Error("the journey user should have an id");
+    await expectChargedWhatWasBilled(journeyUser.id, [run.nonce]);
+  });
+});
+
+function messageIDOf(request: PlaywrightRequest) {
+  return (request.postDataJSON() as { message_id?: string }).message_id;
+}
+
+async function savedConversation(page: Page, sessionID: string) {
+  return (await savedMessages(page, sessionID))
+    .filter((message) => ["user", "assistant"].includes(message.role))
+    .map((message) => [message.role, message.content]);
+}
 
 interface Args {
   page: Page;

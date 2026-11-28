@@ -38,7 +38,8 @@ export function NeedsYou({ dashboard, className }: Props) {
       badge={
         <span className="rounded-md bg-surface-hover px-1.5 py-0.5">
           <Text
-            variant="small-medium"
+            variant="small"
+            weight="medium"
             as="span"
             role="status"
             aria-label={`${pendingCount} ${pendingCount === 1 ? "item needs" : "items need"} your attention`}

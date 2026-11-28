@@ -473,6 +473,10 @@ class AppService(BaseAppService, ABC):
         app.add_exception_handler(
             exceptions.MissingConfigError, cls._handle_internal_http_error(503)
         )
+        # A health check's failure, which logs itself when raised.
+        app.add_exception_handler(
+            UnhealthyServiceError, cls._handle_internal_http_error(503, log_error=False)
+        )
         app.add_exception_handler(Exception, cls._handle_internal_http_error(500))
 
     @conn_retry("FastAPI server", "Running FastAPI server")

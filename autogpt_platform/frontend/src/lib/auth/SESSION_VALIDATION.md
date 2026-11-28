@@ -146,6 +146,8 @@ const mediaUrl = await api.uploadStoreSubmissionMedia(file);
 
 The client re-validates the session whenever the tab becomes visible again and when the browser comes back online (`useAuthStore`). Only a definite answer from Better Auth signs the user out: no session, or an expired, revoked or rejected (401) one. In that case `validateSession` returns `isValid: false` with a login redirect.
 
+The backend also checks the session of every signed-in request whose token carries one (`sid`). A token without `sid`, signed before the claim was added, skips that check until `AUTH_LEGACY_TOKEN_DEADLINE` passes, so ending a session does not stop such a token before it expires. The backend's 401 `session_revoked` starts the same check a refocus does, so the user is signed out only when Better Auth confirms the session has ended; a 503 signs nobody out.
+
 Every other failure leaves the user signed in:
 
 - **Auth backend unreachable** (database down, timeout): the action returns `isUnavailable: true`.

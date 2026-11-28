@@ -28,7 +28,9 @@ export function GoogleServiceList({ credential, pending, onAllow }: Props) {
             className="flex items-center justify-between gap-3 px-3 py-2"
           >
             <div className="flex min-w-0 flex-col">
-              <Text variant="body-medium">{service.name}</Text>
+              <Text variant="body" weight="medium">
+                {service.name}
+              </Text>
               <Text variant="small" tone="muted">
                 {service.purpose}
               </Text>

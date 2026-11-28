@@ -23,7 +23,7 @@ export function HelpItem({
       <h3 className="mb-1 text-body font-medium text-foreground-base">
         {title}
       </h3>
-      <Text variant="body-tight" tone="secondary">
+      <Text variant="body" leading="5" tone="secondary">
         {description}{" "}
         {linkText && (
           <Link

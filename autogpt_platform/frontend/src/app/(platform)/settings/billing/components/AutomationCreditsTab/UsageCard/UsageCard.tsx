@@ -11,8 +11,9 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-import { EASE_OUT, getSectionMotionProps } from "../../../helpers";
+import { getSectionMotionProps } from "../../../helpers";
 import { useUsageCard, type DailyUsageRow } from "./useUsageCard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -50,7 +51,7 @@ export function UsageCard({ index = 0 }: Props) {
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="px-4">
-        <Text variant="body-medium" as="span">
+        <Text variant="body" weight="medium" as="span">
           Usage
         </Text>
       </div>
@@ -58,8 +59,7 @@ export function UsageCard({ index = 0 }: Props) {
       <div className="flex flex-col gap-5 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            {/* oxlint-disable-next-line design-system/no-restyle -- the spend total uses tabular figures */}
-            <Text variant="large-medium" as="span" tabular>
+            <Text variant="large" weight="medium" as="span" tabular>
               ${totalSpent.toFixed(2)}
             </Text>
             <Text variant="body" as="span" tone="muted">
@@ -156,8 +156,8 @@ function UsageBar({
                 reduceMotion
                   ? undefined
                   : {
-                      duration: 0.5,
-                      ease: EASE_OUT,
+                      duration: duration.slowest,
+                      ease: ease.emphasized,
                       delay: 0.15 + index * 0.015,
                     }
               }
@@ -171,7 +171,7 @@ function UsageBar({
           <span className="text-caption-sm leading-inherit font-medium tracking-eyebrow text-foreground-subtle uppercase">
             {day.date}
           </span>
-          <span className="text-body font-medium text-action-foreground tabular-nums">
+          <span className="text-body font-medium text-foreground-inverse tabular-nums">
             ${day.amount.toFixed(2)}
           </span>
           <span className="text-caption text-foreground-subtle tabular-nums">
