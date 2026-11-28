@@ -27,6 +27,7 @@ import {
   getRerunForm,
   RerunForm,
 } from "./helpers";
+import { useRunVersionAgent } from "./useRunVersionAgent";
 
 interface Params {
   agentGraphId: string;
@@ -51,6 +52,12 @@ export function useSelectedRunActions({
     useState(false);
   // The run form a rerun opens to replace the run's deleted keys
   const [rerunForm, setRerunForm] = useState<RerunForm | null>(null);
+  // It reruns the workflow version the run ran, read when it isn't the current one
+  const runVersion = useRunVersionAgent({
+    agent,
+    run,
+    enabled: rerunForm !== null,
+  });
 
   const canStop = run?.status === "RUNNING" || run?.status === "QUEUED";
 
@@ -134,7 +141,11 @@ export function useSelectedRunActions({
   function handleRunAgainError(failedRun: GraphExecution, error: unknown) {
     // Deleted since the page read the user's keys, e.g. in another tab: they
     // are read again, and the run form opens to pick another
-    const refusedKeys = getRefusedKeys(error, failedRun.credential_inputs);
+    const refusedKeys = getRefusedKeys(
+      error,
+      failedRun.credential_inputs,
+      allProviders,
+    );
     if (refusedKeys.length > 0) {
       credentialsActions?.reload();
       setRerunForm(getRerunForm(failedRun, refusedKeys));
@@ -227,6 +238,12 @@ export function useSelectedRunActions({
     handleStopRun,
     handleRunAgain,
     rerunForm,
+    // The workflow at the run's version, once it's known
+    rerunAgent: rerunForm ? runVersion.runAgent : undefined,
+    isOpeningRerunForm: rerunForm !== null && runVersion.isLoading,
+    hasRerunVersionError: rerunForm !== null && runVersion.hasError,
+    isRetryingRerunVersion: runVersion.isRetrying,
+    retryRerunVersion: runVersion.retry,
     handleRerunFormOpenChange,
     handleCreateTemplate,
     isCreatingTemplate,

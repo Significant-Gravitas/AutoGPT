@@ -8,6 +8,8 @@ import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { DeletedKeysNotice } from "./components/DeletedKeysNotice";
+import { RunVersionErrorDialog } from "./components/RunVersionErrorDialog";
+import { RERUN_FORM_TITLE } from "./helpers";
 import { useSelectedRunActions } from "./useSelectedRunActions";
 import {
   Album01Icon,
@@ -35,6 +37,11 @@ export function SelectedRunActions({
     canRunManually,
     handleRunAgain,
     rerunForm,
+    rerunAgent,
+    isOpeningRerunForm,
+    hasRerunVersionError,
+    isRetryingRerunVersion,
+    retryRerunVersion,
     handleRerunFormOpenChange,
     handleStopRun,
     isRunningAgain,
@@ -52,6 +59,7 @@ export function SelectedRunActions({
   });
 
   const isRunning = run?.status === "RUNNING";
+  const isRerunBusy = isRunningAgain || isOpeningRerunForm;
 
   if (!run || !agent) return null;
 
@@ -63,9 +71,9 @@ export function SelectedRunActions({
           size="icon"
           aria-label="Rerun task"
           onClick={handleRunAgain}
-          disabled={isRunningAgain}
+          disabled={isRerunBusy}
         >
-          {isRunningAgain ? (
+          {isRerunBusy ? (
             <LoadingSpinner size="small" />
           ) : (
             <div className="relative flex flex-col items-center justify-center">
@@ -83,16 +91,25 @@ export function SelectedRunActions({
           )}
         </Button>
       ) : null}
-      {rerunForm ? (
+      {rerunForm && rerunAgent ? (
         <RunAgentModal
-          agent={agent}
-          title="Rerun task"
+          agent={rerunAgent}
+          title={RERUN_FORM_TITLE}
           controlled={{ isOpen: true, set: handleRerunFormOpenChange }}
           notice={<DeletedKeysNotice deletedKeys={rerunForm.deletedKeys} />}
           initialInputValues={rerunForm.inputs}
           initialInputCredentials={rerunForm.credentials}
           fieldsToPick={rerunForm.fieldsToPick}
           onRunCreated={(execution) => onSelectRun?.(execution.id)}
+        />
+      ) : null}
+      {rerunForm && hasRerunVersionError ? (
+        <RunVersionErrorDialog
+          version={run.graph_version}
+          deletedKeys={rerunForm.deletedKeys}
+          isRetrying={isRetryingRerunVersion}
+          onRetry={retryRerunVersion}
+          onOpenChange={handleRerunFormOpenChange}
         />
       ) : null}
       {canStop ? (

@@ -48,6 +48,24 @@ export function getAgentCredentialsFields(
   return agent.credentials_input_schema.properties as Record<string, any>;
 }
 
+/**
+ * The schema a field shows the key it held with. A field open to several
+ * providers, like an LLM step's whose model comes from a link, shows the key
+ * under its own provider: without the discriminator, which goes by the step's
+ * other inputs, there is no other provider to show it under.
+ */
+export function getHeldKeySchema<
+  Schema extends { credentials_provider?: string[] },
+>(schema: Schema, credential: { provider: string }): Schema {
+  const providers = schema.credentials_provider ?? [];
+  return {
+    ...schema,
+    discriminator: undefined,
+    credentials_provider:
+      providers.length > 1 ? [credential.provider] : providers,
+  };
+}
+
 export function renderValue(value: any): string {
   if (value === undefined || value === null) return "";
   if (

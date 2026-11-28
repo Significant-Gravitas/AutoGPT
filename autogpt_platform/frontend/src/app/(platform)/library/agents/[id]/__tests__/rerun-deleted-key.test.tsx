@@ -13,7 +13,9 @@ import { CredentialsMetaInputType } from "@/app/api/__generated__/models/credent
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
-import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
+import CredentialsProvider, {
+  CredentialsProvidersContext,
+} from "@/providers/agent-credentials/credentials-provider";
 import {
   render,
   screen,
@@ -23,7 +25,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { expect, test, vi } from "vitest";
+import { useContext } from "react";
+import { describe, expect, test, vi } from "vitest";
 import { NewAgentLibraryView } from "../components/NewAgentLibraryView/NewAgentLibraryView";
 
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -57,6 +60,10 @@ const SYSTEM_SECTION = /^System credentials/;
 const RUN_ID = "past-run";
 const NEW_RUN_ID = "new-run";
 const RUN_INPUTS = { topic: "news" };
+// The workflow version the past run ran
+const RUN_VERSION = 1;
+
+type Key = { id: string; provider: string; title: string };
 
 // The platform's own Firecrawl key, as /integrations/credentials lists it.
 const PLATFORM_KEY = {
@@ -82,21 +89,79 @@ const OTHER_KEY = {
   is_system: false,
 };
 
-const FIRECRAWL_FIELD = {
-  credentials_provider: ["firecrawl"],
-  credentials_types: ["api_key"],
-  title: "Credentials",
-  type: "object",
-  properties: {
-    id: { title: "Id", type: "string" },
-    provider: { const: "firecrawl", type: "string" },
-    type: { const: "api_key", type: "string" },
+interface WorkflowField {
+  name: string;
+  schema: Record<string, unknown>;
+  // The providers it takes keys from, each with a platform key
+  providers: string[];
+}
+
+const FIRECRAWL_FIELD: WorkflowField = {
+  name: FIELD,
+  providers: ["firecrawl"],
+  schema: {
+    credentials_provider: ["firecrawl"],
+    credentials_types: ["api_key"],
+    title: "Credentials",
+    type: "object",
+    properties: {
+      id: { title: "Id", type: "string" },
+      provider: { const: "firecrawl", type: "string" },
+      type: { const: "api_key", type: "string" },
+    },
+    required: ["id", "provider", "type"],
   },
-  required: ["id", "provider", "type"],
 };
 
+// The inputs of the version the past run ran
+const RUN_VERSION_INPUTS = {
+  type: "object",
+  properties: { topic: { title: "Topic", type: "string" } },
+  required: ["topic"],
+};
+// A later version asks for something else
+const LATER_VERSION_INPUTS = {
+  type: "object",
+  properties: { query: { title: "Search query", type: "string" } },
+  required: ["query"],
+};
+
+function credentialsSchema(field: WorkflowField) {
+  return {
+    type: "object",
+    properties: { [field.name]: field.schema },
+    required: [field.name],
+  };
+}
+
+function inputsAt(version: number) {
+  return version === RUN_VERSION ? RUN_VERSION_INPUTS : LATER_VERSION_INPUTS;
+}
+
+// The workflow at a version, as GET /graphs/{id}?version= answers
+function graphAt(version: number, field: WorkflowField) {
+  return {
+    id: "graph-1",
+    version,
+    name: "Scrape agent",
+    description: "",
+    user_id: "user-1",
+    created_at: "2026-11-01T10:00:00Z",
+    nodes: [],
+    links: [],
+    sub_graphs: [],
+    input_schema: inputsAt(version),
+    output_schema: { type: "object", properties: {} },
+    credentials_input_schema: credentialsSchema(field),
+    has_external_trigger: false,
+    has_human_in_the_loop: false,
+    has_sensitive_action: false,
+    trigger_setup_info: null,
+  };
+}
+
 // What a run's credential_inputs hold for a key
-function usedBy(key: { id: string; provider: string; title: string }) {
+function usedBy(key: Key) {
   return {
     id: key.id,
     provider: key.provider,
@@ -112,11 +177,17 @@ type ExecuteBody = {
 
 interface Setup {
   // The key the past run used
-  runKey?: { id: string; provider: string; title: string };
+  runKey?: Key;
   // The keys /integrations/credentials lists, read again on every request
   savedCredentials?: () => Array<Record<string, unknown>>;
   // How the server answers a run request
   answerRun?: () => Response;
+  // The workflow's credential field
+  field?: WorkflowField;
+  // The workflow's version in the library
+  libraryVersion?: number;
+  // How the server answers a read of the version the past run ran
+  answerRunVersionRead?: () => Response;
 }
 
 function startedRun() {
@@ -138,14 +209,17 @@ function setup({
   runKey = USED_KEY,
   savedCredentials = () => [PLATFORM_KEY, OTHER_KEY],
   answerRun = startedRun,
+  field = FIRECRAWL_FIELD,
+  libraryVersion = RUN_VERSION,
+  answerRunVersionRead = () => HttpResponse.json(graphAt(RUN_VERSION, field)),
 }: Setup = {}) {
   const pastRun: GraphExecutionMeta = {
     id: RUN_ID,
     user_id: "user-1",
     graph_id: "graph-1",
-    graph_version: 1,
+    graph_version: RUN_VERSION,
     inputs: RUN_INPUTS,
-    credential_inputs: { [FIELD]: usedBy(runKey) },
+    credential_inputs: { [field.name]: usedBy(runKey) },
     nodes_input_masks: {},
     preset_id: null,
     status: AgentExecutionStatus.COMPLETED,
@@ -156,25 +230,19 @@ function setup({
   const executeBodies: ExecuteBody[] = [];
   // Recorded as each run request arrives, before its body is read
   const runRequests: string[] = [];
+  // The version each read of the workflow asked for
+  const graphReads: Array<string | null> = [];
 
   server.use(
     getGetV2GetLibraryAgentMockHandler(
       getGetV2GetLibraryAgentResponseMock({
         id: "library-agent",
         graph_id: "graph-1",
-        graph_version: 1,
+        graph_version: libraryVersion,
         name: "Scrape agent",
         can_access_graph: true,
-        input_schema: {
-          type: "object",
-          properties: { topic: { title: "Topic", type: "string" } },
-          required: ["topic"],
-        },
-        credentials_input_schema: {
-          type: "object",
-          properties: { [FIELD]: FIRECRAWL_FIELD },
-          required: [FIELD],
-        },
+        input_schema: inputsAt(libraryVersion),
+        credentials_input_schema: credentialsSchema(field),
         has_external_trigger: false,
         trigger_setup_info: null,
         has_sensitive_action: false,
@@ -183,16 +251,26 @@ function setup({
       }),
     ),
     http.get("*/api/integrations/providers", () =>
-      HttpResponse.json([
-        { name: "firecrawl", description: "firecrawl provider" },
-      ]),
+      HttpResponse.json(
+        field.providers.map((name) => ({
+          name,
+          description: `${name} provider`,
+        })),
+      ),
     ),
     http.get("*/api/integrations/providers/system", () =>
-      HttpResponse.json(["firecrawl"]),
+      HttpResponse.json(field.providers),
     ),
     http.get("*/api/integrations/credentials", () =>
       HttpResponse.json(savedCredentials()),
     ),
+    http.get("*/api/graphs/:graphId", ({ request }) => {
+      const version = new URL(request.url).searchParams.get("version");
+      graphReads.push(version);
+      return version === String(RUN_VERSION)
+        ? answerRunVersionRead()
+        : HttpResponse.json(graphAt(libraryVersion, field));
+    }),
     getGetV1ListGraphExecutionsMockHandler({
       executions: [pastRun],
       pagination: {
@@ -232,6 +310,7 @@ function setup({
   render(
     <>
       <CredentialsProvider>
+        <SavedKeysLoaded />
         <NuqsTestingAdapter
           hasMemory
           searchParams={`activeTab=runs&activeItem=${RUN_ID}`}
@@ -243,28 +322,40 @@ function setup({
     </>,
   );
 
-  return { executeBodies, runRequests };
+  return { executeBodies, runRequests, graphReads };
 }
 
-// The run view is open and the user's saved keys have loaded: the run's
-// "Your input" shows its credential field only once they have
+// Shows once the user's saved keys, which a rerun checks, have loaded. The
+// run's "Your input" isn't a sign of it: it leaves out a key whose title
+// reads like the platform's.
+function SavedKeysLoaded() {
+  const providers = useContext(CredentialsProvidersContext);
+  return providers ? <span>Saved keys loaded</span> : null;
+}
+
 async function waitForRunView() {
   expect(await screen.findByText(`Output of ${RUN_ID}`)).toBeDefined();
-  expect(await screen.findByText("Firecrawl credentials")).toBeDefined();
+  expect(await screen.findByText("Saved keys loaded")).toBeDefined();
 }
 
 async function rerun() {
   await userEvent.click(screen.getByRole("button", { name: "Rerun task" }));
 }
 
-function keyIn(body: ExecuteBody | undefined) {
-  return body?.credentials_inputs?.[FIELD]?.id;
+function keyIn(body: ExecuteBody | undefined, field = FIELD) {
+  return body?.credentials_inputs?.[field]?.id;
 }
 
 async function clickWhenEnabled(name: string, container: HTMLElement) {
   const button = await within(container).findByRole("button", { name });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   await userEvent.click(button);
+}
+
+function isDisabled(name: string, container: HTMLElement) {
+  return within(container)
+    .getByRole("button", { name })
+    .hasAttribute("disabled");
 }
 
 test("rerunning a task whose key was deleted sends nothing, names the key and opens the run form with the task's inputs", async () => {
@@ -287,11 +378,7 @@ test("rerunning a task whose key was deleted sends nothing, names the key and op
   expect(
     within(form).queryByRole("button", { name: SYSTEM_SECTION }),
   ).toBeNull();
-  expect(
-    within(form)
-      .getByRole("button", { name: "Start Task" })
-      .hasAttribute("disabled"),
-  ).toBe(true);
+  expect(isDisabled("Start Task", form)).toBe(true);
   expect(runRequests).toHaveLength(0);
   expect(screen.queryByText("Failed to start run")).toBeNull();
 });
@@ -418,4 +505,239 @@ test("a key deleted after the page loaded is named when the server refuses it, a
   await waitFor(() => expect(executeBodies).toHaveLength(2));
   expect(keyIn(executeBodies[1])).toBe(OTHER_KEY.id);
   expect(executeBodies[1].inputs).toEqual({ topic: "news" });
+});
+
+describe("which keys are the platform's is decided by their ids", () => {
+  test("a deleted key of the user's named like the platform's is still called deleted", async () => {
+    // The user names their keys, so a title can read like a platform key's
+    const { runRequests } = setup({
+      runKey: { ...USED_KEY, title: "Production system key" },
+    });
+    await waitForRunView();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    expect(
+      within(form).getByText(
+        "A key this task used was deleted: Production system key. Choose another key below to run it again.",
+      ),
+    ).toBeDefined();
+    expect(runRequests).toHaveLength(0);
+  });
+
+  test("a platform key the server refuses is never called deleted, whatever its title", async () => {
+    // One of the platform's built-in keys: the saved keys mark it as the
+    // platform's, though nothing in its id or title says so
+    const builtInKey = {
+      id: "6b9fc200-4726-4973-86c9-cd526f5ce5db",
+      provider: "firecrawl",
+      type: "api_key",
+      title: "Firecrawl API Key",
+      is_system: true,
+    };
+    setup({
+      runKey: builtInKey,
+      savedCredentials: () => [builtInKey, OTHER_KEY],
+      answerRun: refusedOverCredentials(
+        `Unknown credentials #${builtInKey.id}`,
+      ),
+    });
+    await waitForRunView();
+
+    await rerun();
+
+    expect(await screen.findByText("Failed to start run")).toBeDefined();
+    expect(
+      await screen.findByText(`Unknown credentials #${builtInKey.id}`, {
+        exact: false,
+      }),
+    ).toBeDefined();
+    expect(screen.queryByText(/was deleted/)).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Rerun task" })).toBeNull();
+  });
+});
+
+describe("a field left to pick waits for the user's pick", () => {
+  test("when only the platform's key is left, the form offers it and starts nothing until the user picks it", async () => {
+    // The user deleted their only Firecrawl key
+    const { executeBodies } = setup({ savedCredentials: () => [PLATFORM_KEY] });
+    await waitForRunView();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    const picker = await within(form).findByRole("combobox", { name: PICKER });
+    expect((picker as HTMLSelectElement).value).toBe("__none__");
+    expect(
+      within(picker).getByRole("option", { name: /Firecrawl API Key/ }),
+    ).toBeDefined();
+    expect(isDisabled("Start Task", form)).toBe(true);
+
+    await userEvent.selectOptions(picker, PLATFORM_KEY.id);
+    await clickWhenEnabled("Start Task", form);
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0])).toBe(PLATFORM_KEY.id);
+  });
+
+  test("a field open to several providers offers the platform's key of the provider the task used", async () => {
+    // An LLM step whose model comes from a link takes OpenAI or Anthropic keys
+    const llmField: WorkflowField = {
+      name: "llm_credentials",
+      providers: ["openai", "anthropic"],
+      schema: {
+        credentials_provider: ["openai", "anthropic"],
+        credentials_types: ["api_key"],
+        discriminator: "model",
+        discriminator_mapping: {
+          "gpt-4o": "openai",
+          "claude-sonnet-4": "anthropic",
+        },
+        title: "Credentials",
+        type: "object",
+        properties: {
+          id: { title: "Id", type: "string" },
+          provider: { enum: ["openai", "anthropic"], type: "string" },
+          type: { const: "api_key", type: "string" },
+        },
+        required: ["id", "provider", "type"],
+      },
+    };
+    const openAIPlatformKey = {
+      id: "53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
+      provider: "openai",
+      type: "api_key",
+      title: "Use Credits for OpenAI",
+      is_system: true,
+    };
+    const anthropicPlatformKey = {
+      id: "24e5d942-d9e3-4798-8151-90143ee55629",
+      provider: "anthropic",
+      type: "api_key",
+      title: "Use Credits for Anthropic",
+      is_system: true,
+    };
+    // The user's last OpenAI key, since deleted
+    const { executeBodies } = setup({
+      field: llmField,
+      runKey: {
+        id: "user-openai-key",
+        provider: "openai",
+        title: "My OpenAI key",
+      },
+      savedCredentials: () => [openAIPlatformKey, anthropicPlatformKey],
+    });
+    await waitForRunView();
+    // The run's "Your input" shows its key under the provider it was for
+    expect(await screen.findByText("Openai credentials")).toBeDefined();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    const picker = await within(form).findByRole("combobox", {
+      name: "Select Openai credential",
+    });
+    expect((picker as HTMLSelectElement).value).toBe("__none__");
+    expect(isDisabled("Start Task", form)).toBe(true);
+
+    await userEvent.selectOptions(picker, openAIPlatformKey.id);
+    await clickWhenEnabled("Start Task", form);
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0], llmField.name)).toBe(openAIPlatformKey.id);
+  });
+});
+
+describe("the run form reruns the workflow version the task ran", () => {
+  test("a task that ran an earlier version reruns that version, with that version's inputs", async () => {
+    const { executeBodies, runRequests, graphReads } = setup({
+      libraryVersion: 2,
+    });
+    await waitForRunView();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    // Built from the task's version: its Topic input holds the task's
+    // input, and the later version's search query isn't asked for
+    expect(await within(form).findByDisplayValue("news")).toBeDefined();
+    expect(within(form).queryByText("Search query")).toBeNull();
+    await userEvent.selectOptions(
+      await within(form).findByRole("combobox", { name: PICKER }),
+      OTHER_KEY.id,
+    );
+    await clickWhenEnabled("Start Task", form);
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(runRequests[0]).toMatch(/\/graphs\/graph-1\/execute\/1$/);
+    expect(executeBodies[0].inputs).toEqual({ topic: "news" });
+    expect(keyIn(executeBodies[0])).toBe(OTHER_KEY.id);
+    expect(graphReads).toContain(String(RUN_VERSION));
+  });
+
+  test("when the task's version can't be loaded, the form says so and runs nothing until it loads", async () => {
+    let canRead = false;
+    const { executeBodies, runRequests } = setup({
+      libraryVersion: 2,
+      answerRunVersionRead: () =>
+        canRead
+          ? HttpResponse.json(graphAt(RUN_VERSION, FIRECRAWL_FIELD))
+          : HttpResponse.json(
+              { detail: "Workflow #graph-1 not found." },
+              { status: 404 },
+            ),
+    });
+    await waitForRunView();
+
+    await rerun();
+
+    const notice = await screen.findByRole("dialog", { name: "Rerun task" });
+    expect(
+      await within(notice).findByText(
+        "This task ran version 1 of the workflow, which couldn't be loaded. Try again, or run the current version with New workflow task.",
+      ),
+    ).toBeDefined();
+    expect(
+      within(notice).getByText(
+        "A key this task used was deleted: My Firecrawl key.",
+      ),
+    ).toBeDefined();
+    // Nothing runs, and the current version's form isn't offered instead
+    expect(
+      within(notice).queryByRole("button", { name: "Start Task" }),
+    ).toBeNull();
+    expect(within(notice).queryByText("Search query")).toBeNull();
+    expect(runRequests).toHaveLength(0);
+
+    canRead = true;
+    await userEvent.click(
+      within(notice).getByRole("button", { name: "Try again" }),
+    );
+
+    // The form opens in its place, built from the task's version
+    expect(await screen.findByDisplayValue("news")).toBeDefined();
+    const loaded = screen.getByRole("dialog", { name: "Rerun task" });
+    await userEvent.selectOptions(
+      await within(loaded).findByRole("combobox", { name: PICKER }),
+      OTHER_KEY.id,
+    );
+    await clickWhenEnabled("Start Task", loaded);
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(runRequests[0]).toMatch(/\/execute\/1$/);
+  });
+
+  test("a task of the workflow's current version opens its form without reading the workflow", async () => {
+    // No key of the user's own is left, so nothing else on the page reads
+    // the workflow either
+    const { graphReads } = setup({ savedCredentials: () => [PLATFORM_KEY] });
+    await waitForRunView();
+
+    await rerun();
+
+    const form = await screen.findByRole("dialog", { name: "Rerun task" });
+    expect(await within(form).findByDisplayValue("news")).toBeDefined();
+    expect(graphReads).toEqual([]);
+  });
 });

@@ -84,6 +84,8 @@ type Props = {
   showTitle: boolean;
   readOnly: boolean;
   variant: "default" | "node";
+  /** List even a single key for the user to pick: the input won't pick it for them. */
+  listsSingleKey?: boolean;
   onSelectCredential: (credentialId: string) => void;
   onClearCredential: () => void;
   onAddCredential: () => void;
@@ -101,6 +103,7 @@ export function CredentialsFlatView({
   showTitle,
   readOnly,
   variant,
+  listsSingleKey = false,
   onSelectCredential,
   onClearCredential,
   onAddCredential,
@@ -143,7 +146,8 @@ export function CredentialsFlatView({
 
       {hasCredentials ? (
         <>
-          {(credentials.length > 1 || isOptional) && !readOnly ? (
+          {(credentials.length > 1 || isOptional || listsSingleKey) &&
+          !readOnly ? (
             <CredentialsSelect
               credentials={credentials}
               provider={provider}

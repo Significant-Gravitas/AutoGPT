@@ -33,7 +33,8 @@ interface Args {
   nodeCredentials: CredentialsMetaInput[];
   nodeCredentialsUnknown: boolean;
   clearedFields: string[];
-  fieldsToPick: string[];
+  // Each field left for the user to pick, with the provider of the key it had
+  fieldsToPick: Record<string, string>;
 }
 
 /** A field with the schema its picker gets; none when no provider resolves. */
@@ -41,6 +42,8 @@ export interface PickerField {
   key: string;
   schema: BlockIOCredentialsSubSchema;
   pickerSchema: BlockIOCredentialsSubSchema | null;
+  /** Whether its picker may choose a key by itself, like its only one. */
+  autoSelect: boolean;
 }
 
 export function useCredentialsGroupedView({
@@ -75,7 +78,9 @@ export function useCredentialsGroupedView({
   // system credentials, so they can see which key the run will use, and so
   // is one left for them to pick, or a required one they have to add a key for.
   function isShownAbove([key, schema]: CredentialField) {
-    if (pinnedAbove.includes(key) || fieldsToPick.includes(key)) return true;
+    if (pinnedAbove.includes(key) || Object.hasOwn(fieldsToPick, key)) {
+      return true;
+    }
     if (pinnedInside.includes(key)) return false;
     if (isOwnCredential(inputCredentials?.[key], allProviders)) return true;
     if (inputCredentials?.[key]) return false;
@@ -117,9 +122,15 @@ export function useCredentialsGroupedView({
       schema,
       pickerSchema: getPickerSchema(
         schema,
-        inputCredentials?.[key],
+        inputCredentials?.[key]?.provider ??
+          getProviderToPick(fieldsToPick, key),
         allProviders,
       ),
+      // A field the user cleared, or one left for them to pick, waits for
+      // their choice: its picker doesn't take even its only key, which can
+      // be the platform's
+      autoSelect:
+        !clearedFields.includes(key) && !Object.hasOwn(fieldsToPick, key),
     }));
   }
 
@@ -150,7 +161,7 @@ export function useCredentialsGroupedView({
       if (
         inputCredentials?.[key] ||
         clearedFields.includes(key) ||
-        fieldsToPick.includes(key)
+        Object.hasOwn(fieldsToPick, key)
       ) {
         continue;
       }
@@ -205,12 +216,13 @@ export function useCredentialsGroupedView({
 
 // A picker shows one provider's keys. A field open to several, like an LLM
 // step's whose model comes from a link, shows the provider of the key it
-// holds, else the first one the user has a key of their own for; with
-// neither it has no picker. The discriminator is left out: the picker goes by
-// provider, not by the step's other inputs.
+// holds, or of the key it had when it's left to pick, else the first one the
+// user has a key of their own for; with none of these it has no picker. The
+// discriminator is left out: the picker goes by provider, not by the step's
+// other inputs.
 function getPickerSchema<Schema extends CredentialFieldSchema>(
   schema: Schema,
-  selected: CredentialsMetaInput | undefined,
+  keyProvider: string | undefined,
   allProviders: CredentialsProvidersContextType | null,
 ): Schema | null {
   const pickerSchema = { ...schema, discriminator: undefined };
@@ -218,12 +230,16 @@ function getPickerSchema<Schema extends CredentialFieldSchema>(
   if (providers.length <= 1) return pickerSchema;
 
   const provider =
-    selected && providers.includes(selected.provider)
-      ? selected.provider
+    keyProvider && providers.includes(keyProvider)
+      ? keyProvider
       : findOwnCredentialProvider(schema, allProviders);
   return provider
     ? { ...pickerSchema, credentials_provider: [provider] }
     : null;
+}
+
+function getProviderToPick(fieldsToPick: Record<string, string>, key: string) {
+  return Object.hasOwn(fieldsToPick, key) ? fieldsToPick[key] : undefined;
 }
 
 // The platform's key, or failing that the only key that fits

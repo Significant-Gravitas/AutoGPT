@@ -1,16 +1,18 @@
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
-import {
-  getCredentialDisplayName,
-  isSystemCredential,
-} from "@/components/contextual/CredentialsInput/helpers";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { getCredentialDisplayName } from "@/components/contextual/CredentialsInput/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 
+export const RERUN_FORM_TITLE = "Rerun task";
+
 // How the server refuses a key it doesn't hold for the user
 const UNKNOWN_KEY_PREFIX = "Unknown credentials #";
-// A provider's own key on the platform, such as "firecrawl-default"
-const PLATFORM_KEY_SUFFIX = "-default";
+// A provider's own key on the platform, such as "firecrawl-default": the
+// server never gives a user's key an id like it
+const SDK_KEY_SUFFIX = "-default";
 
 type RunCredentials = GraphExecution["credential_inputs"];
 type RunCredential = NonNullable<RunCredentials>[string];
@@ -27,8 +29,9 @@ export interface RerunForm {
   deletedKeys: DeletedKey[];
   inputs: Record<string, unknown>;
   credentials: Record<string, RunCredential>;
-  /** The deleted keys' fields, left for the user to pick a key for. */
-  fieldsToPick: string[];
+  /** The deleted keys' fields, left for the user to pick a key for, each
+   *  with the provider of the key it had. */
+  fieldsToPick: Record<string, string>;
 }
 
 /**
@@ -42,7 +45,7 @@ export function getDeletedKeys(
 ): DeletedKey[] {
   if (!allProviders) return [];
   return Object.entries(credentials ?? {}).flatMap(([field, credential]) => {
-    if (!credential?.id || isPlatformKey(credential)) return [];
+    if (!credential?.id || isPlatformKey(credential, allProviders)) return [];
     if (!Object.hasOwn(allProviders, credential.provider)) return [];
     const saved = allProviders[credential.provider]?.savedCredentials;
     if (!saved || saved.some(({ id }) => id === credential.id)) return [];
@@ -54,6 +57,7 @@ export function getDeletedKeys(
 export function getRefusedKeys(
   error: unknown,
   credentials: RunCredentials,
+  allProviders: CredentialsProvidersContextType | null,
 ): DeletedKey[] {
   const unknownIDs = new Set(
     getNodeErrorMessages(error)
@@ -63,7 +67,7 @@ export function getRefusedKeys(
   return Object.entries(credentials ?? {}).flatMap(([field, credential]) =>
     credential?.id &&
     unknownIDs.has(credential.id) &&
-    !isPlatformKey(credential)
+    !isPlatformKey(credential, allProviders)
       ? [toDeletedKey(field, credential)]
       : [],
   );
@@ -74,16 +78,40 @@ export function getRerunForm(
   run: Pick<GraphExecution, "inputs" | "credential_inputs">,
   deletedKeys: DeletedKey[],
 ): RerunForm {
-  const fieldsToPick = [...new Set(deletedKeys.map(({ field }) => field))];
+  const deletedFields = new Set(deletedKeys.map(({ field }) => field));
+  const runCredentials = Object.entries(run.credential_inputs ?? {});
   return {
     deletedKeys,
     inputs: run.inputs ?? {},
     credentials: Object.fromEntries(
-      Object.entries(run.credential_inputs ?? {}).filter(
-        ([field]) => !fieldsToPick.includes(field),
+      runCredentials.filter(([field]) => !deletedFields.has(field)),
+    ),
+    fieldsToPick: Object.fromEntries(
+      runCredentials.flatMap(([field, credential]) =>
+        deletedFields.has(field) && credential
+          ? [[field, credential.provider]]
+          : [],
       ),
     ),
-    fieldsToPick,
+  };
+}
+
+/**
+ * The library's workflow as it was at a past version: what that version
+ * asks for, the keys it takes and the checks it runs, and that version to run.
+ */
+export function getAgentAtVersion(
+  agent: LibraryAgent,
+  graph: GraphModel,
+  version: number,
+): LibraryAgent {
+  return {
+    ...agent,
+    graph_version: version,
+    input_schema: graph.input_schema,
+    credentials_input_schema: graph.credentials_input_schema,
+    has_human_in_the_loop: graph.has_human_in_the_loop,
+    has_sensitive_action: graph.has_sensitive_action,
   };
 }
 
@@ -105,6 +133,11 @@ export function getRerunFormNotice(deletedKeys: DeletedKey[]) {
   return `${describeDeletedKeys(deletedKeys)} ${pick}`;
 }
 
+/** What shows in place of the rerun form when the task's version can't be read. */
+export function getRunVersionErrorNotice(version: number) {
+  return `This task ran version ${version} of the workflow, which couldn't be loaded. Try again, or run the current version with New workflow task.`;
+}
+
 function getNames(deletedKeys: DeletedKey[]) {
   return [...new Set(deletedKeys.map(({ name }) => name))];
 }
@@ -119,12 +152,20 @@ function toDeletedKey(field: string, credential: RunCredential): DeletedKey {
   };
 }
 
-// A run's saved key doesn't say whose it is: the platform's are titled
-// "Use Credits for …", or named for their provider
-function isPlatformKey(credential: RunCredential) {
-  return (
-    isSystemCredential(credential) ||
-    credential.id.endsWith(PLATFORM_KEY_SUFFIX)
+// One of the platform's keys, which a user can't delete. A run's stored key
+// doesn't say whose it is, so its id decides, never its title: users name
+// their keys. The saved keys mark the platform's by id, and one the page
+// doesn't list may still be a provider's own SDK key.
+function isPlatformKey(
+  credential: RunCredential,
+  allProviders: CredentialsProvidersContextType | null,
+) {
+  if (credential.id.endsWith(SDK_KEY_SUFFIX)) return true;
+  if (!allProviders || !Object.hasOwn(allProviders, credential.provider)) {
+    return false;
+  }
+  return (allProviders[credential.provider]?.savedCredentials ?? []).some(
+    (saved) => saved.id === credential.id && saved.is_system === true,
   );
 }
 

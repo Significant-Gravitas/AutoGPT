@@ -6,7 +6,11 @@ import { CredentialsInput } from "@/components/contextual/CredentialsInput/Crede
 import { isSystemCredential } from "@/components/contextual/CredentialsInput/helpers";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
-import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
+import {
+  getAgentCredentialsFields,
+  getAgentInputFields,
+  getHeldKeySchema,
+} from "./helpers";
 
 type Props = {
   agent: LibraryAgent;
@@ -75,7 +79,7 @@ export function AgentInputsReadOnly({
             return (
               <CredentialsInput
                 key={key}
-                schema={{ ...inputSubSchema, discriminator: undefined } as any}
+                schema={getHeldKeySchema(inputSubSchema, credential)}
                 selectedCredentials={credential}
                 onSelectCredentials={() => {}}
                 readOnly={true}

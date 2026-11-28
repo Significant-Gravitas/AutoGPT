@@ -18,7 +18,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 const SYSTEM_SECTION = "system-credentials";
 const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
 const NO_CLEARED_FIELDS: string[] = [];
-const NO_FIELDS_TO_PICK: string[] = [];
+const NO_FIELDS_TO_PICK: Record<string, string> = {};
 
 type Props = {
   credentialFields: CredentialField[];
@@ -34,8 +34,8 @@ type Props = {
   nodeCredentialsUnknown?: boolean;
   /** Fields the user set to none: nothing fills them again. */
   clearedFields?: string[];
-  /** Fields left for the user to pick a key for, e.g. one whose key was deleted: shown, and not filled with the platform's key. */
-  fieldsToPick?: string[];
+  /** Fields left for the user to pick a key for, e.g. one whose key was deleted, each with the provider of the key it had: shown, and never filled for them. One open to several providers offers that provider's keys. */
+  fieldsToPick?: Record<string, string>;
 };
 
 export function CredentialsGroupedView({
@@ -68,7 +68,7 @@ export function CredentialsGroupedView({
     fieldsToPick,
   });
 
-  function renderField({ key, schema, pickerSchema }: PickerField) {
+  function renderField({ key, schema, pickerSchema, autoSelect }: PickerField) {
     const isOptional = !requiredCredentials.has(key);
     if (!pickerSchema) {
       return (
@@ -89,7 +89,7 @@ export function CredentialsGroupedView({
         }}
         siblingInputs={inputValues}
         isOptional={isOptional}
-        autoSelect={!clearedFields.includes(key)}
+        autoSelect={autoSelect}
       />
     );
   }

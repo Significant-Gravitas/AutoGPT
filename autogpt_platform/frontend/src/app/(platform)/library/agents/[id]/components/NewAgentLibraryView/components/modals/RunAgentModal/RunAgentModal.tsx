@@ -30,8 +30,9 @@ interface Props {
   initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   /** Credential fields left for the user to pick a key for, e.g. one whose
-   *  key was deleted: shown, and not filled with the platform's key. */
-  fieldsToPick?: string[];
+   *  key was deleted, each with the provider of the key it had: shown, and
+   *  never filled for them. */
+  fieldsToPick?: Record<string, string>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
@@ -44,7 +45,7 @@ interface Props {
   notice?: React.ReactNode;
 }
 
-const NO_FIELDS_TO_PICK: string[] = [];
+const NO_FIELDS_TO_PICK: Record<string, string> = {};
 
 export function RunAgentModal({
   triggerSlot,
