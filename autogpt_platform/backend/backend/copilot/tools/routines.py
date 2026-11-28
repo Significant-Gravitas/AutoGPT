@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
+from backend.copilot.context import get_current_permissions
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.data.activity_event import ActivityEventDraft
@@ -478,6 +479,8 @@ class ScheduleRoutineTool(BaseTool):
             # Only read when the mode is PINNED; passed always so the tool
             # never has to know which modes want it.
             pinned_session_id=pinned_session_id,
+            # Its turns run under this turn's filter as well as their own.
+            permissions=get_current_permissions(),
             # Absent means "leave the grant alone", so rewording a routine
             # never quietly widens what it can touch.
             grants_credentials=grant,

@@ -39,7 +39,7 @@
     "defaults"
   ],
   "dependencies": {
-    "@ai-sdk/react": "4.0.173",
+    "@ai-sdk/react": "4.0.180",
     "@better-auth/core": "1.7.25",
     "@faker-js/faker": "10.6.0",
     "@ferrucc-io/emoji-picker": "0.1.2",
@@ -170,7 +170,7 @@
     "concurrently": "10.0.6",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
-    "eslint-config-next": "15.5.7",
+    "eslint-config-next": "15.5.29",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-storybook": "10.6.3",
     "happy-dom": "20.8.9",
@@ -219,5 +219,5 @@
       "next@~15.5.28": "patches/next@15.5.28.patch"
     }
   },
-  "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"
+  "packageManager": "pnpm@10.34.9+sha512.f49b5a8ea0fdedb44bb3c0c1d6575092a53c2950d95b7ad15df11f17974877a2de3a01c07e934e9b28ce716e51c09a94962c7306d09be2e1e4b18a8c8762fd32"
 }

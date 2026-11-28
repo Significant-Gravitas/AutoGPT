@@ -14,6 +14,9 @@ MAX_NAME_LENGTH = 100
 # For a name checked at the write, where a tighter bound would refuse a
 # re-save of a row already over it.
 MAX_LONG_NAME_LENGTH = 500
+# Checked at the save, so a workflow stored with a longer name is refused
+# there until the name is shortened.
+MAX_GRAPH_NAME_LENGTH = 200
 MAX_TITLE_LENGTH = 200
 MAX_CRON_LENGTH = 200
 MAX_EMAIL_LENGTH = 320

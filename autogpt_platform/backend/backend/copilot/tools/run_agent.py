@@ -42,6 +42,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import GraphModel, missing_inputs, unknown_inputs
 from backend.data.model import CredentialsMetaInput
+from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_database_manager_async_client, get_scheduler_client
@@ -61,6 +62,7 @@ from backend.util.timezone_utils import (
 )
 
 from .base import GATE_APPROVED, GATE_DECIDED, BaseTool, parameters_without
+from .capability_gates import gate_denied, gate_denied_error
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -416,6 +418,11 @@ class RunAgentTool(BaseTool):
 
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
+
+        # A schedule is standing work whichever tool makes it, so this mode
+        # answers to the same permission as ``schedule_followup``.
+        if is_schedule and gate_denied("schedule_followup"):
+            return gate_denied_error(f"{self.name} with a schedule", session_id)
 
         # Session-level dry-run blocks scheduling — schedules create real
         # side effects that cannot be simulated.
@@ -1379,6 +1386,12 @@ class RunAgentTool(BaseTool):
         if not schedule_name:
             return ErrorResponse(
                 message="schedule_name is required for scheduled execution",
+                session_id=session_id,
+            ).from_outside()
+        if len(schedule_name) > MAX_SCHEDULE_NAME_LENGTH:
+            return ErrorResponse(
+                message=f"schedule_name is {len(schedule_name):,} characters; "
+                f"shorten it to at most {MAX_SCHEDULE_NAME_LENGTH} and try again",
                 session_id=session_id,
             ).from_outside()
         if not cron:

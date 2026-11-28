@@ -19235,7 +19235,7 @@
             }
           },
           "428": {
-            "description": "Marketplace profile required, or slug taken"
+            "description": "Marketplace profile required, slug taken, or too many submissions waiting for review"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -22368,6 +22368,20 @@
         "title": "BlockDetailsResponse",
         "description": "Response for block details (describe_capability / first run attempt)."
       },
+      "BlockFilter": {
+        "properties": {
+          "blocks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "blocks_exclude": { "type": "boolean", "title": "Blocks Exclude" }
+        },
+        "type": "object",
+        "required": ["blocks", "blocks_exclude"],
+        "title": "BlockFilter",
+        "description": "One block filter of a run that this one runs under."
+      },
       "BlockInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -24140,6 +24154,52 @@
         "required": ["turn_id"],
         "title": "ContinueSessionResponse"
       },
+      "CopilotPermissions": {
+        "properties": {
+          "tools": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Tools",
+            "default": []
+          },
+          "tools_exclude": {
+            "type": "boolean",
+            "title": "Tools Exclude",
+            "default": true
+          },
+          "blocks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Blocks",
+            "default": []
+          },
+          "blocks_exclude": {
+            "type": "boolean",
+            "title": "Blocks Exclude",
+            "default": true
+          },
+          "block_ceilings": {
+            "items": { "$ref": "#/components/schemas/BlockFilter" },
+            "type": "array",
+            "title": "Block Ceilings",
+            "default": []
+          },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          },
+          "providers_exclude": {
+            "type": "boolean",
+            "title": "Providers Exclude",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "CopilotPermissions",
+        "description": "Capability filter for a single copilot execution.\n\nAttributes:\n    tools: Tool names to filter (short names, e.g. ``run_capability``).\n    tools_exclude: When True (default) ``tools`` is a blacklist;\n        when False it is a whitelist.  Ignored when *tools* is empty.\n    blocks: Block identifiers (name, full UUID, or 8-char partial UUID).\n    blocks_exclude: Same semantics as *tools_exclude* but for blocks.\n    block_ceilings: The block filters of the runs this one runs under;\n        a block must pass each of them as well.\n    providers: Provider slugs (``github``) whose connected accounts the\n        run's sandbox may use.\n    providers_exclude: Same semantics as *tools_exclude* but for\n        providers."
+      },
       "CopilotSkillDetail": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -24317,6 +24377,12 @@
               { "type": "null" }
             ],
             "title": "Created At"
+          },
+          "permissions": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CopilotPermissions" },
+              { "type": "null" }
+            ]
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -36465,6 +36531,7 @@
           },
           "name": {
             "type": "string",
+            "maxLength": 200,
             "minLength": 1,
             "pattern": "\\S",
             "title": "Name"
@@ -36721,7 +36788,12 @@
         "properties": {
           "name": {
             "anyOf": [
-              { "type": "string", "minLength": 1, "pattern": "\\S" },
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
               { "type": "null" }
             ],
             "title": "Name"

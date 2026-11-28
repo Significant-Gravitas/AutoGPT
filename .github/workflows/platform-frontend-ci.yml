@@ -127,6 +127,29 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+  dependency-trust:
+    # Frozen installs skip trustPolicy (pnpm-workspace.yaml). Re-resolving the
+    # lockfile checks every locked version; an empty store keeps pnpm from
+    # skipping packages it already has. It fetches registry metadata, no tarballs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: autogpt_platform/frontend/package.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.22.1"
+      - name: Check dependency trust policy
+        run: >-
+          pnpm install --resolution-only --no-frozen-lockfile
+          --store-dir "$RUNNER_TEMP/pnpm-trust-check-store"
+      - name: Check the lockfile is unchanged
+        run: git diff --exit-code -- pnpm-lock.yaml package.json
+
   knip:
     runs-on: ubuntu-latest
     permissions:

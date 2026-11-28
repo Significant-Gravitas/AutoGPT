@@ -558,18 +558,33 @@ class TestNarrowPermissions:
         assert merged is not None
         assert not merged.is_provider_allowed("github")
 
-    def test_a_parents_provider_ceiling_is_kept_through_the_queue(self) -> None:
+    @pytest.mark.parametrize(
+        "parent, allowed",
+        [
+            (
+                CopilotPermissions(providers=["github"], providers_exclude=True),
+                lambda p: p.is_provider_allowed("github"),
+            ),
+            (
+                CopilotPermissions(blocks=["SendWebRequestBlock"]),
+                lambda p: p.is_block_allowed(
+                    "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+                ),
+            ),
+        ],
+        ids=["provider", "block"],
+    )
+    def test_a_parents_ceiling_is_kept_through_the_queue(self, parent, allowed) -> None:
         narrowed = root_envelope("t").model_copy(
             update={"tools": frozenset({"bash_exec"})}
         )
-        parent = CopilotPermissions(providers=["github"], providers_exclude=True)
         caller = CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES)
 
         merged = utils._narrow_permissions(caller, narrowed)
 
         assert merged is not None
         again = CopilotPermissions.model_validate_json(merged.model_dump_json())
-        assert not again.is_provider_allowed("github")
+        assert not allowed(again)
 
 
 @pytest.mark.asyncio
@@ -607,6 +622,54 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
         queue.publish_message.await_args.kwargs["message"]
     )
     assert entry.impersonated is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_turn_puts_a_merged_filters_ceilings_on_the_queued_entry() -> (
+    None
+):
+    parent = CopilotPermissions(
+        tools=["run_capability"], blocks=["SendWebRequestBlock"]
+    )
+    queue = MagicMock(publish_message=AsyncMock())
+    with (
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch.object(
+            utils,
+            "chat_db",
+            return_value=MagicMock(
+                record_chat_session_turn=AsyncMock(return_value=True)
+            ),
+        ),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+    ):
+        await utils.dispatch_turn(
+            MagicMock(),
+            session_id="s1",
+            user_id="u1",
+            turn_id="t1",
+            message="hi",
+            permissions=CopilotPermissions().merged_with_parent(parent, ALL_TOOL_NAMES),
+        )
+
+    entry = CoPilotExecutionEntry.model_validate_json(
+        queue.publish_message.await_args.kwargs["message"]
+    )
+    assert entry.permissions is not None
+    assert not entry.permissions.is_block_allowed(
+        "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+    )
+    assert "run_capability" not in entry.permissions.effective_allowed_tools(
+        ALL_TOOL_NAMES
+    )
 
 
 @pytest.mark.asyncio

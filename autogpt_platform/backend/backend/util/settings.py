@@ -470,6 +470,32 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum orphaned auth identities healed per sweep.",
     )
 
+    # Daily report of API activity by accounts without an active plan
+    no_plan_activity_report_enabled: bool = Field(
+        default=True,
+        description=(
+            "Count each account's authenticated API requests per day, and post a "
+            "daily system alert listing what accounts without an active plan did. "
+            "Needs ENABLE_PLATFORM_PAYMENT: with payment off it does nothing."
+        ),
+    )
+    no_plan_activity_min_requests: int = Field(
+        default=500,
+        ge=1,
+        description=(
+            "Requests in one UTC day, internal and external API together, at "
+            "which an account without an active plan is reported."
+        ),
+    )
+    no_plan_activity_min_accounts_per_ip: int = Field(
+        default=3,
+        ge=2,
+        description=(
+            "Accounts without an active plan that signed up or signed in from one "
+            "IP address in one UTC day at which they are reported as a group."
+        ),
+    )
+
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
         default=24,
@@ -817,6 +843,27 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="How many schedules one user may hold on the scheduler.",
     )
 
+    max_schedule_payload_bytes: int = Field(
+        default=1024 * 1024,
+        ge=1024,
+        description="The most one schedule may store, its inputs or message "
+        "included, as compact JSON.",
+    )
+
+    max_schedule_payload_values: int = Field(
+        default=10_000,
+        ge=100,
+        description="The most JSON values (list items, object fields and plain "
+        "values) one schedule may store.",
+    )
+
+    max_schedule_storage_bytes: int = Field(
+        default=64 * 1024 * 1024,
+        ge=1024 * 1024,
+        description="The most one account's and its organization's schedules may "
+        "store together, measured as Python holds the data.",
+    )
+
     schedule_read_timeout_seconds: float = Field(
         default=5.0,
         gt=0,
@@ -1039,6 +1086,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     product_alert_discord_channel: str = Field(
         default="product-alerts",
         description="The Discord channel for product alerts (low balance, zero balance, etc.)",
+    )
+    security_alert_discord_channel: str = Field(
+        default="",
+        description="The Discord channel for security alerts; empty sends them to "
+        "the platform channel",
     )
 
     clamav_service_host: str = Field(

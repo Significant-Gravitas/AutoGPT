@@ -29,10 +29,10 @@ from backend.data.model import CredentialsMetaInput
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
     MAX_DESCRIPTION_LENGTH,
+    MAX_GRAPH_NAME_LENGTH,
     MAX_ID_LENGTH,
     MAX_INSTRUCTIONS_LENGTH,
     MAX_LIST_ENTRIES,
-    MAX_LONG_NAME_LENGTH,
     MAX_NAME_LENGTH,
     MAX_SECRET_LENGTH,
     MAX_SUMMARY_LENGTH,
@@ -158,7 +158,7 @@ class GraphNode(BaseModel):
 class GraphCreateRequest(BaseModel):
     """Graph model for creating or updating an agent graph."""
 
-    name: str = Field(max_length=MAX_LONG_NAME_LENGTH, description="Graph name")
+    name: str = Field(max_length=MAX_GRAPH_NAME_LENGTH, description="Graph name")
     description: str = Field(
         default="", max_length=MAX_INSTRUCTIONS_LENGTH, description="Graph description"
     )

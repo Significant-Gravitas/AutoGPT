@@ -75,17 +75,19 @@ def _race(
     first: Callable[[], object],
     competitor: Callable[[], object],
     *,
-    seam: Literal["read", "validation"],
+    seam: Literal["read", "validation", "storage"],
 ) -> bool:
-    """Stop *first* at *seam*: just after it reads the job, or while it checks
-    new inputs against the graph. Run *competitor* until it finishes or waits
-    for the jobstore lock, then let *first* go on. Returns whether the
-    competitor had to wait."""
+    """Stop *first* at *seam*: just after it reads the job, while it checks
+    new inputs against the graph, or just after it measures the account's
+    schedule storage. Run *competitor* until it finishes or waits for the
+    jobstore lock, then let *first* go on. Returns whether the competitor had
+    to wait."""
     race = _Race()
     aps = scheduler.scheduler
     lock = aps._jobstores_lock
     aps._jobstores_lock = _ReportingLock(lock, race)
     authorized_job = scheduler._authorized_job
+    check_storage = scheduler._check_schedule_storage
 
     def stop_first(at: str) -> None:
         if at != seam or threading.current_thread().name != "first":
@@ -103,11 +105,16 @@ def _race(
         inputs_check.close()
         stop_first("validation")
 
+    def measure(*args: Any, **kwargs: Any) -> None:
+        check_storage(*args, **kwargs)
+        stop_first("storage")
+
     threads: list[threading.Thread] = []
     try:
         with (
             patch.object(scheduler, "_authorized_job", side_effect=read),
             patch("backend.executor.scheduler.run_async", side_effect=check),
+            patch.object(scheduler, "_check_schedule_storage", side_effect=measure),
         ):
             try:
                 threads.append(_start(first, "first", race))
@@ -149,7 +156,7 @@ def _edit_and(
     raced: bool,
     fields: dict[str, Any],
     competitor: Callable[[], object],
-    seam: Literal["read", "validation"],
+    seam: Literal["read", "validation", "storage"],
 ) -> bool | None:
     """Edit the graph schedule with *fields* and run *competitor*: mid-edit
     when *raced*, after the edit commits otherwise. Returns whether a raced
@@ -234,9 +241,13 @@ def test_an_edit_keeps_a_users_pause_of_a_schedule_the_archive_paused(
 
 
 @_ORDERS
-def test_an_edit_keeps_the_mark_of_an_archive_pause(tmp_path, raced: bool):
-    """The archive pauses the schedule while an edit of its inputs is checked.
-    The edit keeps the mark, so re-hire resumes the schedule, edited."""
+@pytest.mark.parametrize("seam", ["validation", "storage"])
+def test_an_edit_keeps_the_mark_of_an_archive_pause(
+    tmp_path, raced: bool, seam: Literal["validation", "storage"]
+):
+    """The archive pauses the schedule while an edit of its inputs is checked,
+    or once the edit has measured the account's storage. The edit keeps the
+    mark, so re-hire resumes the schedule, edited."""
     with sqlite_scheduler(tmp_path) as scheduler:
         add_graph_job(scheduler)
 
@@ -245,7 +256,7 @@ def test_an_edit_keeps_the_mark_of_an_archive_pause(tmp_path, raced: bool):
             raced,
             {"input_data": _NEW_INPUTS},
             lambda: pause(scheduler, for_expert_archive=True),
-            seam="validation",
+            seam=seam,
         )
 
         after = stored(scheduler)
@@ -260,7 +271,7 @@ def test_an_edit_keeps_the_mark_of_an_archive_pause(tmp_path, raced: bool):
 @pytest.mark.parametrize(
     ("fields", "seam", "waits"),
     [
-        pytest.param({"cron": _NEW_CRON}, "read", True, id="cron"),
+        pytest.param({"cron": _NEW_CRON}, "read", False, id="cron"),
         pytest.param(
             {"cron": _NEW_CRON, "input_data": _NEW_INPUTS},
             "validation",

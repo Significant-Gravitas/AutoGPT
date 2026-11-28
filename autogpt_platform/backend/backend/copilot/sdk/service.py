@@ -239,6 +239,7 @@ from ..tools import (
 )
 from ..tools.render_ui import render_ui_disabled_tools
 from ..tools.e2b_sandbox import (
+    SandboxUnavailableError,
     forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
@@ -5574,7 +5575,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # here, but that narrowing does not carry into nested functions.
         owner_expert_id = session.expert_id
         execution_target = session.metadata.execution_target
-        e2b_refusal: SandboxLimitError | None = None
+        e2b_refusal: SandboxLimitError | SandboxUnavailableError | None = None
         local_pc_folder_refused = False
 
         async def _setup_e2b():
@@ -5627,6 +5628,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     e2b_err,
                     exc_info=True,
                 )
+                e2b_refusal = SandboxUnavailableError()
                 await forget_turn_ceiling(session_id, owner_expert_id)
                 return None
 
@@ -5688,32 +5690,40 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             raise
         graphiti_enabled = _graphiti_enabled(user_id)
         e2b_sandbox = await e2b_task
+        setup_failure: StreamError | None = None
         if e2b_refusal is not None:
-            # Refused under a running-box limit: the turn ends here rather
-            # than running its commands on the local fallback.  The finally
-            # below saves the marker, so a reloaded chat still shows why.
+            # E2B is configured but the box did not start: the turn ends here
+            # rather than running its commands on the local fallback.  The
+            # finally below saves the marker, so a reloaded chat shows why.
             _append_error_marker(session, str(e2b_refusal), retryable=True)
-            yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
-            return
-
-        if local_pc_folder_refused:
+            setup_failure = StreamError(
+                errorText=str(e2b_refusal), code=e2b_refusal.code
+            )
+        elif local_pc_folder_refused:
             # The computer is connected, and a folder attaches only when a
             # chat is created: nothing in this chat can put it right. The
             # finally below saves the marker, so a reloaded chat still says why.
             _append_error_marker(session, _LOCAL_PC_FOLDER_CHANGED)
-            yield StreamError(
+            setup_failure = StreamError(
                 errorText=_LOCAL_PC_FOLDER_CHANGED, code="local_pc_folder_changed"
             )
-            return
-
-        if execution_target.kind == "local" and e2b_sandbox is None:
-            yield StreamError(
+        elif execution_target.kind == "local" and e2b_sandbox is None:
+            setup_failure = StreamError(
                 errorText=(
                     "Your Local PC executor is not connected. Start it for this "
                     "chat session and try again."
                 ),
                 code="local_pc_executor_unavailable",
             )
+        if setup_failure is not None:
+            if continued_pending and any(pm.model_image for pm in continued_pending):
+                # Its rows were saved as text only; requeued, the next turn's
+                # drain finds them saved and attaches just their images.
+                try:
+                    await restore_pending_messages(session_id, continued_pending)
+                except Exception:
+                    logger.exception(f"{log_prefix} Could not requeue image batch")
+            yield setup_failure
             return
 
         is_local_pc = isinstance(e2b_sandbox, LocalPCShim)
