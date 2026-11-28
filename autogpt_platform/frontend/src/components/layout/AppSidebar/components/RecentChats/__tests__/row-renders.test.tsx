@@ -84,7 +84,7 @@ beforeEach(() => {
     ...sidebarBackend(() => listed, requests),
     // Pinning leaves a chat's place in time alone: the grouped read orders by
     // activity, and pinned chats leave their group for the Pinned section.
-    http.patch("*/api/chat/sessions/:id/pinned", ({ params }) => {
+    http.patch("*/api/internal/chat/sessions/:id/pinned", ({ params }) => {
       listed = listed.map((s) =>
         s.id === params.id ? { ...s, is_pinned: true } : s,
       );

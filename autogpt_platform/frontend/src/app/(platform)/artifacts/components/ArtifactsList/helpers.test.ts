@@ -58,7 +58,7 @@ describe("deriveFileOrigin", () => {
 describe("getFileDownloadUrl", () => {
   test("url-encodes the file id", () => {
     expect(getFileDownloadUrl("a/b c")).toBe(
-      "/api/proxy/api/workspace/files/a%2Fb%20c/download",
+      "/api/proxy/api/internal/workspace/files/a%2Fb%20c/download",
     );
   });
 });
@@ -66,25 +66,25 @@ describe("getFileDownloadUrl", () => {
 describe("getFilePreviewUrl", () => {
   test("returns the base url with no query when no opts are given", () => {
     expect(getFilePreviewUrl("f1", {})).toBe(
-      "/api/proxy/api/workspace/files/f1/preview",
+      "/api/proxy/api/internal/workspace/files/f1/preview",
     );
   });
 
   test("adds the width param", () => {
     expect(getFilePreviewUrl("f1", { width: 400 })).toBe(
-      "/api/proxy/api/workspace/files/f1/preview?w=400",
+      "/api/proxy/api/internal/workspace/files/f1/preview?w=400",
     );
   });
 
   test("adds the bytes param", () => {
     expect(getFilePreviewUrl("f1", { bytes: 4096 })).toBe(
-      "/api/proxy/api/workspace/files/f1/preview?bytes=4096",
+      "/api/proxy/api/internal/workspace/files/f1/preview?bytes=4096",
     );
   });
 
   test("combines width and bytes and url-encodes the id", () => {
     expect(getFilePreviewUrl("a b", { width: 400, bytes: 4096 })).toBe(
-      "/api/proxy/api/workspace/files/a%20b/preview?w=400&bytes=4096",
+      "/api/proxy/api/internal/workspace/files/a%20b/preview?w=400&bytes=4096",
     );
   });
 });
@@ -112,7 +112,7 @@ describe("downloadFileBlob", () => {
     await downloadFileBlob("file 1", "out.txt");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/proxy/api/workspace/files/file%201/download",
+      "/api/proxy/api/internal/workspace/files/file%201/download",
     );
     expect(clickSpy).toHaveBeenCalled();
     expect(URL.createObjectURL).toHaveBeenCalled();

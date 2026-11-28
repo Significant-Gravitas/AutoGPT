@@ -149,7 +149,7 @@ describe("ScheduledChatNoticeCard", () => {
 
   it("says so when how often it runs can't be read", async () => {
     server.use(
-      http.get("*/api/schedules/followups/:scheduleKey/cadence", () =>
+      http.get("*/api/internal/schedules/followups/:scheduleKey/cadence", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -168,8 +168,9 @@ describe("ScheduledChatNoticeCard", () => {
     "says why when it can't be read to change (%i)",
     async (status, reason) => {
       server.use(
-        http.get("*/api/schedules/followups/:scheduleKey/cadence", () =>
-          HttpResponse.json({ detail: "refused" }, { status }),
+        http.get(
+          "*/api/internal/schedules/followups/:scheduleKey/cadence",
+          () => HttpResponse.json({ detail: "refused" }, { status }),
         ),
       );
       await openRunLessOften();
@@ -183,7 +184,7 @@ describe("ScheduledChatNoticeCard", () => {
   it("asks for a paused chat to be resumed first", async () => {
     server.use(
       getGetScheduledChatCadenceMockHandler(CADENCE),
-      http.post("*/api/schedules/followups/:scheduleKey/cadence", () =>
+      http.post("*/api/internal/schedules/followups/:scheduleKey/cadence", () =>
         HttpResponse.json(
           { detail: "This scheduled chat is paused. Resume it first." },
           { status: 409 },
@@ -240,7 +241,7 @@ describe("ScheduledChatNoticeCard", () => {
 
   it("treats a chat that is no longer paused as resumed", async () => {
     server.use(
-      http.post("*/api/schedules/followups/:scheduleKey/resume", () =>
+      http.post("*/api/internal/schedules/followups/:scheduleKey/resume", () =>
         HttpResponse.json(
           { detail: "This scheduled chat is not paused." },
           { status: 404 },

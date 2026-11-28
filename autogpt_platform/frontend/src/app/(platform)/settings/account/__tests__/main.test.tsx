@@ -239,13 +239,16 @@ describe("SettingsPreferencesPage", () => {
         alerts_enabled: false,
       }),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      http.post("*/api/auth/user/preferences/from-email", ({ request }) => {
-        applied = new URL(request.url);
-        return HttpResponse.json({
-          ...defaultPreferences,
-          alerts_enabled: true,
-        });
-      }),
+      http.post(
+        "*/api/internal/auth/user/preferences/from-email",
+        ({ request }) => {
+          applied = new URL(request.url);
+          return HttpResponse.json({
+            ...defaultPreferences,
+            alerts_enabled: true,
+          });
+        },
+      ),
     );
 
     render(<SettingsPreferencesPage />);
@@ -255,7 +258,7 @@ describe("SettingsPreferencesPage", () => {
     // Must reach the backend through the proxy, not the Next.js
     // /api/auth/* (Better Auth) catch-all, which 404s.
     expect(applied?.pathname).toBe(
-      "/api/proxy/api/auth/user/preferences/from-email",
+      "/api/proxy/api/internal/auth/user/preferences/from-email",
     );
     expect(applied?.searchParams.get("choice")).toBe("alerts");
     // Token-authenticated, so a bare ?f= from a third-party link is inert.
@@ -270,7 +273,7 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      http.post("*/api/auth/user/preferences/from-email", () => {
+      http.post("*/api/internal/auth/user/preferences/from-email", () => {
         applied = true;
         return HttpResponse.json(defaultPreferences);
       }),

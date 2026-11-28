@@ -63,7 +63,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
-const REFUSED = "Request failed on client: PATCH /api/onboarding 409";
+const REFUSED = "Request failed on client: PATCH /api/internal/onboarding 409";
 type Delivery = "answered" | "landsUnanswered" | "landsLate" | "landsTwice";
 
 let stored: StoredDraft<OnboardingWizardProgress>;
@@ -110,7 +110,7 @@ beforeEach(() => {
   resetClientRequestFailureLog();
   vi.mocked(Sentry.captureMessage).mockClear();
   server.use(
-    http.get("*/api/onboarding", () =>
+    http.get("*/api/internal/onboarding", () =>
       HttpResponse.json(
         getGetV1OnboardingStateResponseMock({
           userId: user.id,
@@ -120,7 +120,7 @@ beforeEach(() => {
         }),
       ),
     ),
-    http.patch("*/api/onboarding", async ({ request }) => {
+    http.patch("*/api/internal/onboarding", async ({ request }) => {
       const save = (await request.json()) as UserOnboardingUpdate;
       const delivery = deliveries.shift() ?? "answered";
       if (delivery === "landsLate") await hold();

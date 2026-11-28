@@ -31,7 +31,7 @@ vi.mock(
 
 beforeEach(() => {
   server.use(
-    http.get("*/api/store/profile", () =>
+    http.get("*/api/internal/store/profile", () =>
       HttpResponse.json({
         username: "alice",
         name: "Alice",

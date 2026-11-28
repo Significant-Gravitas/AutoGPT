@@ -69,7 +69,9 @@ export async function signIn(
     throw new Error("Signed in, but /api/auth/get-session returned no user.");
   }
   for (const step of DONE_ONBOARDING_STEPS) {
-    await request.post(`${baseURL}/api/proxy/api/onboarding/step?step=${step}`);
+    await request.post(
+      `${baseURL}/api/proxy/api/internal/onboarding/step?step=${step}`,
+    );
   }
   return userID;
 }

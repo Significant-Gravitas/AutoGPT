@@ -73,13 +73,13 @@ export async function createTypedInputsAgent(
       sink_name: "value",
     })),
   };
-  const created = await page.request.post("/api/proxy/api/graphs", {
+  const created = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "upload", graph },
   });
   expect(created.ok(), `creating the workflow: ${created.status()}`).toBe(true);
   const { id: graphID } = (await created.json()) as { id: string };
   const library = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(library.ok(), `reading the Library agent: ${library.status()}`).toBe(
     true,
@@ -193,7 +193,7 @@ export async function uploadFile(
   const uploaded = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname.endsWith("/api/files/upload"),
+      new URL(response.url()).pathname.endsWith("/api/internal/files/upload"),
   );
   await dialog.locator('input[type="file"]').setInputFiles(file);
   const response = await uploaded;
@@ -239,7 +239,7 @@ export function isRunStart(graphID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${graphID}/execute/`,
+      `/api/internal/graphs/${graphID}/execute/`,
     );
 }
 
@@ -255,7 +255,7 @@ export async function waitForRunToEnd(page: Page, agent: Agent, runID: string) {
 
 async function readRun(page: Page, agent: Agent, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${agent.graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;

@@ -26,10 +26,13 @@ from backend.util.testing import is_tcp_port_reachable
     [
         (
             "https://backend.example.com",
-            "https://backend.example.com/api/anthropic-relay",
+            "https://backend.example.com/api/internal/anthropic-relay",
         ),
-        ("https://example.com/_agpt/", "https://example.com/_agpt/api/anthropic-relay"),
-        ("https://8.8.8.8:8006", "https://8.8.8.8:8006/api/anthropic-relay"),
+        (
+            "https://example.com/_agpt/",
+            "https://example.com/_agpt/api/internal/anthropic-relay",
+        ),
+        ("https://8.8.8.8:8006", "https://8.8.8.8:8006/api/internal/anthropic-relay"),
     ],
 )
 def test_the_relay_is_offered_at_the_platforms_public_address(

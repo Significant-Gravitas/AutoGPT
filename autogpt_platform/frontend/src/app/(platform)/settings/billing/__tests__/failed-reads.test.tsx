@@ -65,7 +65,7 @@ afterEach(async () => {
 });
 
 function answer(path: string, status: number, body: object) {
-  return http.get(`*/api/${path}`, async () => {
+  return http.get(`*/api/internal/${path}`, async () => {
     await delay(ROUND_TRIP_MS);
     return HttpResponse.json(body, { status });
   });
@@ -100,9 +100,9 @@ it.each([401, 403, 429, 500, 502, 503, 504])(
     );
     await openBillingFor(WINDOW_MS);
 
-    expect(reads["/api/credits/trial"]).toBe(2);
-    expect(reads["/api/credits/subscription"]).toBe(2);
-    expect(reads["/api/chat/usage"]).toBe(1);
+    expect(reads["/api/internal/credits/trial"]).toBe(2);
+    expect(reads["/api/internal/credits/subscription"]).toBe(2);
+    expect(reads["/api/internal/chat/usage"]).toBe(1);
     expect(
       screen.getByText(
         "We had the following error when retrieving trial information:",
@@ -121,8 +121,8 @@ it("keeps the plan to pick when the trial status of an account with no plan fail
   );
   await openBillingFor(WINDOW_MS);
 
-  expect(reads["/api/credits/trial"]).toBe(2);
-  expect(reads["/api/credits/subscription"]).toBe(2);
+  expect(reads["/api/internal/credits/trial"]).toBe(2);
+  expect(reads["/api/internal/credits/subscription"]).toBe(2);
   expect(
     screen.getByText("Pick a plan to continue using AutoGPT."),
   ).toBeDefined();
@@ -139,7 +139,7 @@ it("reads a failing plan once more when a checkout return shows the trial's plan
   );
   await openBillingFor(WINDOW_MS);
 
-  expect(reads["/api/credits/subscription"]).toBe(2);
+  expect(reads["/api/internal/credits/subscription"]).toBe(2);
   expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
   expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
 });

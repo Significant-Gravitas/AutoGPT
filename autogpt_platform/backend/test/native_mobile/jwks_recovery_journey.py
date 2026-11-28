@@ -53,9 +53,9 @@ async def _authenticate(
             response = await client.request(
                 "POST" if transport == "http-body" else "GET",
                 (
-                    "/api/graphs"
+                    "/api/internal/graphs"
                     if transport == "http-body"
-                    else "/api/auth/user/timezone"
+                    else "/api/internal/auth/user/timezone"
                 ),
                 headers={
                     "Authorization": f"Bearer {token}",

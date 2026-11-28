@@ -18,7 +18,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ExecutionTargetPicker } from "../ExecutionTargetPicker";
 import { LAPTOP, STUDIO, WORKSTATION } from "./computers";
 
-const EXECUTORS_URL = "http://localhost:3000/api/proxy/api/copilot/executors";
+const EXECUTORS_URL =
+  "http://localhost:3000/api/proxy/api/internal/copilot/executors";
 const CHECK_INTERVAL_MS = 3_000;
 const LAPTOP_CONNECTED = "Laptop · macOS connected. Choose it under Computer.";
 

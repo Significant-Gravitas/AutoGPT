@@ -19,9 +19,9 @@ import { expect, test } from "./fixtures";
 // frontend's marketing prices, so a price on the page is the one Stripe charges.
 const PRO_PRICE = "$23.00";
 const PRO_PRICE_ID = "price_journeys_pro_monthly";
-const SUBSCRIPTION_PATH = "/api/proxy/api/credits/subscription";
+const SUBSCRIPTION_PATH = "/api/proxy/api/internal/credits/subscription";
 // Starting a chat is behind the paywall: without a plan it is refused (402).
-const CHAT_SESSIONS_PATH = "/api/proxy/api/chat/sessions";
+const CHAT_SESSIONS_PATH = "/api/proxy/api/internal/chat/sessions";
 const NO_PLAN = {
   label: "No active subscription",
   badge: "Inactive",

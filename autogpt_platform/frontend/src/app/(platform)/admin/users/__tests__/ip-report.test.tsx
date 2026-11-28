@@ -142,7 +142,7 @@ beforeEach(() => {
         user: { id: "admin-self" },
       }),
     ),
-    http.get(`*/api/admin/users/${ALEX.id}/organizations`, () =>
+    http.get(`*/api/internal/admin/users/${ALEX.id}/organizations`, () =>
       HttpResponse.json([]),
     ),
   );
@@ -387,11 +387,11 @@ describe("Block domain, while the page refreshes", () => {
     );
     let blocked = false;
     server.use(
-      http.post("*/api/admin/access-blocks", () => {
+      http.post("*/api/internal/admin/access-blocks", () => {
         blocked = true;
         return HttpResponse.json({ ...BLOCK, id: "new" }, { status: 201 });
       }),
-      http.get(`*/api/admin/users/${ALEX.id}/ip-report`, () =>
+      http.get(`*/api/internal/admin/users/${ALEX.id}/ip-report`, () =>
         HttpResponse.json(
           blocked
             ? report({
@@ -534,7 +534,7 @@ describe("Related accounts", () => {
 describe("Sign-ins", () => {
   it("shows a lost admin role instead of offering a retry", async () => {
     server.use(
-      http.get(`*/api/admin/users/${ALEX.id}/ip-report`, () =>
+      http.get(`*/api/internal/admin/users/${ALEX.id}/ip-report`, () =>
         HttpResponse.json({ detail: "Admin access required" }, { status: 403 }),
       ),
     );
@@ -554,13 +554,16 @@ describe("Blocks tab", () => {
   it("lists the blocks in force and lifts one", async () => {
     const deleted: string[] = [];
     server.use(
-      http.get("*/api/admin/access-blocks", () =>
+      http.get("*/api/internal/admin/access-blocks", () =>
         HttpResponse.json({ blocks: [BLOCK], total: 1 }),
       ),
-      http.delete("*/api/admin/access-blocks/:blockId", ({ params }) => {
-        deleted.push(String(params.blockId));
-        return new HttpResponse(null, { status: 204 });
-      }),
+      http.delete(
+        "*/api/internal/admin/access-blocks/:blockId",
+        ({ params }) => {
+          deleted.push(String(params.blockId));
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
     );
     renderPage("?tab=blocks");
 
@@ -579,7 +582,7 @@ describe("Blocks tab, paging", () => {
     const offsets: number[] = [];
     const TOTAL = 120;
     server.use(
-      http.get("*/api/admin/access-blocks", ({ request }) => {
+      http.get("*/api/internal/admin/access-blocks", ({ request }) => {
         const params = new URL(request.url).searchParams;
         const limit = Number(params.get("limit"));
         const offset = Number(params.get("offset") ?? 0);
@@ -626,10 +629,10 @@ function openBanAll() {
 
 function mockReport(body: ReturnType<typeof report>) {
   server.use(
-    http.get(`*/api/admin/users/${ALEX.id}/ip-report`, () =>
+    http.get(`*/api/internal/admin/users/${ALEX.id}/ip-report`, () =>
       HttpResponse.json(body),
     ),
-    http.get("*/api/admin/access-blocks", () =>
+    http.get("*/api/internal/admin/access-blocks", () =>
       HttpResponse.json({ blocks: [], total: 0 }),
     ),
   );
@@ -658,7 +661,7 @@ function mockBanAccounts(
 function mockCreateBlock(status: 201 | 409 = 201) {
   const bodies: unknown[] = [];
   server.use(
-    http.post("*/api/admin/access-blocks", async ({ request }) => {
+    http.post("*/api/internal/admin/access-blocks", async ({ request }) => {
       const body = await request.json();
       bodies.push(body);
       return status === 201

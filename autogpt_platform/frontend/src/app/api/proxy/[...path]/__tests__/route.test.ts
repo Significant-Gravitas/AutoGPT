@@ -85,7 +85,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(fetch).toHaveBeenCalledOnce();
@@ -107,7 +109,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/missing");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/missing",
+    );
     const res = await GET(req, makeParams(["api", "v1", "missing"]));
 
     expect(res.status).toBe(404);
@@ -123,9 +127,12 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/x", {
-      method: "DELETE",
-    });
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/x",
+      {
+        method: "DELETE",
+      },
+    );
     const res = await DELETE(req, makeParams(["api", "v1", "x"]));
 
     expect(res.status).toBe(204);
@@ -148,7 +155,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(res.headers.get("content-encoding")).toBeNull();
@@ -170,7 +179,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(res.headers.get("set-cookie")).toBeNull();
@@ -184,11 +195,14 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      method: "POST",
-      body: JSON.stringify({ name: "foo" }),
-      headers: { "Content-Type": "application/json" },
-    });
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "foo" }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
     const res = await POST(req, makeParams(["api", "v1", "items"]));
 
     const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit & {
@@ -208,11 +222,14 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: {
-        Cookie: "sb-access-token=secret; sb-refresh-token=secret-refresh",
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: {
+          Cookie: "sb-access-token=secret; sb-refresh-token=secret-refresh",
+        },
       },
-    });
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -228,12 +245,15 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: {
-        "sentry-trace": "abc123-def456-1",
-        baggage: "sentry-trace_id=abc123",
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: {
+          "sentry-trace": "abc123-def456-1",
+          baggage: "sentry-trace_id=abc123",
+        },
       },
-    });
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -249,13 +269,16 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: {
-        "x-datafast-visitor-id": "visitor-123",
-        "x-datafast-session-id": "session-456",
-        "x-posthog-session-id": "posthog-session-789",
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: {
+          "x-datafast-visitor-id": "visitor-123",
+          "x-datafast-session-id": "session-456",
+          "x-posthog-session-id": "posthog-session-789",
+        },
       },
-    });
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -272,9 +295,12 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: { "x-vercel-ip-country": "DE" },
-    });
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: { "x-vercel-ip-country": "DE" },
+      },
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -292,12 +318,15 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: {
-        "x-client-country": "US",
-        "x-client-country-token": "forged",
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: {
+          "x-client-country": "US",
+          "x-client-country-token": "forged",
+        },
       },
-    });
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -316,9 +345,12 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
-      headers: { "x-vercel-ip-country": "DE" },
-    });
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+      {
+        headers: { "x-vercel-ip-country": "DE" },
+      },
+    );
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(res.status).toBe(200);
@@ -398,7 +430,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -426,7 +460,9 @@ describe("proxy route — handler pass-through", () => {
     vi.mocked(fetch).mockRejectedValue(new Error("ECONNRESET"));
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     const res = await GET(req, makeParams(["api", "v1", "items"]));
 
     expect(res.status).toBe(502);
@@ -446,7 +482,9 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/items",
+    );
     await GET(req, makeParams(["api", "v1", "items"]));
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
@@ -467,12 +505,15 @@ describe("proxy route — handler pass-through", () => {
       "avatar.png",
     );
     const req = new NextRequest(
-      "https://app.test/api/proxy/api/store/submissions/media?purpose=expert-avatar",
+      "https://app.test/api/proxy/api/internal/store/submissions/media?purpose=expert-avatar",
       { method: "POST", body },
     );
-    await POST(req, makeParams(["api", "store", "submissions", "media"]));
+    await POST(
+      req,
+      makeParams(["api", "internal", "store", "submissions", "media"]),
+    );
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
-      `${BACKEND}/api/store/submissions/media?purpose=expert-avatar`,
+      `${BACKEND}/api/internal/store/submissions/media?purpose=expert-avatar`,
     );
     expect(vi.mocked(fetch).mock.calls[0][1]!.method).toBe("POST");
   });
@@ -486,7 +527,7 @@ describe("proxy route — handler pass-through", () => {
     );
 
     const req = new NextRequest(
-      "https://app.test/api/proxy/api/v1/items?page=2&size=20",
+      "https://app.test/api/proxy/api/internal/v1/items?page=2&size=20",
     );
     await GET(req, makeParams(["api", "v1", "items"]));
 
@@ -729,7 +770,10 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("still renders the Codex device-login page", async () => {
+  it.each([
+    "api/internal/integrations/codex/device-login/login-1",
+    "api/integrations/codex/device-login/login-1",
+  ])("still renders the Codex device-login page at /%s", async (link) => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("<p>sign in</p>", {
         status: 200,
@@ -737,8 +781,8 @@ describe("proxy route — handler pass-through", () => {
       }),
     );
 
-    const path = ["api", "integrations", "codex", "device-login", "login-1"];
-    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const path = link.split("/");
+    const req = new NextRequest(`https://app.test/api/proxy/${link}`);
     const res = await GET(req, makeParams(path));
 
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
@@ -769,7 +813,9 @@ describe("proxy route — response-start timeout", () => {
         }),
     );
 
-    const req = new NextRequest("https://app.test/api/proxy/api/v1/slow");
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/internal/v1/slow",
+    );
     const resPromise = GET(req, makeParams(["api", "v1", "slow"]));
 
     await vi.advanceTimersByTimeAsync(31_000);

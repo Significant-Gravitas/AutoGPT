@@ -78,7 +78,9 @@ beforeEach(() => {
   socketHandlers.clear();
   balance = 979;
   server.use(
-    http.get("*/api/credits", () => HttpResponse.json({ credits: balance })),
+    http.get("*/api/internal/credits", () =>
+      HttpResponse.json({ credits: balance }),
+    ),
   );
 });
 
@@ -149,7 +151,10 @@ describe("Wallet balance after spending", () => {
     const balanceReads = await openWallet();
 
     server.use(
-      http.get("*/api/credits", () => new HttpResponse(null, { status: 500 })),
+      http.get(
+        "*/api/internal/credits",
+        () => new HttpResponse(null, { status: 500 }),
+      ),
     );
     emit("notification", chatTurnEnded);
     vi.advanceTimersByTime(BALANCE_REFRESH_DELAY_MS);

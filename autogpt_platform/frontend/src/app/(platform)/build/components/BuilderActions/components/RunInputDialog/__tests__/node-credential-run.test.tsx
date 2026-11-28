@@ -193,15 +193,15 @@ function mockBuilderRun({
     setSubWorkflowStepKeys(subWorkflowStepKeys);
   }
   server.use(
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json(
         providers.map((name) => ({ name, description: `${name} provider` })),
       ),
     ),
-    http.get("*/api/integrations/providers/system", () =>
+    http.get("*/api/internal/integrations/providers/system", () =>
       HttpResponse.json(systemProviders ?? providers),
     ),
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json(savedCredentials),
     ),
     getPostV1ExecuteGraphAgentMockHandler(async ({ request }) => {

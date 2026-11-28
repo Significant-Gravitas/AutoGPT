@@ -10,7 +10,8 @@ export async function startChat(page: Page, message: string) {
     page.waitForResponse(
       (response) =>
         response.request().method() === "GET" &&
-        new URL(response.url()).pathname === "/api/proxy/api/chat/transports",
+        new URL(response.url()).pathname ===
+          "/api/proxy/api/internal/chat/transports",
     ),
     page.goto("/home"),
   ]);
@@ -57,7 +58,7 @@ export async function recordChatStreams(page: Page) {
         init?.method ?? (input instanceof Request ? input.method : "GET")
       ).toUpperCase();
       const { pathname } = new URL(url, window.location.href);
-      if (!/\/api\/chat\/sessions\/[^/]+\/stream$/.test(pathname)) {
+      if (!/\/api\/internal\/chat\/sessions\/[^/]+\/stream$/.test(pathname)) {
         return response;
       }
       if (!response.body) return response;
@@ -176,7 +177,7 @@ export function firstWords(text: string, count = 5) {
 export function isChatStream(method: "GET" | "POST") {
   return (request: PlaywrightRequest) =>
     request.method() === method &&
-    /\/api\/chat\/sessions\/[^/]+\/stream$/.test(
+    /\/api\/internal\/chat\/sessions\/[^/]+\/stream$/.test(
       new URL(request.url()).pathname,
     );
 }
@@ -211,7 +212,7 @@ export async function runningTurnID(page: Page, sessionID: string) {
 
 async function readSession(page: Page, sessionID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/chat/sessions/${sessionID}`,
+    `/api/proxy/api/internal/chat/sessions/${sessionID}`,
   );
   expect(response.ok(), `GET chat session: ${response.status()}`).toBe(true);
   return (await response.json()) as {
@@ -237,7 +238,9 @@ export async function expectChatSettled(page: Page, sessionID: string) {
   await expect
     .poll(
       async () => {
-        const response = await page.request.get("/api/proxy/api/chat/sessions");
+        const response = await page.request.get(
+          "/api/proxy/api/internal/chat/sessions",
+        );
         expect(response.ok(), `GET chat sessions: ${response.status()}`).toBe(
           true,
         );

@@ -76,7 +76,7 @@ test.describe("triggers journey", () => {
 
       // The run saw what was delivered.
       const details = await page.request.get(
-        `/api/proxy/api/graphs/${graph.id}/executions/${run.id}`,
+        `/api/proxy/api/internal/graphs/${graph.id}/executions/${run.id}`,
       );
       expect(details.ok(), `reading the run: ${details.status()}`).toBe(true);
       const { outputs } = (await details.json()) as {
@@ -91,7 +91,7 @@ test.describe("triggers journey", () => {
       // brought the test here.
       try {
         const removed = await page.request.delete(
-          `/api/proxy/api/library/presets/${preset.id}`,
+          `/api/proxy/api/internal/library/presets/${preset.id}`,
         );
         expect
           .soft(
@@ -108,7 +108,7 @@ test.describe("triggers journey", () => {
 
 // An agent whose webhook trigger hands what it receives to an output.
 async function createWebhookAgent(page: Page, name: string): Promise<Graph> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {
@@ -154,7 +154,7 @@ async function createWebhookAgent(page: Page, name: string): Promise<Graph> {
 
 async function setUpTrigger(page: Page, graph: Graph, secret: string) {
   const response = await page.request.post(
-    "/api/proxy/api/library/presets/setup-trigger",
+    "/api/proxy/api/internal/library/presets/setup-trigger",
     {
       data: {
         name: "Journey trigger",
@@ -176,7 +176,7 @@ async function setUpTrigger(page: Page, graph: Graph, secret: string) {
 
 async function listRuns(page: Page, graphId: string): Promise<Run[]> {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/executions`,
+    `/api/proxy/api/internal/graphs/${graphId}/executions`,
   );
   expect(response.ok(), `listing runs: ${response.status()}`).toBe(true);
   return ((await response.json()) as { executions: Run[] }).executions;

@@ -15,10 +15,10 @@ let waiting: PendingHumanReviewModel[] = [];
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json(waiting),
     ),
-    http.post("*/api/review/action", async ({ request }) => {
+    http.post("*/api/internal/review/action", async ({ request }) => {
       const { reviews } = (await request.json()) as {
         reviews: { node_exec_id: string }[];
       };

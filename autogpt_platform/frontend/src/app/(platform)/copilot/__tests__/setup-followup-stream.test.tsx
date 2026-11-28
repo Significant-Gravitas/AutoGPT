@@ -116,7 +116,7 @@ it.each([false, true])(
         },
       ]),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         async ({ request }) => {
           requests.push(await request.json());
           const isSetup = requests.length === 1;
@@ -132,11 +132,11 @@ it.each([false, true])(
         },
       ),
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
         queueRequest,
       ),
       http.get(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         async ({ request }) => {
           resumeRequested = true;
           await handshake.hold.released;

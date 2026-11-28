@@ -49,7 +49,8 @@ describe("ContextPanelAutoOpen", () => {
           id: "previous-chat-file",
           title: "old.md",
           mimeType: "text/markdown",
-          sourceUrl: "/api/proxy/api/workspace/files/prev-file/download",
+          sourceUrl:
+            "/api/proxy/api/internal/workspace/files/prev-file/download",
           origin: "agent",
         },
       },

@@ -5,28 +5,40 @@ import type { Page, Route } from "@playwright/test";
  * to the real dev server and backend untouched.
  *
  * Generated API hooks reach the backend through the Next proxy
- * (`/api/proxy/api/...`); the copilot stream goes straight to the backend
- * (`http://localhost:8006/api/chat/sessions/{id}/stream`), so that pattern
+ * (`/api/proxy/api/internal/...`); the copilot stream goes straight to the backend
+ * (`http://localhost:8006/api/internal/chat/sessions/{id}/stream`), so that pattern
  * matches either host.
  */
 const ROUTE_TABLE = [
-  ["featureFlags", /^\/api\/proxy\/api\/feature-flags$/],
-  ["onboardingCompleted", /^\/api\/proxy\/api\/onboarding\/completed$/],
-  ["chatStream", /\/api\/chat\/sessions\/([^/]+)\/stream$/],
-  ["chatSessionList", /^\/api\/proxy\/api\/chat\/sessions$/],
-  ["chatSession", /^\/api\/proxy\/api\/chat\/sessions\/([^/]+)$/],
-  ["chatSessionChild", /^\/api\/proxy\/api\/chat\/sessions\/([^/]+)\/(.+)$/],
+  ["featureFlags", /^\/api\/proxy\/api\/internal\/feature-flags$/],
+  [
+    "onboardingCompleted",
+    /^\/api\/proxy\/api\/internal\/onboarding\/completed$/,
+  ],
+  ["chatStream", /\/api\/internal\/chat\/sessions\/([^/]+)\/stream$/],
+  ["chatSessionList", /^\/api\/proxy\/api\/internal\/chat\/sessions$/],
+  ["chatSession", /^\/api\/proxy\/api\/internal\/chat\/sessions\/([^/]+)$/],
+  [
+    "chatSessionChild",
+    /^\/api\/proxy\/api\/internal\/chat\/sessions\/([^/]+)\/(.+)$/,
+  ],
   [
     "graphExecution",
-    /^\/api\/proxy\/api\/graphs\/([^/]+)\/executions\/([^/]+)$/,
+    /^\/api\/proxy\/api\/internal\/graphs\/([^/]+)\/executions\/([^/]+)$/,
   ],
-  ["graph", /^\/api\/proxy\/api\/graphs\/([^/]+)$/],
-  ["libraryAgents", /^\/api\/proxy\/api\/library\/agents$/],
-  ["executions", /^\/api\/proxy\/api\/executions$/],
-  ["libraryAgent", /^\/api\/proxy\/api\/library\/agents\/([^/]+)$/],
-  ["graphExecutions", /^\/api\/proxy\/api\/graphs\/([^/]+)\/executions$/],
-  ["graphSchedules", /^\/api\/proxy\/api\/graphs\/([^/]+)\/schedules$/],
-  ["libraryPresets", /^\/api\/proxy\/api\/library\/presets$/],
+  ["graph", /^\/api\/proxy\/api\/internal\/graphs\/([^/]+)$/],
+  ["libraryAgents", /^\/api\/proxy\/api\/internal\/library\/agents$/],
+  ["executions", /^\/api\/proxy\/api\/internal\/executions$/],
+  ["libraryAgent", /^\/api\/proxy\/api\/internal\/library\/agents\/([^/]+)$/],
+  [
+    "graphExecutions",
+    /^\/api\/proxy\/api\/internal\/graphs\/([^/]+)\/executions$/,
+  ],
+  [
+    "graphSchedules",
+    /^\/api\/proxy\/api\/internal\/graphs\/([^/]+)\/schedules$/,
+  ],
+  ["libraryPresets", /^\/api\/proxy\/api\/internal\/library\/presets$/],
 ] as const;
 
 export type RouteName = (typeof ROUTE_TABLE)[number][0];

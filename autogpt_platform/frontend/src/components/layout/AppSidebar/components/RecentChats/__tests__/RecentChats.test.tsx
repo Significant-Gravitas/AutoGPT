@@ -85,7 +85,7 @@ describe("RecentChats — empty + loading", () => {
     serve(groupChats(2));
     server.use(
       http.get(
-        "*/api/chat/session-groups",
+        "*/api/internal/chat/session-groups",
         () => HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
         { once: true },
       ),
@@ -230,7 +230,7 @@ describe("RecentChats — show more", () => {
     let failures = 0;
     server.use(
       http.get(
-        "*/api/chat/sessions",
+        "*/api/internal/chat/sessions",
         () => {
           failures += 1;
           return HttpResponse.json({ detail: "Unavailable" }, { status: 503 });
@@ -294,7 +294,7 @@ describe("RecentChats — delete flow", () => {
     serve(groupChats(2));
     let deletes = 0;
     server.use(
-      http.delete("*/api/chat/sessions/:id", ({ params }) => {
+      http.delete("*/api/internal/chat/sessions/:id", ({ params }) => {
         deletes += 1;
         chats = chats.filter((chat) => chat.id !== params.id);
         return new HttpResponse(null, { status: 204 });
@@ -313,7 +313,7 @@ describe("RecentChats — delete flow", () => {
     let heldReads = 0;
     let answeredReads = 0;
     server.use(
-      http.get("*/api/chat/session-groups", async ({ request }) => {
+      http.get("*/api/internal/chat/session-groups", async ({ request }) => {
         heldReads += 1;
         await held;
         answeredReads += 1;

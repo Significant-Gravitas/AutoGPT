@@ -39,7 +39,7 @@ const STREAMING_WORDS = Math.floor(HELD_AFTER_WORDS / 2);
 const DROPPED_SEND_SCRIPT: ModelScript = droppedSendScript;
 const DROPPED_SEND_ANSWER = DROPPED_SEND_SCRIPT.turns[0].text ?? "";
 // A send, not a resume: a resume's URL carries its turn and cursor.
-const CHAT_SEND = /\/api\/chat\/sessions\/[^/]+\/stream$/;
+const CHAT_SEND = /\/api\/internal\/chat\/sessions\/[^/]+\/stream$/;
 
 test.describe("copilot reconnect journey", () => {
   // A resume after the turn finished finds its cursor trimmed, and the chat
@@ -49,7 +49,7 @@ test.describe("copilot reconnect journey", () => {
       {
         status: 409,
         method: "GET",
-        url: /\/api\/chat\/sessions\/[^/]+\/stream\?turn=/,
+        url: /\/api\/internal\/chat\/sessions\/[^/]+\/stream\?turn=/,
       },
     ],
   });

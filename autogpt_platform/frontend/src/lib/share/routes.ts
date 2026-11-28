@@ -47,7 +47,7 @@ function escapeRegex(value: string): string {
 }
 
 export function sharedChatFileUrl(shareToken: string, fileId: string): string {
-  return `/api/proxy/api/public/shared/chats/${shareToken}/files/${fileId}/download`;
+  return `/api/proxy/api/internal/public/shared/chats/${shareToken}/files/${fileId}/download`;
 }
 
 export function sharedChatFilePattern(shareToken: string): RegExp {
@@ -62,6 +62,6 @@ export function sharedChatFilePattern(shareToken: string): RegExp {
   // and surface it as an artifact for this share token even though we
   // never constructed that URL.
   return new RegExp(
-    `^/api/proxy/api/public/shared/chats/${escapeRegex(shareToken)}/files/${FILE_UUID_GROUP}/download$`,
+    `^/api/proxy/api/internal/public/shared/chats/${escapeRegex(shareToken)}/files/${FILE_UUID_GROUP}/download$`,
   );
 }

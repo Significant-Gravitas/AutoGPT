@@ -24,7 +24,7 @@ let lookups = 0;
 // What the backend says its Google and Microsoft connections use.
 function backendClients(answer: Record<string, string | null> | "down") {
   server.use(
-    http.get("*/api/auth/sign-in-connection", () => {
+    http.get("*/api/internal/auth/sign-in-connection", () => {
       lookups += 1;
       return answer === "down"
         ? HttpResponse.json({ detail: "unavailable" }, { status: 503 })
@@ -135,7 +135,7 @@ describe("connectAtSignInScopes", () => {
         AbortSignal.abort(new DOMException("timed out", "TimeoutError")),
       );
     server.use(
-      http.get("*/api/auth/sign-in-connection", async () => {
+      http.get("*/api/internal/auth/sign-in-connection", async () => {
         await delay("infinite");
         return HttpResponse.json({});
       }),

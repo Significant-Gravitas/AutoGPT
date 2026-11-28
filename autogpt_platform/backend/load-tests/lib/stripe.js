@@ -58,7 +58,7 @@ export function subscribeAccount(target, headers, runId) {
     `${api}/credits/subscription`,
     headers,
     null,
-    "/api/credits/subscription",
+    "/api/internal/credits/subscription",
   );
   if (!status.ok || !status.json) {
     return failure(
@@ -87,7 +87,7 @@ export function subscribeAccount(target, headers, runId) {
       success_url: `${target.FRONTEND_URL}/profile/credits`,
       cancel_url: `${target.FRONTEND_URL}/profile/credits`,
     },
-    "/api/credits/subscription",
+    "/api/internal/credits/subscription",
   );
   if (!checkout.ok || !checkout.json) {
     return failure(
@@ -180,13 +180,19 @@ export function subscribeAccount(target, headers, runId) {
 
   // The backend copies the tier from Stripe on the first lookup that reaches
   // its reconcile; the copilot usage read is one.
-  backend("GET", `${api}/chat/usage`, headers, null, "/api/chat/usage");
+  backend(
+    "GET",
+    `${api}/chat/usage`,
+    headers,
+    null,
+    "/api/internal/chat/usage",
+  );
   const after = backend(
     "GET",
     `${api}/credits/subscription`,
     headers,
     null,
-    "/api/credits/subscription",
+    "/api/internal/credits/subscription",
   );
   const tierNow = after.ok && after.json ? after.json.tier : null;
   if (tierNow !== tier) {

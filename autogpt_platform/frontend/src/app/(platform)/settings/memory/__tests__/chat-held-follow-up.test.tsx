@@ -103,7 +103,7 @@ function serveMemoryChat({ holdRefusal = false } = {}) {
     getGetV2GetPendingMessagesMockHandler200({ count: 0, messages: [] }),
     getGetV2GetPendingReviewsForChatSessionMockHandler([]),
     http.post(
-      "*/api/chat/sessions/:sessionId/stream",
+      "*/api/internal/chat/sessions/:sessionId/stream",
       async ({ params, request }) => {
         const { message } = (await request.json()) as { message: string };
         turns.push({ sessionId: String(params.sessionId), message });
@@ -120,7 +120,7 @@ function serveMemoryChat({ holdRefusal = false } = {}) {
       },
     ),
     http.post(
-      "*/api/chat/sessions/:sessionId/messages/pending",
+      "*/api/internal/chat/sessions/:sessionId/messages/pending",
       async ({ request }) => {
         const { message } = (await request.json()) as { message: string };
         queued.push(message);

@@ -23,7 +23,9 @@ from backend.util import encryption
 
 app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 # Mirror the prefix rest_api.py mounts it under.
-app.include_router(sign_in_connection.sign_in_connection_router, prefix="/api/auth")
+app.include_router(
+    sign_in_connection.sign_in_connection_router, prefix="/api/internal/auth"
+)
 client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
 
 GMAIL = "https://www.googleapis.com/auth/gmail.readonly"
@@ -143,13 +145,13 @@ def google(monkeypatch):
 
 
 def test_only_the_frontends_sign_in_token_is_accepted():
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 401
 
 
 def test_a_google_sign_in_starts_the_accounts_connection(store, google):
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 200, res.text
     assert res.json() == {"result": "created"}
@@ -170,7 +172,7 @@ def test_a_token_from_another_google_client_is_refused(store, google):
     # Google renews a refresh token only for the client it was issued to.
     google.answer["body"]["azp"] = google.answer["body"]["aud"] = "login-client"
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 409
     store.create.assert_not_called()
@@ -180,7 +182,7 @@ def test_a_token_from_another_google_client_is_refused(store, google):
 def test_a_token_google_refuses_stores_nothing(store, google):
     google.answer["ok"] = False
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 422
     store.create.assert_not_called()
@@ -189,7 +191,7 @@ def test_a_token_google_refuses_stores_nothing(store, google):
 def test_a_sign_in_widens_the_accounts_connection_it_covers(store, google):
     store.saved.append(_google_connection("pat@gmail.com", [GMAIL]))
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "updated"}
     (user_id, saved_id, new), _ = store.upgrade.call_args
@@ -209,7 +211,7 @@ def test_a_google_check_that_cant_resolve_google_is_refused(store, google, monke
 
     monkeypatch.setattr(google_oauth, "Requests", DNSFails)
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 422
     store.create.assert_not_called()
@@ -233,7 +235,7 @@ def test_a_google_check_that_answers_with_no_token_info_is_refused(
 
     monkeypatch.setattr(google_oauth, "Requests", AnswersAPage)
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 422
     store.create.assert_not_called()
@@ -244,7 +246,7 @@ def test_a_google_sign_in_without_googles_handler_is_refused(store, monkeypatch)
         sign_in_connection, "_get_provider_oauth_handler", lambda _: MagicMock()
     )
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 501
     store.create.assert_not_called()
@@ -266,7 +268,7 @@ def test_a_sign_in_never_widens_a_managed_or_system_connection(
     )
     store.saved.extend([managed, system])
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "created"}
     store.upgrade.assert_not_called()
@@ -277,7 +279,7 @@ def test_a_sign_in_never_adds_a_second_connection_for_the_account(store, google)
     wider = [GMAIL, CALENDAR, "https://www.googleapis.com/auth/drive.file"]
     store.saved.append(_google_connection("pat@gmail.com", wider))
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "kept"}
     store.create.assert_not_called()
@@ -287,7 +289,7 @@ def test_a_sign_in_never_adds_a_second_connection_for_the_account(store, google)
 def test_another_google_account_gets_its_own_connection(store, google):
     store.saved.append(_google_connection("pat@company.example", [GMAIL]))
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "created"}
     store.upgrade.assert_not_called()
@@ -298,7 +300,7 @@ def test_without_a_refresh_token_a_sign_in_starts_no_connection(store, google):
     # stop working within the hour.
     body = {**GOOGLE_BODY, "refresh_token": None}
 
-    res = client.post("/api/auth/sign-in-connection", json=body)
+    res = client.post("/api/internal/auth/sign-in-connection", json=body)
 
     assert res.json() == {"result": "skipped"}
     store.create.assert_not_called()
@@ -307,7 +309,7 @@ def test_without_a_refresh_token_a_sign_in_starts_no_connection(store, google):
 def test_a_google_token_naming_no_account_starts_no_connection(store, google):
     del google.answer["body"]["email"]
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "skipped"}
     store.create.assert_not_called()
@@ -352,7 +354,7 @@ def test_a_microsoft_sign_in_uses_the_connection_apps_own_checks(store, monkeypa
         lambda: MagicMock(client_id="connection-app"),
     )
 
-    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.json() == {"result": "created"}
     (payload,), kwargs = built.call_args
@@ -373,7 +375,7 @@ def test_a_microsoft_sign_in_from_another_app_is_refused(store, monkeypatch):
         lambda: MagicMock(client_id="connection-app"),
     )
 
-    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.status_code == 409
     store.create.assert_not_called()
@@ -389,7 +391,7 @@ def test_a_microsoft_sign_in_whose_keys_cant_be_fetched_is_refused(store, monkey
         lambda: MagicMock(client_id="connection-app"),
     )
 
-    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.status_code == 422
     store.create.assert_not_called()
@@ -406,7 +408,7 @@ def test_a_microsoft_sign_in_the_app_cant_renew_is_refused(store, monkeypatch):
     built = AsyncMock(return_value=_microsoft_connection())
     monkeypatch.setattr(sign_in_connection, "credentials_from_tokens", built)
 
-    res = client.post("/api/auth/sign-in-connection", json=MICROSOFT_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=MICROSOFT_BODY)
 
     assert res.status_code == 501
     built.assert_not_called()
@@ -433,7 +435,7 @@ def test_anyone_can_ask_which_clients_the_connections_use(monkeypatch):
     )
 
     # No token: the frontend's server asks before anyone has signed in.
-    res = client.get("/api/auth/sign-in-connection")
+    res = client.get("/api/internal/auth/sign-in-connection")
 
     assert res.status_code == 200
     assert res.json() == {"google": "integration-client", "microsoft": "connection-app"}
@@ -467,7 +469,7 @@ def test_anyone_can_ask_which_clients_the_connections_use(monkeypatch):
 def test_connections_that_cant_renew_a_sign_in_name_no_client(monkeypatch, secrets):
     _deployment(monkeypatch, **secrets)
 
-    res = client.get("/api/auth/sign-in-connection")
+    res = client.get("/api/internal/auth/sign-in-connection")
 
     assert res.json() == {"google": None, "microsoft": None}
 
@@ -475,7 +477,7 @@ def test_connections_that_cant_renew_a_sign_in_name_no_client(monkeypatch, secre
 def test_refusals_never_echo_a_token(store, google, caplog):
     google.answer["body"]["azp"] = google.answer["body"]["aud"] = "login-client"
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 409
     for secret in ("sign-in-access", "sign-in-refresh"):
@@ -488,7 +490,7 @@ def test_a_sign_ups_connection_waits_for_the_account_to_be_set_up(store, google,
     # sets the account up (and gives it the org a connection is stored in).
     store.has_org.return_value = False
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 200, res.text
     assert res.json() == {"result": "held"}
@@ -505,7 +507,7 @@ def test_an_account_set_up_while_its_connection_was_held_keeps_it(store, google,
     # account's own look for a held one found nothing.
     store.has_org.side_effect = [False, True]
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "created"}
     store.create.assert_called_once()
@@ -520,7 +522,7 @@ def test_a_held_connection_kept_by_neither_request_isnt_reported_as_held(
     store.has_org.side_effect = [False, True]
     store.create.side_effect = RuntimeError("database unavailable")
 
-    res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+    res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.json() == {"result": "skipped"}
     assert held.values == {}
@@ -537,7 +539,7 @@ def test_a_connection_that_cant_be_held_never_fails_the_sign_up(
     )
 
     with caplog.at_level(logging.WARNING):
-        res = client.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+        res = client.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     assert res.status_code == 200
     assert res.json() == {"result": "skipped"}
@@ -563,7 +565,7 @@ async def test_setting_the_account_up_keeps_its_held_connection_once(
 ):
     store.has_org.return_value = False
     async with _api() as api:
-        await api.post("/api/auth/sign-in-connection", json=GOOGLE_BODY)
+        await api.post("/api/internal/auth/sign-in-connection", json=GOOGLE_BODY)
 
     result = await sign_in_connection.keep_held_sign_in_connection("user-1")
 

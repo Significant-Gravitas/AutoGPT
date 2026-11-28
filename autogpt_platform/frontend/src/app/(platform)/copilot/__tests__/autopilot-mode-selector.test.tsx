@@ -65,7 +65,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 beforeEach(() => {
   flags.autoMode = true;
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(makeDashboard([])),
     ),
   );
@@ -372,7 +372,7 @@ describe("AutoPilot mode selector", { timeout: 15_000 }, () => {
     // Held until settled, then passed on to the session above.
     renderHost({
       sessionResponse: http.get(
-        "/api/proxy/api/chat/sessions/:sessionId",
+        "/api/proxy/api/internal/chat/sessions/:sessionId",
         async () => {
           await sessionLoaded;
         },
@@ -480,7 +480,7 @@ function captureStreamBodies() {
   const bodies: Record<string, unknown>[] = [];
   server.use(
     http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
       async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
         return streamSseResponse(assistantTextChunks("Done."), {

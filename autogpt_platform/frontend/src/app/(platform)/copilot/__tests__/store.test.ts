@@ -17,7 +17,7 @@ function makeArtifact(id: string, title = `file-${id}`): ArtifactRef {
     id,
     title,
     mimeType: "text/plain",
-    sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
+    sourceUrl: `/api/proxy/api/internal/workspace/files/${id}/download`,
     origin: "agent",
   };
 }

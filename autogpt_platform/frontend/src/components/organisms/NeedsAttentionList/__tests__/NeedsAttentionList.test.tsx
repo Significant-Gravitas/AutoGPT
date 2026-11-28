@@ -72,7 +72,7 @@ test("only the acted row locks while its decision is in flight", async () => {
   };
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review, other]),
-    http.post("/api/proxy/api/review/action", async () => {
+    http.post("/api/proxy/api/internal/review/action", async () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
       return HttpResponse.json({
         approved_count: 1,
@@ -183,7 +183,7 @@ test("shows a destructive toast when approve fails", async () => {
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review]),
     http.post(
-      "/api/proxy/api/review/action",
+      "/api/proxy/api/internal/review/action",
       () => new HttpResponse(null, { status: 500 }),
     ),
   );
@@ -253,7 +253,7 @@ test("a second row's decision does not unlock the first one mid-flight", async (
   });
   server.use(
     getGetV2GetPendingReviewsMockHandler200([review, other]),
-    http.post("/api/proxy/api/review/action", async ({ request }) => {
+    http.post("/api/proxy/api/internal/review/action", async ({ request }) => {
       const body = (await request.json()) as {
         reviews: { node_exec_id: string }[];
       };

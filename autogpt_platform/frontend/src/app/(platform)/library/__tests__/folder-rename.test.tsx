@@ -63,7 +63,7 @@ function serveFolder({ refuseRename = false } = {}) {
     }),
     getGetV2GetFolderMockHandler(() => stored),
     refuseRename
-      ? http.patch("/api/proxy/api/library/folders/:folderId", () =>
+      ? http.patch("/api/proxy/api/internal/library/folders/:folderId", () =>
           HttpResponse.json(
             { detail: "A folder with this name already exists" },
             { status: 409 },

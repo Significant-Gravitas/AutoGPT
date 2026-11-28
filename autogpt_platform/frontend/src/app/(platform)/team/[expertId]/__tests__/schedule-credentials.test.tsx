@@ -120,13 +120,13 @@ function mockExpertWorkflow(grantedKeys: ExpertCredentialRef[]) {
       }),
     ),
     getListExpertCredentialsMockHandler(grantedKeys),
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json([{ name: "firecrawl", description: "firecrawl" }]),
     ),
-    http.get("*/api/integrations/providers/system", () =>
+    http.get("*/api/internal/integrations/providers/system", () =>
       HttpResponse.json(["firecrawl"]),
     ),
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json([PLATFORM_KEY, USER_KEY]),
     ),
   );
@@ -214,20 +214,23 @@ test("a schedule made on the expert page for a step that refuses the platform's 
   // and a block that keeps what it creates in the vendor's account (Exa
   // Websets, SmartLead campaigns) refuses the platform's key there
   server.use(
-    http.post("*/api/graphs/:graphId/schedules", async ({ request }) => {
-      const body = (await request.json()) as { credentials?: unknown };
-      if (keyIn(body.credentials) === PLATFORM_KEY.id) {
-        refused.push(body);
-        return HttpResponse.json({ detail: REFUSED }, { status: 400 });
-      }
-      accepted.push(body);
-      return HttpResponse.json(
-        getPostV1CreateExecutionScheduleResponseMock({
-          id: "new-schedule",
-          graph_id: "graph-1",
-        }),
-      );
-    }),
+    http.post(
+      "*/api/internal/graphs/:graphId/schedules",
+      async ({ request }) => {
+        const body = (await request.json()) as { credentials?: unknown };
+        if (keyIn(body.credentials) === PLATFORM_KEY.id) {
+          refused.push(body);
+          return HttpResponse.json({ detail: REFUSED }, { status: 400 });
+        }
+        accepted.push(body);
+        return HttpResponse.json(
+          getPostV1CreateExecutionScheduleResponseMock({
+            id: "new-schedule",
+            graph_id: "graph-1",
+          }),
+        );
+      },
+    ),
   );
   renderScheduleDialog();
 

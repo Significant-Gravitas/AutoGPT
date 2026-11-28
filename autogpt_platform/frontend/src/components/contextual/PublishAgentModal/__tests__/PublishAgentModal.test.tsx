@@ -711,7 +711,7 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
   test("a workflow with no Library entry still opens the new-listing form, with no image to start from", async () => {
     installHandlers();
     server.use(
-      http.get("/api/proxy/api/library/agents/by-graph/:graphId", () =>
+      http.get("/api/proxy/api/internal/library/agents/by-graph/:graphId", () =>
         HttpResponse.json({ detail: "Not found" }, { status: 404 }),
       ),
     );
@@ -731,7 +731,7 @@ describe("PublishAgentModal opened pre-scoped to a workflow", () => {
     installHandlers();
     server.use(
       http.get(
-        "/api/proxy/api/library/agents/by-graph/:graphId",
+        "/api/proxy/api/internal/library/agents/by-graph/:graphId",
         () => HttpResponse.json({ detail: "Internal error" }, { status: 500 }),
         { once: true },
       ),

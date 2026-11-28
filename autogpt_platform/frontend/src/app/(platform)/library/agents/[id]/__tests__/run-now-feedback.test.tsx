@@ -66,7 +66,7 @@ const surfaces = [
     show() {
       server.use(
         getGetV1GetUserTimezoneMockHandler({ timezone: "UTC" }),
-        http.get("/api/proxy/api/graphs/:graphId/schedules", () =>
+        http.get("/api/proxy/api/internal/graphs/:graphId/schedules", () =>
           HttpResponse.json([schedule]),
         ),
       );
@@ -130,12 +130,15 @@ function holdRunRequest(answer: () => Response) {
     handled = resolve;
   });
   server.use(
-    http.post("/api/proxy/api/graphs/:graphId/execute/:version", async () => {
-      received = true;
-      await released;
-      handled();
-      return answer();
-    }),
+    http.post(
+      "/api/proxy/api/internal/graphs/:graphId/execute/:version",
+      async () => {
+        received = true;
+        await released;
+        handled();
+        return answer();
+      },
+    ),
   );
   return {
     release,

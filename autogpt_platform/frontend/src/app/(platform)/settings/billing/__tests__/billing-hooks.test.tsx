@@ -29,7 +29,7 @@ afterEach(() => setTrialUser(null));
 beforeEach(() => {
   setTrialUser("billing-user");
   server.use(
-    http.post("*/api/credits/subscription/preview", () =>
+    http.post("*/api/internal/credits/subscription/preview", () =>
       HttpResponse.json(maxUpgradePreview()),
     ),
   );
@@ -56,7 +56,7 @@ function makeWrapper() {
 describe("useBalanceCard", () => {
   it("returns isError + null balance when /api/credits returns 500", async () => {
     server.use(
-      http.get("*/api/credits", () =>
+      http.get("*/api/internal/credits", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -74,7 +74,7 @@ describe("useBalanceCard", () => {
   });
 
   it("isValid requires whole-dollar amounts >= $5 (backend rejects decimals)", async () => {
-    server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
+    server.use(jsonHandler("get", "/api/internal/credits", { credits: 1000 }));
 
     const { result } = renderHook(() => useBalanceCard(), {
       wrapper: makeWrapper(),
@@ -101,8 +101,8 @@ describe("useBalanceCard", () => {
   it("handleSubmit POSTs the integer-cents amount when isValid", async () => {
     let capturedBody: { credit_amount: number; surface?: string } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits", { credits: 1000 }),
-      http.post("*/api/credits", async ({ request }) => {
+      jsonHandler("get", "/api/internal/credits", { credits: 1000 }),
+      http.post("*/api/internal/credits", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         // Return without checkout_url so the hook does NOT navigate (would
         // tear down the test environment via window.location.href).
@@ -130,8 +130,8 @@ describe("useBalanceCard", () => {
 
   it("handleSubmit catches API failures and stops the spinner", async () => {
     server.use(
-      jsonHandler("get", "/api/credits", { credits: 1000 }),
-      http.post("*/api/credits", () =>
+      jsonHandler("get", "/api/internal/credits", { credits: 1000 }),
+      http.post("*/api/internal/credits", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -152,7 +152,7 @@ describe("useBalanceCard", () => {
   });
 
   it("handleSubmit no-ops when isValid is false (no mutation request)", async () => {
-    server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
+    server.use(jsonHandler("get", "/api/internal/credits", { credits: 1000 }));
 
     const { result } = renderHook(() => useBalanceCard(), {
       wrapper: makeWrapper(),
@@ -169,7 +169,7 @@ describe("useBalanceCard", () => {
 describe("useAutoRefillCard", () => {
   it("isValid requires Number.isInteger + threshold/refill >= 5 + refill >= threshold", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
@@ -213,7 +213,7 @@ describe("useAutoRefillCard", () => {
 
   it("isEnabled is false for amount=0/threshold=0 and true once configured", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 2000,
         threshold: 500,
       }),
@@ -233,11 +233,11 @@ describe("useAutoRefillCard", () => {
   it("save() with valid input POSTs the configured amount and threshold", async () => {
     let capturedBody: { amount: number; threshold: number } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
-      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+      http.post("*/api/internal/credits/auto-top-up", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({});
       }),
@@ -265,11 +265,11 @@ describe("useAutoRefillCard", () => {
   it("disable() POSTs amount=0/threshold=0", async () => {
     let capturedBody: { amount: number; threshold: number } | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 2000,
         threshold: 500,
       }),
-      http.post("*/api/credits/auto-top-up", async ({ request }) => {
+      http.post("*/api/internal/credits/auto-top-up", async ({ request }) => {
         capturedBody = (await request.json()) as typeof capturedBody;
         return HttpResponse.json({});
       }),
@@ -291,11 +291,11 @@ describe("useAutoRefillCard", () => {
 
   it("save() catches mutation failures and stops the spinner", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
-      http.post("*/api/credits/auto-top-up", () =>
+      http.post("*/api/internal/credits/auto-top-up", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -321,7 +321,7 @@ describe("useAutoRefillCard", () => {
 
   it("save() with isValid=false short-circuits without calling the mutation", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
@@ -341,7 +341,7 @@ describe("useAutoRefillCard", () => {
 
   it("opening the dialog with no saved config pre-fills $5/$5 so the form is valid by default", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
@@ -365,7 +365,7 @@ describe("useAutoRefillCard", () => {
 
   it("opening the dialog with saved config pre-fills the saved threshold and refill amount", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 2000,
         threshold: 750,
       }),
@@ -388,7 +388,7 @@ describe("useAutoRefillCard", () => {
 
   it("does not clobber in-progress edits if the dialog is re-opened without first closing", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/auto-top-up", {
+      jsonHandler("get", "/api/internal/credits/auto-top-up", {
         amount: 0,
         threshold: 0,
       }),
@@ -421,7 +421,9 @@ describe("useAutoRefillCard", () => {
 
 describe("usePaymentMethodCard", () => {
   it("returns canManage=false when no portal URL is available", async () => {
-    server.use(jsonHandler("get", "/api/credits/manage", { url: null }));
+    server.use(
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+    );
 
     const { result } = renderHook(() => usePaymentMethodCard(), {
       wrapper: makeWrapper(),
@@ -434,7 +436,7 @@ describe("usePaymentMethodCard", () => {
 
   it("returns canManage=true once the portal URL is available", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -451,13 +453,13 @@ describe("usePaymentMethodCard", () => {
 describe("useYourPlanCard", () => {
   it("derives plan label/cost/nextTier from the subscription response", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -479,13 +481,13 @@ describe("useYourPlanCard", () => {
 
   it("nextTier is null on the top tier (BUSINESS) and canUpgrade=false", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BUSINESS",
         monthly_cost: 50000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     const { result } = renderHook(() => useYourPlanCard(), {
@@ -500,13 +502,13 @@ describe("useYourPlanCard", () => {
 
   it("exposes previousTier=PRO and canDowngrade=true for an active MAX subscriber", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
     );
@@ -528,14 +530,14 @@ describe("useYourPlanCard", () => {
   it("onDowngrade stages the confirm dialog and onConfirmTierDowngrade fires updateTier (MAX → PRO)", async () => {
     let capturedTier: string | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         const body = (await request.json()) as { tier: string };
         capturedTier = body.tier;
         return HttpResponse.json({ url: null });
@@ -569,14 +571,14 @@ describe("useYourPlanCard", () => {
   it("onUpgrade for a MAX subscriber opens TEAM_UPGRADE_URL instead of POSTing to /credits/subscription", async () => {
     let stripeHit = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", async () => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", async () => {
         stripeHit = true;
         return HttpResponse.json({ url: null });
       }),
@@ -605,7 +607,7 @@ describe("useYourPlanCard", () => {
 
   it("flags isPendingDowngrade and canResume when a portal-initiated downgrade is scheduled", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
         has_active_stripe_subscription: true,
@@ -613,7 +615,7 @@ describe("useYourPlanCard", () => {
         pending_tier: "PRO",
         pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     const { result } = renderHook(() => useYourPlanCard(), {
@@ -629,13 +631,13 @@ describe("useYourPlanCard", () => {
 
   it("offers PRO as the next tier when the user has no active subscription", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     const { result } = renderHook(() => useYourPlanCard(), {
@@ -652,14 +654,14 @@ describe("useYourPlanCard", () => {
   it("changeTier (PRO → MAX upgrade) calls updateTier with the requested tier", async () => {
     let capturedTier: string | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         const body = (await request.json()) as { tier: string };
         capturedTier = body.tier;
         return HttpResponse.json({ url: null });
@@ -693,14 +695,14 @@ describe("useYourPlanCard", () => {
 
   it("changeTier surfaces a destructive toast when the API returns 500", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", () =>
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -722,7 +724,7 @@ describe("useYourPlanCard", () => {
   it("onResume releases a pending cancellation by POSTing the current tier", async () => {
     let capturedTier: string | null = null;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
@@ -730,8 +732,8 @@ describe("useYourPlanCard", () => {
         pending_tier: "NO_TIER",
         pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         const body = (await request.json()) as { tier: string };
         capturedTier = body.tier;
         return HttpResponse.json({ url: null });
@@ -755,14 +757,14 @@ describe("useYourPlanCard", () => {
   it("onResume short-circuits when there is no pending change in flight", async () => {
     let posted = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
-      http.post("*/api/credits/subscription", () => {
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
+      http.post("*/api/internal/credits/subscription", () => {
         posted = true;
         return HttpResponse.json({ url: null });
       }),
@@ -785,13 +787,13 @@ describe("useYourPlanCard", () => {
 
   it("canManagePortal flips true once the portal URL resolves and onManage is exposed", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/session/test-portal",
       }),
     );
@@ -810,7 +812,7 @@ describe("useYourPlanCard", () => {
   it("ENTERPRISE is admin-managed: no upgrade/downgrade/resume and no plan change is ever posted", async () => {
     let posted = false;
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "ENTERPRISE",
         monthly_cost: 0,
         billing_cycle: "monthly",
@@ -820,10 +822,10 @@ describe("useYourPlanCard", () => {
         pending_tier: "PRO",
         pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
-      jsonHandler("get", "/api/credits/manage", {
+      jsonHandler("get", "/api/internal/credits/manage", {
         url: "https://billing.stripe.com/p/test",
       }),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         posted = true;
         return HttpResponse.json({ url: null });
       }),
@@ -859,14 +861,14 @@ describe("useYourPlanCard", () => {
 
   it("BASIC keeps PRO as its next tier (backend accepts BASIC → PRO)", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "BASIC",
         monthly_cost: 0,
         billing_cycle: "monthly",
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     const { result } = renderHook(() => useYourPlanCard(), {
@@ -884,13 +886,13 @@ describe("useYourPlanCard", () => {
 
   it("falls back to the raw tier string when PLAN_LABEL has no match", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", {
+      jsonHandler("get", "/api/internal/credits/subscription", {
         tier: "STARTUP",
         monthly_cost: 100,
         has_active_stripe_subscription: true,
         status: "active",
       }),
-      jsonHandler("get", "/api/credits/manage", { url: null }),
+      jsonHandler("get", "/api/internal/credits/manage", { url: null }),
     );
 
     const { result } = renderHook(() => useYourPlanCard(), {

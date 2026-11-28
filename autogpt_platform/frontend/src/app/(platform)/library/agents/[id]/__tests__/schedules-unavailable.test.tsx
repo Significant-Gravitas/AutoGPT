@@ -64,7 +64,7 @@ const NOTICE =
 function schedulerOut() {
   return HttpResponse.json(
     {
-      message: `Failed to process GET /api/graphs/${GRAPH_ID}/schedules`,
+      message: `Failed to process GET /api/internal/graphs/${GRAPH_ID}/schedules`,
       detail: "Schedules are temporarily unavailable. Try again in a moment.",
       hint: "Retry in 15 seconds.",
     },
@@ -126,7 +126,7 @@ function serveAgentPage(
       outputs: {},
       node_executions: [],
     })),
-    http.get("*/api/graphs/:graphId/schedules", () => schedules()),
+    http.get("*/api/internal/graphs/:graphId/schedules", () => schedules()),
     getGetV2ListPresetsMockHandler({
       presets: [],
       pagination: {

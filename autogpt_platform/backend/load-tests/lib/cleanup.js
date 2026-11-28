@@ -227,7 +227,7 @@ function timestamp(text) {
 function params(route, headers, expected) {
   return {
     headers,
-    tags: { name: `/api${route}`, phase: "teardown" },
+    tags: { name: `/api/internal${route}`, phase: "teardown" },
     responseCallback: http.expectedStatuses(...expected),
     timeout: "60s",
   };

@@ -64,7 +64,7 @@ export async function POST(
 
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
-      `/api/chat/sessions/${sessionId}/stream`,
+      `/api/internal/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
 
@@ -137,7 +137,7 @@ export async function GET(
 
     const backendUrl = environment.getAGPTServerBaseUrl();
     const streamUrl = new URL(
-      `/api/chat/sessions/${sessionId}/stream`,
+      `/api/internal/chat/sessions/${sessionId}/stream`,
       backendUrl,
     );
 

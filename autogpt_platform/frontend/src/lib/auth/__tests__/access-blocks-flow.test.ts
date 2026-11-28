@@ -91,7 +91,7 @@ function stubBanRecordLookup() {
   return vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
-      if (!String(input).endsWith("/api/auth/email/ban-record")) {
+      if (!String(input).endsWith("/api/internal/auth/email/ban-record")) {
         return realFetch(input, init);
       }
       if (banRecordLookups.fail) return new Response("down", { status: 502 });

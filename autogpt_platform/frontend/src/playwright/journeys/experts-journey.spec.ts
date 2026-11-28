@@ -160,7 +160,7 @@ test.describe("experts journey", () => {
       await expect(hire).toBeVisible();
       await expect(page.getByText("Coming soon")).toHaveCount(0);
       const hired = page.waitForResponse(
-        isPath("POST", "/api/proxy/api/experts"),
+        isPath("POST", "/api/proxy/api/internal/experts"),
       );
       await hire.click();
       const response = await hired;
@@ -179,7 +179,7 @@ test.describe("experts journey", () => {
         .getByLabel("Custom voice sample")
         .fill(`Short, plain sentences. ${kickoff.marker}`);
       const voiceSaved = page.waitForResponse(
-        isPath("PATCH", `/api/proxy/api/experts/${hiredID}/soul`),
+        isPath("PATCH", `/api/proxy/api/internal/experts/${hiredID}/soul`),
       );
       await picker.getByRole("button", { name: "Use this voice" }).click();
       expect((await voiceSaved).ok(), "saving the voice").toBe(true);
@@ -248,7 +248,7 @@ test.describe("experts journey", () => {
         .click();
       await expectQuestion(drawerCard, "Question 2 of 2", SECOND.question);
       const lookedUp = page.waitForResponse(
-        isPath("GET", `/api/proxy/api/experts/${hiredID}/onboarding`),
+        isPath("GET", `/api/proxy/api/internal/experts/${hiredID}/onboarding`),
       );
       await drawer.getByRole("button", { name: "New task" }).click();
       await lookedUp;
@@ -378,10 +378,16 @@ test.describe("experts journey", () => {
         .fill(keyName);
       await dialog.getByLabel("API key", { exact: true }).fill(fakeAPIKey());
       const saved = page.waitForResponse(
-        isPath("POST", `/api/proxy/api/integrations/${provider}/credentials`),
+        isPath(
+          "POST",
+          `/api/proxy/api/internal/integrations/${provider}/credentials`,
+        ),
       );
       const granted = page.waitForResponse(
-        isPath("POST", `/api/proxy/api/experts/${expert.id}/credentials`),
+        isPath(
+          "POST",
+          `/api/proxy/api/internal/experts/${expert.id}/credentials`,
+        ),
       );
       await dialog.getByRole("button", { name: "Continue" }).click();
       expect((await saved).ok(), "saving the key").toBe(true);
@@ -495,7 +501,10 @@ test.describe("experts journey", () => {
         });
         await scheduleDialog.getByLabel("Schedule Name").fill(RUNNING_SCHEDULE);
         const created = page.waitForResponse(
-          isPath("POST", `/api/proxy/api/graphs/${own.graphID}/schedules`),
+          isPath(
+            "POST",
+            `/api/proxy/api/internal/graphs/${own.graphID}/schedules`,
+          ),
         );
         await scheduleDialog
           .getByRole("button", { name: "Schedule", exact: true })
@@ -553,7 +562,7 @@ test.describe("experts journey", () => {
         ).toBeVisible();
         await expect(dialog.getByText(RUNNING_SCHEDULE)).toBeVisible();
         const archived = page.waitForResponse(
-          isPath("DELETE", `/api/proxy/api/experts/${expert.id}`),
+          isPath("DELETE", `/api/proxy/api/internal/experts/${expert.id}`),
         );
         await dialog.getByTestId("fire-expert-confirm").click();
         expect((await archived).status(), "archiving").toBe(204);
@@ -580,7 +589,7 @@ test.describe("experts journey", () => {
           exact: true,
         });
         const hired = page.waitForResponse(
-          isPath("POST", "/api/proxy/api/experts"),
+          isPath("POST", "/api/proxy/api/internal/experts"),
         );
         await hire.click();
         const response = await hired;
@@ -679,7 +688,7 @@ async function openIntegrations(page: Page, expertName: string) {
 /** A service Setup needed asks to connect that takes an API key. */
 async function apiKeyItem(page: Page, items: SetupItem[]) {
   const response = await page.request.get(
-    "/api/proxy/api/integrations/providers",
+    "/api/proxy/api/internal/integrations/providers",
   );
   expect(response.ok(), `listing providers: ${response.status()}`).toBe(true);
   const byKey = new Set(

@@ -184,7 +184,7 @@ test("a recheck that fails keeps Home's tiles instead of the page error", async 
 
   let failed = 0;
   server.use(
-    http.get("/api/proxy/api/home", () => {
+    http.get("/api/proxy/api/internal/home", () => {
       failed += 1;
       return HttpResponse.json({ detail: "boom" }, { status: 500 });
     }),

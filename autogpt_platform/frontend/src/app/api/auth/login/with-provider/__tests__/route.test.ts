@@ -41,7 +41,7 @@ function signInClients(
   vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "google-client");
   vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client");
   server.use(
-    http.get("*/api/auth/sign-in-connection", () =>
+    http.get("*/api/internal/auth/sign-in-connection", () =>
       HttpResponse.json(connections),
     ),
   );

@@ -289,9 +289,11 @@ describe("AutopilotPage", () => {
     const batchSizes: number[] = [];
     function countLibraryReads({ request }: { request: Request }) {
       const url = new URL(request.url);
-      if (url.pathname.endsWith("/api/library/agents/batch")) {
+      if (url.pathname.endsWith("/api/internal/library/agents/batch")) {
         batchSizes.push(url.searchParams.getAll("ids").length);
-      } else if (/\/api\/library\/agents\/lib-[^/]+$/.test(url.pathname)) {
+      } else if (
+        /\/api\/internal\/library\/agents\/lib-[^/]+$/.test(url.pathname)
+      ) {
         singleReads.push(url.pathname);
       }
     }
@@ -374,7 +376,7 @@ describe("AutopilotPage", () => {
     const user = userEvent.setup();
     let failures = 0;
     server.use(
-      http.get("/api/proxy/api/experts", () => {
+      http.get("/api/proxy/api/internal/experts", () => {
         failures += 1;
         return failures === 1
           ? HttpResponse.json({ detail: "boom" }, { status: 500 })

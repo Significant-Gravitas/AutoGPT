@@ -236,7 +236,7 @@ describe("useCredits identity scope", () => {
     let releaseRequest: (() => void) | undefined;
     routerPush.mockClear();
     server.use(
-      http.post("/api/proxy/api/credits", async () => {
+      http.post("/api/proxy/api/internal/credits", async () => {
         await new Promise<void>((resolve) => {
           releaseRequest = resolve;
         });
@@ -271,7 +271,7 @@ describe("useCredits identity scope", () => {
     let releaseRequest: (() => void) | undefined;
     routerPush.mockClear();
     server.use(
-      http.post("/api/proxy/api/credits", async () => {
+      http.post("/api/proxy/api/internal/credits", async () => {
         await new Promise<void>((resolve) => {
           releaseRequest = resolve;
         });
@@ -299,7 +299,7 @@ describe("useCredits identity scope", () => {
     let releaseRequest: (() => void) | undefined;
     routerPush.mockClear();
     server.use(
-      http.get("/api/proxy/api/credits/manage", async () => {
+      http.get("/api/proxy/api/internal/credits/manage", async () => {
         await new Promise<void>((resolve) => {
           releaseRequest = resolve;
         });
@@ -330,13 +330,13 @@ describe("useCredits identity scope", () => {
     let releaseRequest: (() => void) | undefined;
     let configReads = 0;
     server.use(
-      http.post("/api/proxy/api/credits/auto-top-up", async () => {
+      http.post("/api/proxy/api/internal/credits/auto-top-up", async () => {
         await new Promise<void>((resolve) => {
           releaseRequest = resolve;
         });
         return HttpResponse.json({ amount: 1000, threshold: 500 });
       }),
-      http.get("/api/proxy/api/credits/auto-top-up", () => {
+      http.get("/api/proxy/api/internal/credits/auto-top-up", () => {
         configReads += 1;
         return HttpResponse.json({ amount: 1000, threshold: 500 });
       }),
@@ -362,25 +362,25 @@ describe("useCredits identity scope", () => {
   test("completes billing mutations for the current identity", async () => {
     routerPush.mockClear();
     server.use(
-      http.post("/api/proxy/api/credits/auto-top-up", () =>
+      http.post("/api/proxy/api/internal/credits/auto-top-up", () =>
         HttpResponse.json({ amount: 1000, threshold: 500 }),
       ),
-      http.get("/api/proxy/api/credits/auto-top-up", () =>
+      http.get("/api/proxy/api/internal/credits/auto-top-up", () =>
         HttpResponse.json({ amount: 1000, threshold: 500 }),
       ),
-      http.post("/api/proxy/api/credits", () =>
+      http.post("/api/proxy/api/internal/credits", () =>
         HttpResponse.json({ checkout_url: "https://checkout.example/current" }),
       ),
-      http.get("/api/proxy/api/credits/manage", () =>
+      http.get("/api/proxy/api/internal/credits/manage", () =>
         HttpResponse.json({ url: "https://billing.example/current" }),
       ),
-      http.post("/api/proxy/api/credits/:transactionKey/refund", () =>
+      http.post("/api/proxy/api/internal/credits/:transactionKey/refund", () =>
         HttpResponse.json(250),
       ),
-      http.get("/api/proxy/api/credits", () =>
+      http.get("/api/proxy/api/internal/credits", () =>
         HttpResponse.json({ credits: 750 }),
       ),
-      http.get("/api/proxy/api/credits/transactions", () =>
+      http.get("/api/proxy/api/internal/credits/transactions", () =>
         HttpResponse.json({
           transactions: [],
           next_transaction_time: null,
@@ -441,16 +441,16 @@ describe("useCredits identity scope", () => {
 
   test("propagates current-identity billing mutation failures", async () => {
     server.use(
-      http.post("/api/proxy/api/credits/auto-top-up", () =>
+      http.post("/api/proxy/api/internal/credits/auto-top-up", () =>
         HttpResponse.json({ detail: "failed" }, { status: 500 }),
       ),
-      http.post("/api/proxy/api/credits", () =>
+      http.post("/api/proxy/api/internal/credits", () =>
         HttpResponse.json({ detail: "failed" }, { status: 500 }),
       ),
-      http.get("/api/proxy/api/credits/manage", () =>
+      http.get("/api/proxy/api/internal/credits/manage", () =>
         HttpResponse.json({ detail: "failed" }, { status: 500 }),
       ),
-      http.post("/api/proxy/api/credits/:transactionKey/refund", () =>
+      http.post("/api/proxy/api/internal/credits/:transactionKey/refund", () =>
         HttpResponse.json({ detail: "failed" }, { status: 500 }),
       ),
     );
@@ -471,17 +471,20 @@ describe("useCredits identity scope", () => {
     let releaseRequest: (() => void) | undefined;
     let followUpReads = 0;
     server.use(
-      http.post("/api/proxy/api/credits/:transactionKey/refund", async () => {
-        await new Promise<void>((resolve) => {
-          releaseRequest = resolve;
-        });
-        return HttpResponse.json(250);
-      }),
-      http.get("/api/proxy/api/credits", () => {
+      http.post(
+        "/api/proxy/api/internal/credits/:transactionKey/refund",
+        async () => {
+          await new Promise<void>((resolve) => {
+            releaseRequest = resolve;
+          });
+          return HttpResponse.json(250);
+        },
+      ),
+      http.get("/api/proxy/api/internal/credits", () => {
         followUpReads += 1;
         return HttpResponse.json({ credits: 1000 });
       }),
-      http.get("/api/proxy/api/credits/transactions", () => {
+      http.get("/api/proxy/api/internal/credits/transactions", () => {
         followUpReads += 1;
         return HttpResponse.json({
           transactions: [],
@@ -612,7 +615,7 @@ describe("useCredits balance reads", () => {
     let reads = 0;
     let answerOlderRead: ((balance: number) => void) | undefined;
     server.use(
-      http.get("*/api/credits", async () => {
+      http.get("*/api/internal/credits", async () => {
         reads += 1;
         if (reads === 1) return HttpResponse.json({ credits: 979 });
         if (reads === 2) {

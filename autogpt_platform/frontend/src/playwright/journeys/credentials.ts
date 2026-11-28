@@ -96,7 +96,7 @@ export function credentialRef(credential: Credential): CredentialRef {
 
 export async function createAPIKey(page: Page, title: string) {
   const response = await page.request.post(
-    `/api/proxy/api/integrations/${PROVIDER}/credentials`,
+    `/api/proxy/api/internal/integrations/${PROVIDER}/credentials`,
     {
       data: {
         type: "api_key",
@@ -112,7 +112,7 @@ export async function createAPIKey(page: Page, title: string) {
 
 export async function listCredentials(page: Page) {
   const response = await page.request.get(
-    "/api/proxy/api/integrations/credentials",
+    "/api/proxy/api/internal/integrations/credentials",
   );
   expect(response.ok(), `listing credentials: ${response.status()}`).toBe(true);
   return {
@@ -127,7 +127,7 @@ export async function createWorkflow(
   name: string,
   credential?: Credential,
 ): Promise<Workflow> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "upload", graph: scrapingGraph(name, credential) },
   });
   expect(response.ok(), `saving ${name}: ${response.status()}`).toBe(true);
@@ -149,7 +149,7 @@ export async function createWorkflow(
 
 async function readLibraryAgent(page: Page, graphID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(response.ok(), `reading the Library entry: ${response.status()}`).toBe(
     true,
@@ -236,7 +236,7 @@ function graphLink(
 /** The saved graph's scrape step: its id and the key its field holds. */
 export async function readScrapeStep(page: Page, workflow: Workflow) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${workflow.graphID}`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}`,
   );
   expect(response.ok(), `reading the workflow: ${response.status()}`).toBe(
     true,
@@ -268,7 +268,7 @@ export async function startRun(
   credential?: CredentialRef,
 ) {
   return page.request.post(
-    `/api/proxy/api/graphs/${workflow.graphID}/execute/${workflow.graphVersion}`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/execute/${workflow.graphVersion}`,
     {
       data: {
         inputs: { note },
@@ -296,7 +296,7 @@ export async function waitForRunToEnd(
 
 async function readRun(page: Page, workflow: Workflow, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${workflow.graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;
@@ -304,7 +304,7 @@ async function readRun(page: Page, workflow: Workflow, runID: string) {
 
 export async function listRunIDs(page: Page, workflow: Workflow) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${workflow.graphID}/executions`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/executions`,
   );
   expect(response.ok(), `listing the runs: ${response.status()}`).toBe(true);
   const { executions } = (await response.json()) as {
@@ -314,20 +314,23 @@ export async function listRunIDs(page: Page, workflow: Workflow) {
 }
 
 export async function createTemplate(page: Page, runID: string, name: string) {
-  const response = await page.request.post("/api/proxy/api/library/presets", {
-    data: {
-      name,
-      description: "Made by the credentials journey",
-      graph_execution_id: runID,
+  const response = await page.request.post(
+    "/api/proxy/api/internal/library/presets",
+    {
+      data: {
+        name,
+        description: "Made by the credentials journey",
+        graph_execution_id: runID,
+      },
     },
-  });
+  );
   expect(response.ok(), `saving the template: ${response.status()}`).toBe(true);
   return (await response.json()) as Template;
 }
 
 export async function readTemplate(page: Page, templateID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/presets/${templateID}`,
+    `/api/proxy/api/internal/library/presets/${templateID}`,
   );
   expect(response.ok(), `reading the template: ${response.status()}`).toBe(
     true,
@@ -341,7 +344,7 @@ export async function createSchedule(
   schedule: { name: string; cron: string; credential: CredentialRef },
 ) {
   const response = await page.request.post(
-    `/api/proxy/api/graphs/${workflow.graphID}/schedules`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/schedules`,
     {
       data: {
         name: schedule.name,
@@ -361,7 +364,7 @@ export async function createSchedule(
 
 export async function listSchedules(page: Page, workflow: Workflow) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${workflow.graphID}/schedules`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/schedules`,
   );
   expect(response.ok(), `listing the schedules: ${response.status()}`).toBe(
     true,
@@ -373,7 +376,7 @@ export async function listSchedules(page: Page, workflow: Workflow) {
  * that fails is reported, softly, after the test's own steps. */
 export async function deleteSchedule(page: Page, scheduleID: string) {
   const response = await page.request.delete(
-    `/api/proxy/api/schedules/${scheduleID}`,
+    `/api/proxy/api/internal/schedules/${scheduleID}`,
   );
   expect
     .soft(
@@ -386,7 +389,7 @@ export async function deleteSchedule(page: Page, scheduleID: string) {
 /** Removes a key a test made, so a reused account doesn't collect them. */
 export async function deleteCredential(page: Page, credential: Credential) {
   const response = await page.request.delete(
-    `/api/proxy/api/integrations/${credential.provider}/credentials/${credential.id}?force=true`,
+    `/api/proxy/api/internal/integrations/${credential.provider}/credentials/${credential.id}?force=true`,
   );
   expect
     .soft(
@@ -446,7 +449,7 @@ export async function addKeyInIntegrations(
     (response) =>
       response.request().method() === "POST" &&
       new URL(response.url()).pathname.endsWith(
-        `/api/integrations/${PROVIDER}/credentials`,
+        `/api/internal/integrations/${PROVIDER}/credentials`,
       ),
   );
   await dialog.getByRole("button", { name: "Save API key" }).click();
@@ -499,7 +502,7 @@ export async function removeKeyInIntegrations(page: Page, title: string) {
     (response) =>
       response.request().method() === "DELETE" &&
       new URL(response.url()).pathname.includes(
-        `/api/integrations/${PROVIDER}/credentials/`,
+        `/api/internal/integrations/${PROVIDER}/credentials/`,
       ),
   );
   await dialog.getByRole("button", { name: "Remove", exact: true }).click();
@@ -521,7 +524,7 @@ export function isRunStart(workflow: Workflow) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${workflow.graphID}/execute/`,
+      `/api/internal/graphs/${workflow.graphID}/execute/`,
     );
 }
 
@@ -529,7 +532,7 @@ export function isTemplateStart(templateID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.endsWith(
-      `/api/library/presets/${templateID}/execute`,
+      `/api/internal/library/presets/${templateID}/execute`,
     );
 }
 
@@ -544,7 +547,7 @@ export async function signOutAndBackIn(page: Page, user: JourneyUser) {
   });
   expect(signedOut.ok(), `signing out: ${signedOut.status()}`).toBe(true);
   const refused = await page.request.get(
-    "/api/proxy/api/integrations/credentials",
+    "/api/proxy/api/internal/integrations/credentials",
   );
   expect(refused.status(), "signed out, the keys should be out of reach").toBe(
     401,

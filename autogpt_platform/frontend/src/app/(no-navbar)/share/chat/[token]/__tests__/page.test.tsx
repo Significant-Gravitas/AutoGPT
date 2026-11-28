@@ -110,7 +110,7 @@ function createRetryingQueryClient() {
 function answerChatWith(respond: () => Response) {
   const reads: string[] = [];
   server.use(
-    http.get("*/api/public/shared/chats/:shareToken", ({ params }) => {
+    http.get("*/api/internal/public/shared/chats/:shareToken", ({ params }) => {
       reads.push(String(params.shareToken));
       return respond();
     }),
@@ -121,10 +121,13 @@ function answerChatWith(respond: () => Response) {
 function answerMessagesWith(respond: () => Response) {
   const reads: string[] = [];
   server.use(
-    http.get("*/api/public/shared/chats/:shareToken/messages", ({ params }) => {
-      reads.push(String(params.shareToken));
-      return respond();
-    }),
+    http.get(
+      "*/api/internal/public/shared/chats/:shareToken/messages",
+      ({ params }) => {
+        reads.push(String(params.shareToken));
+        return respond();
+      },
+    ),
   );
   return reads;
 }
@@ -287,10 +290,13 @@ describe("SharedChatPage", () => {
         link: "an answer with no chat in it (200)",
         token: TOKEN,
         answer: (onRead: (token: string) => void) =>
-          http.get("*/api/public/shared/chats/:shareToken", ({ params }) => {
-            onRead(String(params.shareToken));
-            return HttpResponse.json(null);
-          }),
+          http.get(
+            "*/api/internal/public/shared/chats/:shareToken",
+            ({ params }) => {
+              onRead(String(params.shareToken));
+              return HttpResponse.json(null);
+            },
+          ),
       },
     ])(
       "says 'Share link not found' for $link after one read, with no 'Try again'",
@@ -444,7 +450,7 @@ describe("SharedChatPage", () => {
     // the branded chrome.
     server.use(
       http.get(
-        "*/api/public/shared/chats/:token",
+        "*/api/internal/public/shared/chats/:token",
         () => new HttpResponse(null, { status: 404 }),
       ),
     );
@@ -542,7 +548,7 @@ describe("SharedChatPage", () => {
         }),
       ),
       http.get(
-        "*/api/proxy/api/public/shared/chats/:token/files/:fileId/download",
+        "*/api/proxy/api/internal/public/shared/chats/:token/files/:fileId/download",
         () => new HttpResponse("# artifact"),
       ),
     );
@@ -624,7 +630,7 @@ describe("SharedChatPage", () => {
       const { renew } = installCookiebot();
       server.use(
         http.get(
-          "*/api/public/shared/chats/:token",
+          "*/api/internal/public/shared/chats/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );

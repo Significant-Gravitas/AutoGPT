@@ -53,7 +53,7 @@ const maria: Expert = {
   workflows: [],
 };
 
-const RESET_URL = "*/api/experts/expert-maria/reset";
+const RESET_URL = "*/api/internal/experts/expert-maria/reset";
 
 beforeEach(() => {
   toastMock.mockReset();

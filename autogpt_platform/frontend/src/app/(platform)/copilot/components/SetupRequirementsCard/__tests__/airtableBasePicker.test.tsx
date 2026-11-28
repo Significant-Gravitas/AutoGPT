@@ -17,7 +17,8 @@ vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
   useCopilotChatActions: () => ({ onSend: mockOnSend }),
 }));
 
-const BASES_URL = "*/api/integrations/airtable/credentials/cred-1/bases";
+const BASES_URL =
+  "*/api/internal/integrations/airtable/credentials/cred-1/bases";
 
 const PICKER = {
   name: "base_id",

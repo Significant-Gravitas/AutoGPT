@@ -21,7 +21,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 import { useOnboardingIntroCard } from "../useOnboardingIntroCard";
 
 const INTRO_URL =
-  "http://localhost:3000/api/proxy/api/onboarding/brain-dump/intro";
+  "http://localhost:3000/api/proxy/api/internal/onboarding/brain-dump/intro";
 const MIC_GLOW_KEY = "autogpt:onboarding-mic-glow";
 const LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 const FOLLOWUP_KEY = "autogpt:onboarding-intro-awaiting-followup";

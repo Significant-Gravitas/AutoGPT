@@ -61,7 +61,9 @@ describe("useRecentChats — rename", () => {
 
   it("submits a trimmed title and clears editing on success", async () => {
     server.use(
-      http.patch("*/api/chat/sessions/:id/title", () => HttpResponse.json({})),
+      http.patch("*/api/internal/chat/sessions/:id/title", () =>
+        HttpResponse.json({}),
+      ),
     );
     const { result } = renderHook(() => useRecentChats(), {
       wrapper: makeWrapper(),
@@ -90,7 +92,7 @@ describe("useRecentChats — rename", () => {
 
   it("toasts and exits editing when the rename request fails", async () => {
     server.use(
-      http.patch("*/api/chat/sessions/:id/title", () =>
+      http.patch("*/api/internal/chat/sessions/:id/title", () =>
         HttpResponse.json({ detail: "nope" }, { status: 422 }),
       ),
     );
@@ -118,10 +120,13 @@ describe("useRecentChats — pin", () => {
   it("sends the flipped is_pinned value", async () => {
     const bodies: unknown[] = [];
     server.use(
-      http.patch("*/api/chat/sessions/:id/pinned", async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({});
-      }),
+      http.patch(
+        "*/api/internal/chat/sessions/:id/pinned",
+        async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json({});
+        },
+      ),
     );
     const { result } = renderHook(() => useRecentChats(), {
       wrapper: makeWrapper(),
@@ -138,7 +143,7 @@ describe("useRecentChats — pin", () => {
 
   it("toasts when the pin request fails", async () => {
     server.use(
-      http.patch("*/api/chat/sessions/:id/pinned", () =>
+      http.patch("*/api/internal/chat/sessions/:id/pinned", () =>
         HttpResponse.json({ detail: "nope" }, { status: 500 }),
       ),
     );
@@ -162,7 +167,7 @@ describe("useRecentChats — pin", () => {
 describe("useRecentChats — export", () => {
   it("toasts success after a successful export", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:id", () =>
+      http.get("*/api/internal/chat/sessions/:id", () =>
         HttpResponse.json({ messages: [], has_more_messages: false }),
       ),
     );
@@ -182,7 +187,7 @@ describe("useRecentChats — export", () => {
 
   it("toasts a destructive error when the export fetch fails", async () => {
     server.use(
-      http.get("*/api/chat/sessions/:id", () =>
+      http.get("*/api/internal/chat/sessions/:id", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

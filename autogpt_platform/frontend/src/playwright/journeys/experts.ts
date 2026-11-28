@@ -69,7 +69,7 @@ export interface OwnWorkflow {
 // ── The roster ─────────────────────────────────────────────────────────
 
 export async function listTemplates(page: Page) {
-  return getJSON<Expert[]>(page, "/api/proxy/api/experts/templates");
+  return getJSON<Expert[]>(page, "/api/proxy/api/internal/experts/templates");
 }
 
 /**
@@ -106,7 +106,7 @@ export function scheduledExpert(templates: Expert[]) {
  * so no kickoff turn starts. The page's own hire is the first test's.
  */
 export async function hireThroughAPI(page: Page, templateID: string) {
-  const response = await page.request.post("/api/proxy/api/experts", {
+  const response = await page.request.post("/api/proxy/api/internal/experts", {
     data: { template_id: templateID, surface: "onboarding" },
   });
   expect(
@@ -117,11 +117,11 @@ export async function hireThroughAPI(page: Page, templateID: string) {
 }
 
 export async function readExpert(page: Page, expertID: string) {
-  return getJSON<Expert>(page, `/api/proxy/api/experts/${expertID}`);
+  return getJSON<Expert>(page, `/api/proxy/api/internal/experts/${expertID}`);
 }
 
 export async function listHiredExperts(page: Page) {
-  return getJSON<Expert[]>(page, "/api/proxy/api/experts");
+  return getJSON<Expert[]>(page, "/api/proxy/api/internal/experts");
 }
 
 /** Waits for the hire's background setup, and returns the expert after it. */
@@ -149,7 +149,7 @@ export function scheduledWorkflow(expert: Expert) {
 export async function listSetupItems(page: Page, expertID: string) {
   const items = await getJSON<SetupItem[]>(
     page,
-    "/api/proxy/api/experts/setup",
+    "/api/proxy/api/internal/experts/setup",
   );
   return items.filter((item) => item.expert_id === expertID);
 }
@@ -157,7 +157,7 @@ export async function listSetupItems(page: Page, expertID: string) {
 export async function grantedProviders(page: Page, expertID: string) {
   const granted = await getJSON<{ provider: string; title: string }[]>(
     page,
-    `/api/proxy/api/experts/${expertID}/credentials`,
+    `/api/proxy/api/internal/experts/${expertID}/credentials`,
   );
   return granted.map((credential) => [credential.provider, credential.title]);
 }
@@ -166,14 +166,14 @@ export async function grantedProviders(page: Page, expertID: string) {
 export async function pendingOnboarding(page: Page, expertID: string) {
   return getJSON<{ session_id: string } | null>(
     page,
-    `/api/proxy/api/experts/${expertID}/onboarding`,
+    `/api/proxy/api/internal/experts/${expertID}/onboarding`,
   );
 }
 
 export async function listExpertChats(page: Page, expertID: string) {
   const body = await getJSON<{ sessions: { id: string }[] }>(
     page,
-    `/api/proxy/api/chat/sessions?expert_id=${expertID}&limit=20&pinned_first=false`,
+    `/api/proxy/api/internal/chat/sessions?expert_id=${expertID}&limit=20&pinned_first=false`,
   );
   return body.sessions.map((session) => session.id);
 }
@@ -183,7 +183,7 @@ export async function listExpertChats(page: Page, expertID: string) {
 /** Saves a workflow that needs one input and no account: topic → summary. */
 export async function createOwnWorkflow(page: Page, name: string) {
   const input = "topic";
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {
@@ -214,7 +214,7 @@ export async function createOwnWorkflow(page: Page, name: string) {
   const graph = (await response.json()) as { id: string };
   const agent = await getJSON<{ id: string }>(
     page,
-    `/api/proxy/api/library/agents/by-graph/${graph.id}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graph.id}`,
   );
   return { name, graphID: graph.id, libraryAgentID: agent.id, input };
 }
@@ -225,7 +225,7 @@ export async function installOnExpert(
   workflow: OwnWorkflow,
 ) {
   const response = await page.request.post(
-    `/api/proxy/api/experts/${expertID}/workflows`,
+    `/api/proxy/api/internal/experts/${expertID}/workflows`,
     { data: { library_agent_id: workflow.libraryAgentID } },
   );
   expect(
@@ -242,7 +242,7 @@ export async function scheduleThroughAPI(
   name: string,
 ) {
   const response = await page.request.post(
-    `/api/proxy/api/graphs/${workflow.graphID}/schedules`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/schedules`,
     {
       data: {
         name,
@@ -267,7 +267,7 @@ export const LEAP_DAY = "0 0 29 2 *";
 export async function listSchedules(page: Page, graphID: string) {
   return getJSON<Schedule[]>(
     page,
-    `/api/proxy/api/graphs/${graphID}/schedules`,
+    `/api/proxy/api/internal/graphs/${graphID}/schedules`,
   );
 }
 
@@ -313,7 +313,7 @@ export async function deleteSchedules(
   const ids = new Set([...madeIDs, ...listed.map((schedule) => schedule.id)]);
   for (const id of ids) {
     const response = await page.request.delete(
-      `/api/proxy/api/schedules/${id}`,
+      `/api/proxy/api/internal/schedules/${id}`,
     );
     expect
       .soft(

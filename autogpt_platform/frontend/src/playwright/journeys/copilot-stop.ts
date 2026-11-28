@@ -50,7 +50,7 @@ export function watchCancel(page: Page, timeout: number) {
 function isCancel(response: Response) {
   return (
     response.request().method() === "POST" &&
-    /\/api\/chat\/sessions\/[^/]+\/cancel$/.test(
+    /\/api\/internal\/chat\/sessions\/[^/]+\/cancel$/.test(
       new URL(response.url()).pathname,
     )
   );

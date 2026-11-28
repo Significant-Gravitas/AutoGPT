@@ -6,7 +6,7 @@ import {
 } from "../guard";
 
 const activationURL =
-  "http://localhost:3000/api/proxy/api/credits/pro-activation/current";
+  "http://localhost:3000/api/proxy/api/internal/credits/pro-activation/current";
 
 async function collect(
   status: number,
@@ -68,7 +68,7 @@ describe("journey activation lookup contract", () => {
 });
 
 describe("a response the journey fakes itself", () => {
-  const schedulesURL = "http://localhost:3000/api/proxy/api/schedules";
+  const schedulesURL = "http://localhost:3000/api/proxy/api/internal/schedules";
   const injected = { name: "x-journey-injected", value: "scheduler-outage" };
 
   async function collectFaked(headers: Record<string, string>) {
@@ -79,7 +79,12 @@ describe("a response the journey fakes itself", () => {
       },
     } as unknown as BrowserContext;
     const guard = watchForUnexpectedErrors(context, [
-      { status: 503, method: "GET", url: "/api/schedules", header: injected },
+      {
+        status: 503,
+        method: "GET",
+        url: "/api/internal/schedules",
+        header: injected,
+      },
     ]);
     listener?.({
       url: () => schedulesURL,
@@ -129,7 +134,7 @@ describe("the guard on one page", () => {
     const { page, emit } = fakePage();
     const guard = watchPageForUnexpectedErrors(page, []);
     emit("response", {
-      url: () => "http://localhost:3000/api/proxy/api/library/agents",
+      url: () => "http://localhost:3000/api/proxy/api/internal/library/agents",
       status: () => 500,
       headers: () => ({}),
       request: () => ({ method: () => "GET" }),
@@ -146,7 +151,7 @@ describe("the guard on one page", () => {
 
     expect(problems).toHaveLength(3);
     expect(problems[0]).toContain(
-      "500 GET http://localhost:3000/api/proxy/api/library/agents",
+      "500 GET http://localhost:3000/api/proxy/api/internal/library/agents",
     );
     expect(problems[1]).toContain("console.error at app.js:3: Something broke");
     expect(problems[2]).toContain(
@@ -186,11 +191,11 @@ describe("the guard on one page", () => {
   it("leaves out what it would leave out for a whole context", async () => {
     const { page, emit } = fakePage();
     const guard = watchPageForUnexpectedErrors(page, [
-      { status: 404, url: "/api/platform-linking/tokens/" },
+      { status: 404, url: "/api/internal/platform-linking/tokens/" },
     ]);
     emit("response", {
       url: () =>
-        "http://localhost:3000/api/proxy/api/platform-linking/tokens/x/info",
+        "http://localhost:3000/api/proxy/api/internal/platform-linking/tokens/x/info",
       status: () => 404,
       headers: () => ({}),
       request: () => ({ method: () => "GET" }),

@@ -204,7 +204,7 @@ test.describe("human review journey", () => {
 // AgentInput "note" -> HumanInTheLoop, whose approved and rejected data each
 // go to their own AgentOutput.
 async function createReviewAgent(page: Page): Promise<Agent> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {
@@ -284,7 +284,7 @@ async function readLibraryAgent(
   graphID: string,
 ): Promise<LibraryAgent> {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(response.ok(), `reading the Library agent: ${response.status()}`).toBe(
     true,
@@ -345,7 +345,7 @@ async function startRunInLibrary(page: Page, agent: Agent, note: string) {
 
 async function startRun(page: Page, agent: Agent, note: string) {
   const response = await page.request.post(
-    `/api/proxy/api/graphs/${agent.graphID}/execute/${agent.graphVersion}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/execute/${agent.graphVersion}`,
     { data: { inputs: { note }, credentials_inputs: {} } },
   );
   expect(response.ok(), `starting the run: ${response.status()}`).toBe(true);
@@ -371,7 +371,7 @@ async function waitForRun(
 
 async function readRun(page: Page, agent: Agent, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${agent.graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;
@@ -395,7 +395,7 @@ async function waitForReview(
     "the run should wait for the review, not run past it",
   ).toBe("REVIEW");
   const response = await page.request.get(
-    `/api/proxy/api/review/execution/${runID}`,
+    `/api/proxy/api/internal/review/execution/${runID}`,
   );
   expect(response.ok(), `listing the reviews: ${response.status()}`).toBe(true);
   const reviews = (await response.json()) as PendingReview[];
@@ -451,14 +451,14 @@ function isRunStart(graphID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${graphID}/execute/`,
+      `/api/internal/graphs/${graphID}/execute/`,
     );
 }
 
 function isReviewAnswer(response: Response) {
   return (
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith("/api/review/action")
+    new URL(response.url()).pathname.endsWith("/api/internal/review/action")
   );
 }
 
@@ -466,6 +466,6 @@ function isSettingsSave(graphID: string) {
   return (response: Response) =>
     response.request().method() === "PATCH" &&
     new URL(response.url()).pathname.endsWith(
-      `/api/graphs/${graphID}/settings`,
+      `/api/internal/graphs/${graphID}/settings`,
     );
 }

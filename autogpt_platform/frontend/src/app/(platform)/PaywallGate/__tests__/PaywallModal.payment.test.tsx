@@ -13,7 +13,9 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useGetSubscriptionStatus: (opts: unknown) =>
     mockUseGetSubscriptionStatus(opts),
   useUpdateSubscriptionTier: () => mockUseUpdateSubscriptionTier(),
-  getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
+  getGetSubscriptionStatusQueryKey: () => [
+    "/api/internal/credits/subscription",
+  ],
 }));
 
 vi.mock("@posthog/react", () => ({

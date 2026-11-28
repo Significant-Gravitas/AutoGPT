@@ -88,7 +88,7 @@ test("account deletion happy path: user closes their account from Settings, then
 
 async function connectFakeGitHubKey(page: Page) {
   const response = await page.request.post(
-    "/api/proxy/api/integrations/github/credentials",
+    "/api/proxy/api/internal/integrations/github/credentials",
     {
       data: {
         provider: "github",

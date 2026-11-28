@@ -165,7 +165,7 @@ function request(method, path, headers, body, expected) {
     {
       headers,
       tags: {
-        name: `/api${path.split("?")[0].replace(/[0-9a-f-]{36}/g, "{id}")}`,
+        name: `/api/internal${path.split("?")[0].replace(/[0-9a-f-]{36}/g, "{id}")}`,
         phase: "setup",
       },
       responseCallback: http.expectedStatuses(...(expected || [200])),

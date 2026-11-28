@@ -58,7 +58,7 @@ let stored: CredentialsMetaResponse[] = [];
 
 function serveCredentials() {
   server.use(
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json([
         {
           name: PROVIDER,
@@ -67,15 +67,17 @@ function serveCredentials() {
         },
       ]),
     ),
-    http.get("*/api/integrations/providers/system", () =>
+    http.get("*/api/internal/integrations/providers/system", () =>
       HttpResponse.json([]),
     ),
-    http.get("*/api/integrations/credentials", () => HttpResponse.json(stored)),
-    http.get(`*/api/integrations/${PROVIDER}/credentials`, () =>
+    http.get("*/api/internal/integrations/credentials", () =>
+      HttpResponse.json(stored),
+    ),
+    http.get(`*/api/internal/integrations/${PROVIDER}/credentials`, () =>
       HttpResponse.json(stored),
     ),
     http.post(
-      `*/api/integrations/${PROVIDER}/credentials`,
+      `*/api/internal/integrations/${PROVIDER}/credentials`,
       async ({ request }) => {
         const body = (await request.json()) as { title: string };
         const created: CredentialsMetaResponse = {
@@ -88,7 +90,7 @@ function serveCredentials() {
       },
     ),
     http.delete(
-      `*/api/integrations/${PROVIDER}/credentials/:id`,
+      `*/api/internal/integrations/${PROVIDER}/credentials/:id`,
       ({ params }) => {
         stored = stored.filter((credential) => credential.id !== params.id);
         return HttpResponse.json({ deleted: true, revoked: null });

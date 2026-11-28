@@ -116,7 +116,7 @@ function redactHeader(name: string, value: string) {
 // The backend's credential routes, matched anywhere (behind /api/proxy too) and
 // zero-width so stacked prefixes all match; /api/invitations/pending is kept.
 const API_CREDENTIAL_SEGMENT =
-  /(?=(\/api\/(?:integrations\/(?:[^/?\s]+\/)?webhooks|platform-linking\/(?:user-)?tokens|public\/shared(?:\/chats)?|invitations(?!\/pending(?:[/?\s"']|$)))\/)([^/?\s]+))/g;
+  /(?=(\/api\/(?:internal\/)?(?:integrations\/(?:[^/?\s]+\/)?webhooks|platform-linking\/(?:user-)?tokens|public\/shared(?:\/chats)?|invitations(?!\/pending(?:[/?\s"']|$)))\/)([^/?\s]+))/g;
 // Pages whose own path is the token, at the start of a URL or after a space.
 // /link/slack is static, and a route name like /link/[token] holds no token.
 const PAGE_CREDENTIAL_SEGMENT =

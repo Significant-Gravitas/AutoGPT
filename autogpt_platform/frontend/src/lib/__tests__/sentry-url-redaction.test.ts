@@ -34,6 +34,10 @@ describe("redactURL", () => {
       `/api/integrations/github/webhooks/${REDACTED}/ingress`,
     ],
     [
+      "/api/proxy/api/internal/integrations/github/webhooks/w-1/ingress",
+      `/api/proxy/api/internal/integrations/github/webhooks/${REDACTED}/ingress`,
+    ],
+    [
       "/api/integrations/webhooks/w-1/ping",
       `/api/integrations/webhooks/${REDACTED}/ping`,
     ],
@@ -80,8 +84,8 @@ describe("redactURL", () => {
     ["/share/s-1", `/share/${REDACTED}`],
     ["/share/chat/s-1", `/share/chat/${REDACTED}`],
     [
-      "/api/proxy/api/platform-linking/tokens/t-1/info",
-      `/api/proxy/api/platform-linking/tokens/${REDACTED}/info`,
+      "/api/proxy/api/internal/platform-linking/tokens/t-1/info",
+      `/api/proxy/api/internal/platform-linking/tokens/${REDACTED}/info`,
     ],
     [
       "/auth/callback#access_token=a&type=recovery",

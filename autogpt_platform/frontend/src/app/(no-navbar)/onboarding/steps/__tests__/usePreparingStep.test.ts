@@ -281,7 +281,7 @@ describe("usePreparingStep — recommendation gate (dump path)", () => {
   });
 });
 
-const HIRE_URL = "*/api/onboarding/brain-dump/plan/hire";
+const HIRE_URL = "*/api/internal/onboarding/brain-dump/plan/hire";
 const HIRE_MAX_WAIT_MS = 15_000;
 const PLAN_WAIT_MS = 10_000;
 const PLAN_MAX_WAIT_MS = 30_000;
@@ -673,7 +673,7 @@ describe("usePreparingStep — hiring the plan's team", () => {
 
   it("does not hold the hire past the usual wait when the plan cannot be read", async () => {
     server.use(
-      http.get("*/api/onboarding/brain-dump/plan", () =>
+      http.get("*/api/internal/onboarding/brain-dump/plan", () =>
         HttpResponse.json({ detail: "down" }, { status: 500 }),
       ),
     );

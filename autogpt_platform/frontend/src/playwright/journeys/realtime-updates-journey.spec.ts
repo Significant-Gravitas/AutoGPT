@@ -299,8 +299,9 @@ function trackListReads(page: Page, graphID: string) {
   function listOf(request: Request) {
     if (request.method() !== "GET") return null;
     const { pathname } = new URL(request.url());
-    if (pathname === `/api/proxy/api/graphs/${graphID}/executions`) return runs;
-    if (pathname === "/api/proxy/api/executions") return activity;
+    if (pathname === `/api/proxy/api/internal/graphs/${graphID}/executions`)
+      return runs;
+    if (pathname === "/api/proxy/api/internal/executions") return activity;
     return null;
   }
   function finished(request: Request) {
@@ -410,7 +411,7 @@ async function markPageInstance(page: Page): Promise<string> {
 
 async function createCountdownAgent(page: Page) {
   const name = `Journey realtime ${Date.now()}`;
-  const created = await page.request.post("/api/proxy/api/graphs", {
+  const created = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {
@@ -434,7 +435,7 @@ async function createCountdownAgent(page: Page) {
   expect(created.ok(), `creating the agent: ${created.status()}`).toBe(true);
   const graph = (await created.json()) as { id: string };
   const libraryAgent = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graph.id}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graph.id}`,
   );
   expect(
     libraryAgent.ok(),
@@ -447,14 +448,14 @@ async function createCountdownAgent(page: Page) {
 /** Returns once the run has ended; the server waits for that. */
 async function stopRun(page: Page, graphID: string, runID: string) {
   const response = await page.request.post(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}/stop`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}/stop`,
   );
   expect(response.ok(), `stopping the run: ${response.status()}`).toBe(true);
 }
 
 async function runStatus(page: Page, graphID: string, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}`,
   );
   expect(response.ok(), `GET execution: ${response.status()}`).toBe(true);
   return ((await response.json()) as { status: string }).status;

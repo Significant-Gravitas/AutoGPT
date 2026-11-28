@@ -275,7 +275,7 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
     })),
     getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
     getGetV1CheckIfOnboardingIsCompletedMockHandler200({ is_completed: true }),
-    http.patch("*/api/credits", async () => {
+    http.patch("*/api/internal/credits", async () => {
       ledger.fulfilCalls += 1;
       await release.promise;
       if (!fulfilFails) ledger.credited = true;

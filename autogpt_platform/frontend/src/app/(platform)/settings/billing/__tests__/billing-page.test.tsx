@@ -80,12 +80,16 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
 
 function useDefaultBillingHandlers() {
   server.use(
-    jsonHandler("get", "/api/credits/subscription", SUBSCRIPTION_RESPONSE),
-    jsonHandler("get", "/api/credits/manage", PAYMENT_PORTAL_RESPONSE),
-    jsonHandler("get", "/api/credits", CREDITS_RESPONSE),
-    jsonHandler("get", "/api/credits/transactions", HISTORY_EMPTY),
-    jsonHandler("get", "/api/credits/auto-top-up", AUTO_TOP_UP_OFF),
-    jsonHandler("get", "/api/credits/invoices", INVOICES_RESPONSE),
+    jsonHandler(
+      "get",
+      "/api/internal/credits/subscription",
+      SUBSCRIPTION_RESPONSE,
+    ),
+    jsonHandler("get", "/api/internal/credits/manage", PAYMENT_PORTAL_RESPONSE),
+    jsonHandler("get", "/api/internal/credits", CREDITS_RESPONSE),
+    jsonHandler("get", "/api/internal/credits/transactions", HISTORY_EMPTY),
+    jsonHandler("get", "/api/internal/credits/auto-top-up", AUTO_TOP_UP_OFF),
+    jsonHandler("get", "/api/internal/credits/invoices", INVOICES_RESPONSE),
     jsonHandler("get", "/api/v2/chat/copilot-usage", COPILOT_USAGE_RESPONSE),
   );
 }
@@ -141,7 +145,7 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     let fulfilCalls = 0;
     server.use(
-      http.patch("*/api/credits", () => {
+      http.patch("*/api/internal/credits", () => {
         fulfilCalls += 1;
         return new HttpResponse(null, { status: 200 });
       }),
@@ -161,7 +165,7 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     let fulfillCalled = false;
     server.use(
-      http.patch("*/api/credits", () => {
+      http.patch("*/api/internal/credits", () => {
         fulfillCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -182,7 +186,7 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     let fulfillCalls = 0;
     server.use(
-      http.patch("*/api/credits", () => {
+      http.patch("*/api/internal/credits", () => {
         fulfillCalls += 1;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -297,13 +301,21 @@ describe("Settings billing page (integration)", () => {
 
   it("AutomationCreditsTab renders the ErrorCard when the balance fetch fails", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/subscription", SUBSCRIPTION_RESPONSE),
-      jsonHandler("get", "/api/credits/manage", PAYMENT_PORTAL_RESPONSE),
-      jsonHandler("get", "/api/credits/transactions", HISTORY_EMPTY),
-      jsonHandler("get", "/api/credits/auto-top-up", AUTO_TOP_UP_OFF),
-      jsonHandler("get", "/api/credits/invoices", INVOICES_RESPONSE),
+      jsonHandler(
+        "get",
+        "/api/internal/credits/subscription",
+        SUBSCRIPTION_RESPONSE,
+      ),
+      jsonHandler(
+        "get",
+        "/api/internal/credits/manage",
+        PAYMENT_PORTAL_RESPONSE,
+      ),
+      jsonHandler("get", "/api/internal/credits/transactions", HISTORY_EMPTY),
+      jsonHandler("get", "/api/internal/credits/auto-top-up", AUTO_TOP_UP_OFF),
+      jsonHandler("get", "/api/internal/credits/invoices", INVOICES_RESPONSE),
       jsonHandler("get", "/api/v2/chat/copilot-usage", COPILOT_USAGE_RESPONSE),
-      http.get("*/api/credits", () =>
+      http.get("*/api/internal/credits", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );

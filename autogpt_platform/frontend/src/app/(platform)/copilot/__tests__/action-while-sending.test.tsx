@@ -62,8 +62,8 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
   return { ...actual, toast: vi.fn(actual.toast) };
 });
 
-const STREAM = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
-const PENDING = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
+const STREAM = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
+const PENDING = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/messages/pending`;
 const TITLE = "the Printify order pipeline";
 const PROMPT = "Draft this week's report";
 
@@ -115,7 +115,7 @@ it("queues a hand-off's Try again clicked while a send is still out, and leaves 
     getGetV2GetPendingReviewsForChatSessionMockHandler([]),
     getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
     // James has no chat yet, so the card offers Try again, not a link.
-    http.get("*/api/chat/sessions", () =>
+    http.get("*/api/internal/chat/sessions", () =>
       HttpResponse.json({ sessions: [], total: 0 }),
     ),
     http.post(STREAM, async ({ request }) => {

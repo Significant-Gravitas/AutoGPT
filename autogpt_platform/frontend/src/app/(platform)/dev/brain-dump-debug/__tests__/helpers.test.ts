@@ -100,7 +100,7 @@ describe("isProductionEnvironment", () => {
 describe("recordingDownloadHref", () => {
   it("routes the generated recording URL through the proxy", () => {
     expect(recordingDownloadHref()).toBe(
-      "/api/proxy/api/onboarding/brain-dump/recording",
+      "/api/proxy/api/internal/onboarding/brain-dump/recording",
     );
   });
 });

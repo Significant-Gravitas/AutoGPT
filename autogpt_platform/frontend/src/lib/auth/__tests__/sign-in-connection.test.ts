@@ -36,10 +36,10 @@ beforeEach(() => {
   vi.stubEnv("AUTH_GOOGLE_CLIENT_ID", "integration-client");
   handoffs = [];
   server.use(
-    http.get("*/api/auth/sign-in-connection", () =>
+    http.get("*/api/internal/auth/sign-in-connection", () =>
       HttpResponse.json({ google: "integration-client", microsoft: null }),
     ),
-    http.post("*/api/auth/sign-in-connection", async ({ request }) => {
+    http.post("*/api/internal/auth/sign-in-connection", async ({ request }) => {
       handoffs.push(await request.json());
       return HttpResponse.json({ result: "created" });
     }),

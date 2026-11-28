@@ -254,8 +254,8 @@ describe("DeleteAccountFlow Disconnect all apps", () => {
     ).toBeDefined();
     expect(within(getPanel()).queryByRole("button")).toBeNull();
     expect([...store.deleteURLs].sort()).toEqual([
-      "/api/proxy/api/integrations/google/credentials/cred-gmail?force=true",
-      "/api/proxy/api/integrations/notion/credentials/cred-notion?force=true",
+      "/api/proxy/api/internal/integrations/google/credentials/cred-gmail?force=true",
+      "/api/proxy/api/internal/integrations/notion/credentials/cred-notion?force=true",
     ]);
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
@@ -291,8 +291,8 @@ describe("DeleteAccountFlow Disconnect all apps", () => {
     }) as HTMLButtonElement;
     expect(retry.disabled).toBe(false);
     expect([...store.deleteURLs].sort()).toEqual([
-      "/api/proxy/api/integrations/google/credentials/cred-gmail?force=true",
-      "/api/proxy/api/integrations/notion/credentials/cred-notion?force=true",
+      "/api/proxy/api/internal/integrations/google/credentials/cred-gmail?force=true",
+      "/api/proxy/api/internal/integrations/notion/credentials/cred-notion?force=true",
     ]);
 
     store.stopFailing(NOTION.id);
@@ -302,7 +302,7 @@ describe("DeleteAccountFlow Disconnect all apps", () => {
       await within(getPanel()).findByText("Notion is disconnected."),
     ).toBeDefined();
     expect(store.deleteURLs.slice(2)).toEqual([
-      "/api/proxy/api/integrations/notion/credentials/cred-notion?force=true",
+      "/api/proxy/api/internal/integrations/notion/credentials/cred-notion?force=true",
     ]);
     expect(onOpenChange).not.toHaveBeenCalled();
     await waitFor(() => expect(feedback).toHaveLength(2));

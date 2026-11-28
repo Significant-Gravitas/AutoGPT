@@ -118,7 +118,9 @@ def test_cloud_session_ignores_stale_local_executor_presence():
             AsyncMock(return_value="pending"),
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
     assert response.status_code == 200
     assert response.json()["kind"] == "none"
     manager.get_hello_async.assert_not_awaited()
@@ -167,7 +169,7 @@ def test_list_executors_is_strictly_owner_scoped() -> None:
         "backend.api.features.local_executor.routes.list_machine_presences",
         list_presences,
     ):
-        response = _make_client().get("/api/copilot/executors")
+        response = _make_client().get("/api/internal/copilot/executors")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -198,7 +200,7 @@ def test_directory_browse_rejects_stale_machine_generation() -> None:
         stale,
     ):
         response = _make_client().post(
-            "/api/copilot/executors/machine-1/directories",
+            "/api/internal/copilot/executors/machine-1/directories",
             json={"expected_connection_id": "old-connection"},
         )
 
@@ -244,7 +246,7 @@ def test_directory_browse_returns_frontend_contract() -> None:
         ),
     ):
         response = _make_client().post(
-            "/api/copilot/executors/machine-1/directories",
+            "/api/internal/copilot/executors/machine-1/directories",
             json={"expected_connection_id": "connection-1"},
         )
 
@@ -283,7 +285,7 @@ def test_directory_browse_never_echoes_an_invalid_listing() -> None:
         ),
     ):
         response = _make_client().post(
-            "/api/copilot/executors/machine-1/directories",
+            "/api/internal/copilot/executors/machine-1/directories",
             json={"expected_connection_id": "connection-1"},
         )
 
@@ -302,14 +304,16 @@ def test_executor_status_requires_session_owner() -> None:
         "backend.api.features.local_executor.routes.get_chat_session_metadata",
         get_session,
     ):
-        response = client.get("/api/copilot/sessions/other-session/executor")
+        response = client.get("/api/internal/copilot/sessions/other-session/executor")
 
     assert response.status_code == 404
     get_session.assert_awaited_once_with("other-session", "owner-1")
 
 
 def test_executor_status_rejects_unbounded_session_id() -> None:
-    response = _make_client().get(f"/api/copilot/sessions/{'a' * 129}/executor")
+    response = _make_client().get(
+        f"/api/internal/copilot/sessions/{'a' * 129}/executor"
+    )
 
     assert response.status_code == 422
 
@@ -382,7 +386,9 @@ def test_executor_status_is_behind_the_rollout_flag(
             return_value=manager,
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
 
     if answered:
         assert response.status_code == 200
@@ -424,7 +430,9 @@ def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:
             AsyncMock(return_value="pending"),
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
 
     assert response.status_code == 200
     assert response.json()["computer_use_driver"] == "cua-driver 0.38.0"
@@ -468,7 +476,9 @@ def test_executor_status_shows_no_computer_use_outside_its_rollout() -> None:
             AsyncMock(return_value=False),
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
 
     assert response.status_code == 200
     body = response.json()
@@ -510,7 +520,7 @@ def test_computer_use_approval_refused_outside_its_rollout(in_rollout: bool) -> 
         ) as stored,
     ):
         response = _make_client().post(
-            "/api/copilot/sessions/session-1/executor/consent",
+            "/api/internal/copilot/sessions/session-1/executor/consent",
             json={
                 "approved": True,
                 "expected_machine_id": "machine-1",
@@ -551,7 +561,9 @@ def test_executor_status_offers_no_tools_without_a_driver() -> None:
             AsyncMock(return_value="pending"),
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
 
     assert response.json()["computer_use_driver"] is None
     assert response.json()["computer_use_tools"] is None
@@ -576,7 +588,7 @@ def test_executor_status_includes_server_side_consent() -> None:
             return_value=manager,
         ),
     ):
-        response = client.get("/api/copilot/sessions/session-1/executor")
+        response = client.get("/api/internal/copilot/sessions/session-1/executor")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -640,7 +652,9 @@ def test_executor_status_uses_persistent_machine_when_child_is_detached() -> Non
             return_value=manager,
         ),
     ):
-        response = _make_client().get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get(
+            "/api/internal/copilot/sessions/session-1/executor"
+        )
 
     assert response.status_code == 200
     assert response.json()["kind"] == "shim"
@@ -687,7 +701,7 @@ def test_computer_use_consent_is_owner_scoped(approved: bool, state: str) -> Non
                 }
             )
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/consent",
+            "/api/internal/copilot/sessions/session-1/executor/consent",
             json=request,
         )
 
@@ -719,7 +733,7 @@ def test_computer_use_approval_requires_connected_capable_shim() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/consent",
+            "/api/internal/copilot/sessions/session-1/executor/consent",
             json={
                 "approved": True,
                 "expected_machine_id": "machine-1",
@@ -774,7 +788,7 @@ def test_computer_use_approval_rejects_changed_executor_scope(
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/consent",
+            "/api/internal/copilot/sessions/session-1/executor/consent",
             json={
                 "approved": True,
                 "expected_machine_id": expected_machine_id,
@@ -814,7 +828,7 @@ def test_recording_start_uses_native_consent_and_registers_for_copilot() -> None
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start",
+            "/api/internal/copilot/sessions/session-1/executor/recording/start",
             json={
                 "mode": "copilot",
                 "interpretation_route": "extract_then_cloud",
@@ -864,7 +878,7 @@ def test_recording_start_respects_recording_feature_flag() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+            "/api/internal/copilot/sessions/session-1/executor/recording/start", json={}
         )
 
     assert response.status_code == 404
@@ -889,7 +903,7 @@ def test_recording_start_returns_conflict_when_shim_is_not_connected() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+            "/api/internal/copilot/sessions/session-1/executor/recording/start", json={}
         )
 
     assert response.status_code == 409
@@ -914,7 +928,7 @@ def test_recording_start_returns_structured_native_denial() -> None:
         AsyncMock(return_value=shim),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start",
+            "/api/internal/copilot/sessions/session-1/executor/recording/start",
             json={},
         )
 
@@ -946,7 +960,7 @@ def test_recording_start_stops_capture_when_shared_state_fails() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+            "/api/internal/copilot/sessions/session-1/executor/recording/start", json={}
         )
 
     assert response.status_code == 503
@@ -981,7 +995,7 @@ def test_recording_start_says_when_the_rollback_stop_is_unconfirmed() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+            "/api/internal/copilot/sessions/session-1/executor/recording/start", json={}
         )
 
     assert response.status_code == 503
@@ -1027,7 +1041,7 @@ def test_recording_stop_fetches_review_data_and_registers_state() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/stop",
+            "/api/internal/copilot/sessions/session-1/executor/recording/stop",
             json={"recording_id": "rec-1"},
         )
 
@@ -1089,11 +1103,11 @@ def test_recording_stop_retries_fetch_without_sending_duplicate_stop() -> None:
         ),
     ):
         first = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/stop",
+            "/api/internal/copilot/sessions/session-1/executor/recording/stop",
             json={"recording_id": "rec-1"},
         )
         second = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/stop",
+            "/api/internal/copilot/sessions/session-1/executor/recording/stop",
             json={"recording_id": "rec-1"},
         )
 
@@ -1155,7 +1169,7 @@ def test_recording_stop_remains_available_after_recording_kill_switch() -> None:
         ),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/stop",
+            "/api/internal/copilot/sessions/session-1/executor/recording/stop",
             json={"recording_id": "rec-1"},
         )
 
@@ -1195,7 +1209,7 @@ def test_recording_review_is_authoritative_on_shim() -> None:
         ),
     ):
         response = client.post(
-            f"/api/copilot/sessions/session-1/executor/recording/{recording_id}/review",
+            f"/api/internal/copilot/sessions/session-1/executor/recording/{recording_id}/review",
             json={
                 "removed_step_seqs": [2],
                 "redacted_step_seqs": [3, 4],
@@ -1228,7 +1242,7 @@ def test_recording_review_validation_error_returns_422() -> None:
         AsyncMock(return_value=shim),
     ):
         response = client.post(
-            "/api/copilot/sessions/session-1/executor/recording/rec-1/review",
+            "/api/internal/copilot/sessions/session-1/executor/recording/rec-1/review",
             json={"removed_step_seqs": [99], "redacted_step_seqs": []},
         )
 
@@ -1308,6 +1322,6 @@ def _restore_and_fail(failure: str, *, chat_status: str):
         ),
     ):
         response = _make_client().post(
-            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+            "/api/internal/copilot/sessions/session-1/executor/recording/start", json={}
         )
     return detach, mismatched, response

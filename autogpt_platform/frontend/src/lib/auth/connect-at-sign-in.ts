@@ -85,7 +85,7 @@ function connectionClients() {
 async function askBackendForClients(): Promise<SignInConnectionClients | null> {
   try {
     const response = await fetch(
-      `${environment.getAGPTServerBaseUrl()}/api/auth/sign-in-connection`,
+      `${environment.getAGPTServerBaseUrl()}/api/internal/auth/sign-in-connection`,
       { cache: "no-store", signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) },
     );
     if (!response.ok) throw new Error(`status ${response.status}`);

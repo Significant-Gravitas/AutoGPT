@@ -3,7 +3,7 @@ import { expect, test } from "./coverage-fixture";
 import { advanceToRoleStep } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
-const DRAFT_PATH = "/api/proxy/api/onboarding";
+const DRAFT_PATH = "/api/proxy/api/internal/onboarding";
 
 // Other PATCHes to the same path (the wallet's, say) carry no draft.
 function isDraftSave(request: Request) {

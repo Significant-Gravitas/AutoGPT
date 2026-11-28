@@ -19,7 +19,7 @@ function tabQueryCache() {
 
 function googleConnections(scopes: readonly string[] | null) {
   server.use(
-    http.get("*/api/integrations/google/credentials", () =>
+    http.get("*/api/internal/integrations/google/credentials", () =>
       HttpResponse.json(
         scopes
           ? [

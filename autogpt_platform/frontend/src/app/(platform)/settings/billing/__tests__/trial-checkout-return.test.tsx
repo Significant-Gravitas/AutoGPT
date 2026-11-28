@@ -81,7 +81,7 @@ function holdPlanReads(state: ReturnType<typeof mockBilling>["state"]) {
     if (reads > 0) await answered.promise;
   });
   server.use(
-    http.get("*/api/credits/subscription", async () => {
+    http.get("*/api/internal/credits/subscription", async () => {
       reads += 1;
       await release.promise;
       answered.resolve();

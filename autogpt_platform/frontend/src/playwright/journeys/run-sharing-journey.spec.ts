@@ -21,9 +21,10 @@ const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
 const OUTPUT_NAME = "report";
 const RUN_ENDED = /^(COMPLETED|FAILED|TERMINATED)$/;
 // The public page reads a share through the app's proxy.
-const PUBLIC_READ = "/api/proxy/api/public/shared/";
+const PUBLIC_READ = "/api/proxy/api/internal/public/shared/";
 // One run's read, by its share token (a UUID), and nothing else under it.
-const PUBLIC_RUN_READ = /\/api\/proxy\/api\/public\/shared\/[0-9a-f-]{36}$/;
+const PUBLIC_RUN_READ =
+  /\/api\/proxy\/api\/internal\/public\/shared\/[0-9a-f-]{36}$/;
 // All the public read may carry: nothing of the owner's or the graph's.
 const PUBLIC_FIELDS = [
   "created_at",
@@ -165,7 +166,7 @@ async function createFinishedRun(page: Page): Promise<OwnedRun> {
   const stamp = Date.now();
   const note = `Private note ${stamp}`;
   const report = `Journey report ${stamp}`;
-  const created = await page.request.post("/api/proxy/api/graphs", {
+  const created = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {
@@ -193,7 +194,7 @@ async function createFinishedRun(page: Page): Promise<OwnedRun> {
   const graph = (await created.json()) as { id: string; version: number };
 
   const started = await page.request.post(
-    `/api/proxy/api/graphs/${graph.id}/execute/${graph.version}`,
+    `/api/proxy/api/internal/graphs/${graph.id}/execute/${graph.version}`,
     { data: { inputs: { note }, credentials_inputs: {} } },
   );
   expect(started.ok(), `starting the run: ${started.status()}`).toBe(true);
@@ -251,7 +252,7 @@ function link(source: string, output: string, sink: string, input: string) {
 
 async function readRun(page: Page, graphID: string, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;
@@ -259,7 +260,7 @@ async function readRun(page: Page, graphID: string, runID: string) {
 
 async function readLibraryAgentID(page: Page, graphID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(response.ok(), `reading the Library agent: ${response.status()}`).toBe(
     true,
@@ -427,7 +428,7 @@ async function expectVisitorSeesNotFound(
 // What the backend itself answers for a link, asked with no session.
 async function publicStatus(backend: APIRequestContext, token: string) {
   return (
-    await backend.get(`${backendURL()}/api/public/shared/${token}`)
+    await backend.get(`${backendURL()}/api/internal/public/shared/${token}`)
   ).status();
 }
 
@@ -440,7 +441,9 @@ function isShareChange(runID: string, method: "POST" | "DELETE") {
 function isRunDelete(runID: string) {
   return (response: Response) =>
     response.request().method() === "DELETE" &&
-    new URL(response.url()).pathname.endsWith(`/api/executions/${runID}`);
+    new URL(response.url()).pathname.endsWith(
+      `/api/internal/executions/${runID}`,
+    );
 }
 
 function isPublicRead(token: string) {

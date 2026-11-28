@@ -25,14 +25,14 @@ it.each(["incomplete_expired", "trialing", "canceled"])(
       getGetTrialsGetTrialStatusMockHandler200(
         trialResponse({ active: false, status }),
       ),
-      http.get("*/api/credits/subscription", () =>
+      http.get("*/api/internal/credits/subscription", () =>
         HttpResponse.json({
           tier: "NO_TIER",
           monthly_cost: 0,
           has_active_stripe_subscription: false,
         }),
       ),
-      http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+      http.get("*/api/internal/credits/invoices", () => HttpResponse.json([])),
     );
     render(<SettingsBillingPage />);
     await screen.findByText("Your trial has ended");
@@ -48,14 +48,14 @@ it.each(["incomplete_expired", "trialing", "canceled"])(
 it("shows the trial as the current plan during an active trial", async () => {
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier: "TRIAL",
         monthly_cost: 0,
         has_active_stripe_subscription: false,
       }),
     ),
-    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+    http.get("*/api/internal/credits/invoices", () => HttpResponse.json([])),
   );
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
@@ -75,10 +75,10 @@ const trialSubscription = {
 function mockBilling(trial: ReturnType<typeof trialResponse>, tier: string) {
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trial),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({ ...trialSubscription, tier }),
     ),
-    http.get("*/api/credits/invoices", () => HttpResponse.json([])),
+    http.get("*/api/internal/credits/invoices", () => HttpResponse.json([])),
   );
 }
 

@@ -46,10 +46,10 @@ export async function sampleMarketplace(page: Page) {
   const [agents, experts, skills] = await Promise.all([
     getJSON<{
       agents: { slug: string; creator: string; agent_name: string }[];
-    }>(page, "/api/proxy/api/store/agents?page_size=1"),
+    }>(page, "/api/proxy/api/internal/store/agents?page_size=1"),
     getJSON<{ id: string; name: string }[]>(
       page,
-      "/api/proxy/api/experts/templates",
+      "/api/proxy/api/internal/experts/templates",
     ),
     listAllSkills(page),
   ]);
@@ -85,7 +85,7 @@ export async function sampleMarketplace(page: Page) {
 // Every skill in the Marketplace, by slug, so a run picks the same ones
 // whatever order the stack published them in. A page holds at most 100.
 async function listAllSkills(page: Page) {
-  const path = "/api/proxy/api/store/skills?page_size=100";
+  const path = "/api/proxy/api/internal/store/skills?page_size=100";
   const first = await getJSON<SkillsPage>(page, `${path}&page=1`);
   const rest = await Promise.all(
     Array.from(
@@ -124,7 +124,7 @@ function withFirstService(skill: StoreSkill | undefined) {
 export async function catalogName(page: Page, provider: string) {
   const providers = await getJSON<
     { name: string; display_name?: string | null }[]
-  >(page, "/api/proxy/api/integrations/providers");
+  >(page, "/api/proxy/api/internal/integrations/providers");
   const name = providers.find((entry) => entry.name === provider)?.display_name;
   if (!name) throw new Error(`the MCP catalog has no name for ${provider}`);
   return name;
@@ -140,7 +140,7 @@ export async function makeWorkflow(page: Page) {
   const agent = await createAgent(page, ADD_34);
   const libraryAgent = await getJSON<{ id: string }>(
     page,
-    `/api/proxy/api/library/agents/by-graph/${agent.graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${agent.graphID}`,
   );
   return { ...agent, libraryAgentID: libraryAgent.id };
 }
@@ -161,7 +161,7 @@ export async function hireAnExpert(page: Page): Promise<Expert | null> {
 /** Lets the expert go, as Team's Let go does. */
 export async function letGo(page: Page, expert: Expert) {
   const response = await page.request.delete(
-    `/api/proxy/api/experts/${expert.id}`,
+    `/api/proxy/api/internal/experts/${expert.id}`,
   );
   return response.ok() || response.status() === 404
     ? null
@@ -172,12 +172,12 @@ export async function letGo(page: Page, expert: Expert) {
 export async function shareARun(page: Page) {
   const agent = await createAgent(page, ADD_34);
   const started = await page.request.post(
-    `/api/proxy/api/graphs/${agent.graphID}/execute/${agent.version}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/execute/${agent.version}`,
     { data: { inputs: { number: 8 }, credentials_inputs: {} } },
   );
   expect(started.ok(), `starting the run: ${started.status()}`).toBe(true);
   const { id: runID } = (await started.json()) as { id: string };
-  const runPath = `/api/proxy/api/graphs/${agent.graphID}/executions/${runID}`;
+  const runPath = `/api/proxy/api/internal/graphs/${agent.graphID}/executions/${runID}`;
   await expect
     .poll(
       async () => (await getJSON<{ status: string }>(page, runPath)).status,
@@ -205,13 +205,16 @@ export async function shareAChat(page: Page) {
   if (!(await scriptedModelIsUp())) return null;
   const run = scriptedRun("quick-answer");
   const answer = quickAnswer.turns[0].text;
-  const created = await page.request.post("/api/proxy/api/chat/sessions", {
-    data: {},
-  });
+  const created = await page.request.post(
+    "/api/proxy/api/internal/chat/sessions",
+    {
+      data: {},
+    },
+  );
   expect(created.ok(), `starting a chat: ${created.status()}`).toBe(true);
   const { id: sessionID } = (await created.json()) as { id: string };
   const turn = await page.request.post(
-    `/api/proxy/api/chat/sessions/${sessionID}/stream`,
+    `/api/proxy/api/internal/chat/sessions/${sessionID}/stream`,
     {
       data: { message: `Give me a short answer. ${run.marker}` },
       timeout: MODEL_TURN_TIMEOUT,
@@ -225,7 +228,7 @@ export async function shareAChat(page: Page) {
     })
     .toContain(answer);
   const shared = await page.request.post(
-    `/api/proxy/api/chat/sessions/${sessionID}/share`,
+    `/api/proxy/api/internal/chat/sessions/${sessionID}/share`,
     { data: { auto_share_executions: false } },
   );
   expect(shared.ok(), `sharing the chat: ${shared.status()}`).toBe(true);

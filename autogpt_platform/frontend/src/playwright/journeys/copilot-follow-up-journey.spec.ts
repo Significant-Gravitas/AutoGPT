@@ -29,7 +29,7 @@ const FOLLOW_UP = SCRIPT.turns[1].expect_user_text ?? "";
 const HELD_AFTER_WORDS = followUpScript.turns[0].stream?.hold_after_words ?? 0;
 const STREAMING_WORDS = Math.floor(HELD_AFTER_WORDS / 2);
 // POST queues a follow-up behind the running turn; GET peeks at the queue.
-const QUEUE_URL = /\/api\/chat\/sessions\/[^/]+\/messages\/pending$/;
+const QUEUE_URL = /\/api\/internal\/chat\/sessions\/[^/]+\/messages\/pending$/;
 
 type Run = ReturnType<typeof scriptedRun>;
 

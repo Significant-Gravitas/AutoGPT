@@ -53,7 +53,7 @@ describe("getLatestTurnOverwrites", () => {
         id: "v2",
         title: "report.md",
         mimeType: "text/markdown",
-        sourceUrl: "/api/proxy/api/workspace/files/v2/download",
+        sourceUrl: "/api/proxy/api/internal/workspace/files/v2/download",
         origin: "agent",
         sizeBytes: 12,
       },

@@ -249,7 +249,7 @@ describe("Marketplace skills", () => {
 
   test("keeps the header and offers a retry when the shelf fails", async () => {
     server.use(
-      http.get("/api/proxy/api/store/skills", () =>
+      http.get("/api/proxy/api/internal/store/skills", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
       ),
     );
@@ -271,7 +271,7 @@ describe("Marketplace skills", () => {
   test("a category with no skills hides the shelf rather than showing it empty", async () => {
     server.use(
       getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
-      http.get("/api/proxy/api/store/skills", ({ request }) => {
+      http.get("/api/proxy/api/internal/store/skills", ({ request }) => {
         const filtered = new URL(request.url).searchParams.has("category");
         const skills = filtered ? [] : [brandVoice];
         return HttpResponse.json({
@@ -300,7 +300,7 @@ describe("Marketplace skills", () => {
   test("a failed filtered request keeps the shelf and offers a retry", async () => {
     server.use(
       getGetV2ListStoreCategoriesMockHandler(CATEGORIES),
-      http.get("/api/proxy/api/store/skills", ({ request }) => {
+      http.get("/api/proxy/api/internal/store/skills", ({ request }) => {
         if (new URL(request.url).searchParams.has("category")) {
           return HttpResponse.json({ detail: "Unavailable" }, { status: 500 });
         }

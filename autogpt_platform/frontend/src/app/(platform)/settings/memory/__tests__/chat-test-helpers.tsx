@@ -141,7 +141,7 @@ export function setupMemoryChat() {
       }),
     ),
     http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${sessionID}/stream`,
       ({ request }) =>
         streamSseResponse(assistantTextChunks("Your memory summary."), {
           abortSignal: request.signal,

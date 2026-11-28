@@ -41,7 +41,7 @@ const PLATFORM_OFFER: AIConnectionOffer = {
   limitations: [],
 };
 
-const offersHandler = http.get("*/api/chat/connections", () =>
+const offersHandler = http.get("*/api/internal/chat/connections", () =>
   HttpResponse.json<AIConnectionOffersResponse>({ offers: [PLATFORM_OFFER] }),
 );
 
@@ -115,7 +115,7 @@ export const Unavailable: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get("*/api/chat/connections", () =>
+        http.get("*/api/internal/chat/connections", () =>
           HttpResponse.json(
             { detail: "Connections are unavailable right now." },
             { status: 500 },
@@ -131,7 +131,7 @@ export const NoConnections: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.get("*/api/chat/connections", () =>
+        http.get("*/api/internal/chat/connections", () =>
           HttpResponse.json<AIConnectionOffersResponse>({ offers: [] }),
         ),
       ],

@@ -107,18 +107,22 @@ test("session resilience journey: network trouble never signs the user out", asy
     await expect(page).toHaveURL(/\/onboarding/);
 
     let dropped = 0;
-    await page.route("**/api/proxy/api/onboarding/completed*", (route) => {
-      if (dropped > 0) return route.fallback();
-      dropped += 1;
-      return route.abort("failed");
-    });
+    await page.route(
+      "**/api/proxy/api/internal/onboarding/completed*",
+      (route) => {
+        if (dropped > 0) return route.fallback();
+        dropped += 1;
+        return route.abort("failed");
+      },
+    );
     await page.reload();
     await expect.poll(() => dropped, { timeout: 15_000 }).toBe(1);
 
     // Registered only now, so the first page load's answer can't satisfy it.
     const retried = page.waitForResponse(
       (response) =>
-        response.url().includes("/api/onboarding/completed") && response.ok(),
+        response.url().includes("/api/internal/onboarding/completed") &&
+        response.ok(),
       { timeout: 15_000 },
     );
     // Soft, so a regression here still lets the session steps report too.

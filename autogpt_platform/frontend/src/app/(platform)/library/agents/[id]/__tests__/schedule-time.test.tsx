@@ -47,21 +47,23 @@ describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
       server.use(
         getGetV1GetUserTimezoneMockHandler({ timezone: "America/New_York" }),
         getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
-        http.get("/api/proxy/api/graphs/:graphId/schedules", ({ params }) =>
-          HttpResponse.json([
-            {
-              id: "schedule-id",
-              name: "Morning run",
-              user_id: "user-id",
-              graph_id: params.graphId,
-              graph_version: 1,
-              cron: "0 8 * * *",
-              timezone: "UTC",
-              next_run_time: nextRunTime,
-              input_data: {},
-              input_credentials: {},
-            },
-          ]),
+        http.get(
+          "/api/proxy/api/internal/graphs/:graphId/schedules",
+          ({ params }) =>
+            HttpResponse.json([
+              {
+                id: "schedule-id",
+                name: "Morning run",
+                user_id: "user-id",
+                graph_id: params.graphId,
+                graph_version: 1,
+                cron: "0 8 * * *",
+                timezone: "UTC",
+                next_run_time: nextRunTime,
+                input_data: {},
+                input_credentials: {},
+              },
+            ]),
         ),
       );
 
@@ -130,21 +132,23 @@ describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
       server.use(
         getGetV1GetUserTimezoneMockHandler({ timezone: viewer }),
         getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
-        http.get("/api/proxy/api/graphs/:graphId/schedules", ({ params }) =>
-          HttpResponse.json([
-            {
-              id: "schedule-id",
-              name: "Morning run",
-              user_id: "user-id",
-              graph_id: params.graphId,
-              graph_version: 1,
-              cron: "0 8 * * *",
-              timezone: scheduleTimezone,
-              next_run_time: "2024-01-15T12:00:00Z",
-              input_data: {},
-              input_credentials: {},
-            },
-          ]),
+        http.get(
+          "/api/proxy/api/internal/graphs/:graphId/schedules",
+          ({ params }) =>
+            HttpResponse.json([
+              {
+                id: "schedule-id",
+                name: "Morning run",
+                user_id: "user-id",
+                graph_id: params.graphId,
+                graph_version: 1,
+                cron: "0 8 * * *",
+                timezone: scheduleTimezone,
+                next_run_time: "2024-01-15T12:00:00Z",
+                input_data: {},
+                input_credentials: {},
+              },
+            ]),
         ),
       );
 
@@ -188,21 +192,23 @@ test("the edit dialog says which timezone its time is in", async () => {
   });
   server.use(
     getGetV1GetUserTimezoneMockHandler({ timezone: "Europe/London" }),
-    http.get("/api/proxy/api/graphs/:graphId/schedules", ({ params }) =>
-      HttpResponse.json([
-        {
-          id: "schedule-id",
-          name: "Morning run",
-          user_id: "user-id",
-          graph_id: params.graphId,
-          graph_version: 1,
-          cron: "0 8 * * *",
-          timezone: "America/New_York",
-          next_run_time: "2024-01-15T13:00:00Z",
-          input_data: {},
-          input_credentials: {},
-        },
-      ]),
+    http.get(
+      "/api/proxy/api/internal/graphs/:graphId/schedules",
+      ({ params }) =>
+        HttpResponse.json([
+          {
+            id: "schedule-id",
+            name: "Morning run",
+            user_id: "user-id",
+            graph_id: params.graphId,
+            graph_version: 1,
+            cron: "0 8 * * *",
+            timezone: "America/New_York",
+            next_run_time: "2024-01-15T13:00:00Z",
+            input_data: {},
+            input_credentials: {},
+          },
+        ]),
     ),
   );
 

@@ -78,7 +78,7 @@ function createRetryingQueryClient() {
 function answerSharedRunWith(respond: () => Response) {
   const tokens: string[] = [];
   server.use(
-    http.get("*/api/public/shared/:token", ({ params }) => {
+    http.get("*/api/internal/public/shared/:token", ({ params }) => {
       tokens.push(String(params.token));
       return respond();
     }),
@@ -251,7 +251,7 @@ describe("SharePage (execution share viewer)", () => {
       const { renew } = installCookiebot();
       server.use(
         http.get(
-          "*/api/public/shared/:token",
+          "*/api/internal/public/shared/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );
@@ -269,7 +269,7 @@ describe("SharePage (execution share viewer)", () => {
       vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
       server.use(
         http.get(
-          "*/api/public/shared/:token",
+          "*/api/internal/public/shared/:token",
           () => new HttpResponse(null, { status: 404 }),
         ),
       );

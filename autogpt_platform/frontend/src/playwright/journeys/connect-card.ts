@@ -134,7 +134,7 @@ function isKeySave(response: Response) {
   return (
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.endsWith(
-      `/api/integrations/${PROVIDER}/credentials`,
+      `/api/internal/integrations/${PROVIDER}/credentials`,
     )
   );
 }
@@ -142,7 +142,9 @@ function isKeySave(response: Response) {
 export function isCredentialsList(response: Response) {
   return (
     response.request().method() === "GET" &&
-    new URL(response.url()).pathname.endsWith("/api/integrations/credentials")
+    new URL(response.url()).pathname.endsWith(
+      "/api/internal/integrations/credentials",
+    )
   );
 }
 

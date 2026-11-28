@@ -112,7 +112,7 @@ beforeEach(() => {
     getGetExpertMockHandler(maria),
     getGetV1ListExecutionSchedulesForAUserMockHandler([]),
     getListExpertRunsMockHandler([]),
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json([
         {
           id: "cred-linkedin",
@@ -209,7 +209,7 @@ describe("managing an expert's integrations", () => {
       }),
       getListExpertCredentialsMockHandler([linkedin]),
       http.delete(
-        "*/api/experts/expert-maria/credentials/:credentialId",
+        "*/api/internal/experts/expert-maria/credentials/:credentialId",
         ({ params }) => {
           revoked = params.credentialId as string;
           return HttpResponse.json([]);
@@ -234,7 +234,7 @@ describe("managing an expert's integrations", () => {
     let granted: string[] = [];
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "notion",
@@ -249,7 +249,7 @@ describe("managing an expert's integrations", () => {
         ]),
       ),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = body.credential_ids;
@@ -279,8 +279,12 @@ describe("managing an expert's integrations", () => {
   it("offers connecting a new service when there is nothing left to grant", async () => {
     server.use(
       getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () => HttpResponse.json([])),
-      http.get("*/api/integrations/credentials", () => HttpResponse.json([])),
+      http.get("*/api/internal/integrations/providers", () =>
+        HttpResponse.json([]),
+      ),
+      http.get("*/api/internal/integrations/credentials", () =>
+        HttpResponse.json([]),
+      ),
     );
 
     render(<ExpertDetailPage />);
@@ -304,7 +308,7 @@ describe("managing an expert's integrations", () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = body.credential_ids;
@@ -336,7 +340,7 @@ describe("managing an expert's integrations", () => {
     let granted: string[] = [];
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-notion",
@@ -353,7 +357,7 @@ describe("managing an expert's integrations", () => {
         ]),
       ),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = body.credential_ids;
@@ -393,7 +397,7 @@ describe("managing an expert's integrations", () => {
     // A Google sign-in stores no title, only the account's email.
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-google-work",
@@ -439,7 +443,7 @@ describe("managing an expert's integrations", () => {
   it("searches untitled accounts by their email", async () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-google-work",
@@ -475,7 +479,7 @@ describe("managing an expert's integrations", () => {
   it("searches titled accounts by their email too", async () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-google-work",
@@ -511,7 +515,7 @@ describe("managing an expert's integrations", () => {
   it("shows an untitled account by its email when it is the only one for that provider", async () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-google-single",
@@ -537,7 +541,7 @@ describe("managing an expert's integrations", () => {
   it("opens a separate dialog for each header button", async () => {
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "notion",
@@ -576,7 +580,7 @@ describe("managing an expert's integrations", () => {
   it("filters the connect dialog's services by connection state", async () => {
     server.use(
       getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "notion",
@@ -590,7 +594,7 @@ describe("managing an expert's integrations", () => {
           },
         ]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json([
           {
             id: "cred-slack",
@@ -632,7 +636,7 @@ describe("managing an expert's integrations", () => {
   it("offers a vendor once and opens its sign-in first, with an API key alternative", async () => {
     server.use(
       getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "linear",
@@ -713,7 +717,7 @@ describe("managing an expert's integrations", () => {
     let granted: string[] = [];
     server.use(
       getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "mcp_sentry",
@@ -732,13 +736,13 @@ describe("managing an expert's integrations", () => {
           },
         ]),
       ),
-      http.post("*/api/mcp/discover-tools", () =>
+      http.post("*/api/internal/mcp/discover-tools", () =>
         HttpResponse.json({
           tools: [],
           server_url: "https://mcp.sentry.dev/mcp",
         }),
       ),
-      http.post("*/api/mcp/token", () =>
+      http.post("*/api/internal/mcp/token", () =>
         HttpResponse.json({
           id: "cred-sentry",
           provider: "mcp",
@@ -751,7 +755,7 @@ describe("managing an expert's integrations", () => {
         }),
       ),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted = body.credential_ids;
@@ -817,7 +821,7 @@ describe("managing an expert's integrations", () => {
 
     server.use(
       getListExpertCredentialsMockHandler([linkedin]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "notion",
@@ -826,15 +830,15 @@ describe("managing an expert's integrations", () => {
           },
         ]),
       ),
-      http.get("*/api/integrations/credentials", () =>
+      http.get("*/api/internal/integrations/credentials", () =>
         HttpResponse.json(connected),
       ),
-      http.post("*/api/integrations/notion/credentials", () => {
+      http.post("*/api/internal/integrations/notion/credentials", () => {
         connected = [workLinkedin, teamSlack, teamNotion];
         return HttpResponse.json(teamNotion, { status: 201 });
       }),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted.push(body.credential_ids);
@@ -900,10 +904,10 @@ describe("managing an expert's integrations", () => {
             : seoAudit,
         ],
       })),
-      http.get("*/api/experts/expert-maria/credentials", () =>
+      http.get("*/api/internal/experts/expert-maria/credentials", () =>
         HttpResponse.json(granted),
       ),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "notion",
@@ -912,10 +916,10 @@ describe("managing an expert's integrations", () => {
           },
         ]),
       ),
-      http.post("*/api/integrations/notion/credentials", () =>
+      http.post("*/api/internal/integrations/notion/credentials", () =>
         HttpResponse.json(teamNotion, { status: 201 }),
       ),
-      http.post("*/api/experts/expert-maria/credentials", () => {
+      http.post("*/api/internal/experts/expert-maria/credentials", () => {
         granted = [linkedin, notionRef];
         return HttpResponse.json(granted);
       }),
@@ -951,7 +955,7 @@ describe("managing an expert's integrations", () => {
     const granted: string[][] = [];
     server.use(
       getListExpertCredentialsMockHandler([]),
-      http.get("*/api/integrations/providers", () =>
+      http.get("*/api/internal/integrations/providers", () =>
         HttpResponse.json([
           {
             name: "openai",
@@ -961,7 +965,7 @@ describe("managing an expert's integrations", () => {
         ]),
       ),
       http.post(
-        "*/api/experts/expert-maria/credentials",
+        "*/api/internal/experts/expert-maria/credentials",
         async ({ request }) => {
           const body = (await request.json()) as { credential_ids: string[] };
           granted.push(body.credential_ids);
@@ -988,10 +992,10 @@ describe("managing an expert's integrations", () => {
   it("does not offer integrations when the expert's own list fails to load", async () => {
     let grantAttempts = 0;
     server.use(
-      http.get("*/api/experts/expert-maria/credentials", () =>
+      http.get("*/api/internal/experts/expert-maria/credentials", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
-      http.post("*/api/experts/expert-maria/credentials", () => {
+      http.post("*/api/internal/experts/expert-maria/credentials", () => {
         grantAttempts += 1;
         return HttpResponse.json([]);
       }),

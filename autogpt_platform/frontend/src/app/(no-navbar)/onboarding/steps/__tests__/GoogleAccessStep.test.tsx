@@ -71,17 +71,19 @@ beforeEach(() => {
     http.get("*/api/auth/sign-in-providers", () =>
       HttpResponse.json({ providers: ["google"] }),
     ),
-    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-      HttpResponse.json(params.provider === "google" ? saved : []),
+    http.get(
+      "*/api/internal/integrations/:provider/credentials",
+      ({ params }) =>
+        HttpResponse.json(params.provider === "google" ? saved : []),
     ),
-    http.get("*/api/integrations/google/login", ({ request }) => {
+    http.get("*/api/internal/integrations/google/login", ({ request }) => {
       logins.push(new URL(request.url));
       return HttpResponse.json({
         login_url: "https://accounts.google.com/o/oauth2/auth",
         state_token: "state-token",
       });
     }),
-    http.post("*/api/integrations/google/callback", () => {
+    http.post("*/api/internal/integrations/google/callback", () => {
       const account = googleAccount(grants);
       saved = [account];
       return HttpResponse.json(account);
@@ -245,10 +247,12 @@ describe("Google access step", () => {
     // already have one.
     let failing = true;
     server.use(
-      http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-        failing && params.provider === "google"
-          ? HttpResponse.json({ detail: "down" }, { status: 500 })
-          : HttpResponse.json(params.provider === "google" ? saved : []),
+      http.get(
+        "*/api/internal/integrations/:provider/credentials",
+        ({ params }) =>
+          failing && params.provider === "google"
+            ? HttpResponse.json({ detail: "down" }, { status: 500 })
+            : HttpResponse.json(params.provider === "google" ? saved : []),
       ),
     );
     render(<AccessStep />);
@@ -270,7 +274,7 @@ describe("Google access step", () => {
 
   it("can still move on after a connect fails", async () => {
     server.use(
-      http.get("*/api/integrations/google/login", () =>
+      http.get("*/api/internal/integrations/google/login", () =>
         HttpResponse.json({ detail: "not configured" }, { status: 501 }),
       ),
     );

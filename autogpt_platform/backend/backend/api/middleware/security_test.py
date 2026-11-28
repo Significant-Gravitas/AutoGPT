@@ -12,7 +12,7 @@ def app():
     app = FastAPI()
     app.add_middleware(SecurityHeadersMiddleware)
 
-    @app.get("/api/auth/user")
+    @app.get("/api/internal/auth/user")
     def get_user():
         return {"user": "test"}
 
@@ -20,15 +20,15 @@ def app():
     def oauth_endpoint():
         return {"oauth": "data"}
 
-    @app.get("/api/graphs/123/execute")
+    @app.get("/api/internal/graphs/123/execute")
     def execute_graph():
         return {"execution": "data"}
 
-    @app.get("/api/integrations/credentials")
+    @app.get("/api/internal/integrations/credentials")
     def get_credentials():
         return {"credentials": "sensitive"}
 
-    @app.get("/api/store/agents")
+    @app.get("/api/internal/store/agents")
     def store_agents():
         return {"agents": "public list"}
 
@@ -52,10 +52,10 @@ def client(app):
 def test_non_cacheable_endpoints_have_cache_control_headers(client):
     """Test that non-cacheable endpoints (most endpoints) have proper cache control headers."""
     non_cacheable_endpoints = [
-        "/api/auth/user",
+        "/api/internal/auth/user",
         "/api/v1/integrations/oauth/google",
-        "/api/graphs/123/execute",
-        "/api/integrations/credentials",
+        "/api/internal/graphs/123/execute",
+        "/api/internal/integrations/credentials",
     ]
 
     for endpoint in non_cacheable_endpoints:
@@ -79,7 +79,7 @@ def test_non_cacheable_endpoints_have_cache_control_headers(client):
 def test_cacheable_endpoints_dont_have_cache_control_headers(client):
     """Test that explicitly cacheable endpoints don't have restrictive cache control headers."""
     cacheable_endpoints = [
-        "/api/store/agents",
+        "/api/internal/store/agents",
         "/api/health",
         "/static/logo.png",
     ]
@@ -115,19 +115,23 @@ def test_is_cacheable_path_detection():
     assert middleware.is_cacheable_path("/api/health")
     assert middleware.is_cacheable_path("/api/v1/health")
     assert middleware.is_cacheable_path("/static/image.png")
-    assert middleware.is_cacheable_path("/api/store/agents")
+    assert middleware.is_cacheable_path("/api/internal/store/agents")
     assert middleware.is_cacheable_path("/docs")
     assert middleware.is_cacheable_path("/favicon.ico")
-    assert middleware.is_cacheable_path("/api/workspace/files/abc-123/preview")
+    assert middleware.is_cacheable_path("/api/internal/workspace/files/abc-123/preview")
 
     # Test non-cacheable paths (everything else)
-    assert not middleware.is_cacheable_path("/api/auth/user")
+    assert not middleware.is_cacheable_path("/api/internal/auth/user")
     assert not middleware.is_cacheable_path("/api/v1/integrations/oauth/callback")
-    assert not middleware.is_cacheable_path("/api/integrations/credentials/123")
-    assert not middleware.is_cacheable_path("/api/graphs/abc123/execute")
-    assert not middleware.is_cacheable_path("/api/store/xyz/submissions")
+    assert not middleware.is_cacheable_path(
+        "/api/internal/integrations/credentials/123"
+    )
+    assert not middleware.is_cacheable_path("/api/internal/graphs/abc123/execute")
+    assert not middleware.is_cacheable_path("/api/internal/store/xyz/submissions")
     # The wildcard only covers /preview, not the full file download.
-    assert not middleware.is_cacheable_path("/api/workspace/files/abc-123/download")
+    assert not middleware.is_cacheable_path(
+        "/api/internal/workspace/files/abc-123/download"
+    )
 
 
 def test_path_prefix_matching():

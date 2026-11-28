@@ -53,7 +53,8 @@ const test = journeyTest.extend<{ someoneElse: Person }>({
 });
 
 // A template started after its key was removed is refused by the server.
-const TEMPLATE_START = /\/api\/proxy\/api\/library\/presets\/[^/]+\/execute$/;
+const TEMPLATE_START =
+  /\/api\/proxy\/api\/internal\/library\/presets\/[^/]+\/execute$/;
 
 test.describe("credentials journey", () => {
   test("an API key added in Settings → Integrations is listed under its service by name, stays through a reload and a new session, and nobody else can see, read, delete or run with it", async ({
@@ -102,7 +103,7 @@ test.describe("credentials journey", () => {
         credential.id,
       );
       expect(theirs.text).not.toContain(title);
-      const keyURL = `/api/proxy/api/integrations/${PROVIDER}/credentials/${credential.id}`;
+      const keyURL = `/api/proxy/api/internal/integrations/${PROVIDER}/credentials/${credential.id}`;
       expect(
         (await other.request.get(keyURL)).status(),
         "another user should not be able to read the key",
@@ -265,7 +266,7 @@ test.describe("credentials journey", () => {
         (response) =>
           response.request().method() === "POST" &&
           new URL(response.url()).pathname.endsWith(
-            `/api/graphs/${workflow.graphID}/schedules`,
+            `/api/internal/graphs/${workflow.graphID}/schedules`,
           ),
       );
       await scheduleDialog.getByRole("button", { name: "Schedule" }).click();
@@ -437,7 +438,7 @@ async function saveInBuilder(page: Page, workflow: Workflow) {
     (response) =>
       response.request().method() === "PUT" &&
       new URL(response.url()).pathname.endsWith(
-        `/api/graphs/${workflow.graphID}`,
+        `/api/internal/graphs/${workflow.graphID}`,
       ),
   );
   await page.getByTestId("save-control-save-button").click();
@@ -461,7 +462,9 @@ async function saveRunAsTemplate(page: Page, runID: string, name: string) {
   const created = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname.endsWith("/api/library/presets"),
+      new URL(response.url()).pathname.endsWith(
+        "/api/internal/library/presets",
+      ),
   );
   await dialog.getByRole("button", { name: "Create Template" }).click();
   const response = await created;

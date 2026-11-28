@@ -395,7 +395,7 @@ async function saveWorkflow(
     links: ReturnType<typeof link>[];
   },
 ) {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "builder", graph: { ...graph, is_active: true } },
   });
   expect(
@@ -406,7 +406,9 @@ async function saveWorkflow(
 }
 
 async function readGraph(page: Page, graphID: string) {
-  const response = await page.request.get(`/api/proxy/api/graphs/${graphID}`);
+  const response = await page.request.get(
+    `/api/proxy/api/internal/graphs/${graphID}`,
+  );
   expect(response.ok(), `reading the workflow: ${response.status()}`).toBe(
     true,
   );
@@ -415,7 +417,7 @@ async function readGraph(page: Page, graphID: string) {
 
 async function libraryAgentID(page: Page, graphID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(response.ok(), `reading the Library agent: ${response.status()}`).toBe(
     true,
@@ -425,7 +427,7 @@ async function libraryAgentID(page: Page, graphID: string) {
 
 async function createAPIKey(page: Page, apiKey: string): Promise<Credential> {
   const response = await page.request.post(
-    "/api/proxy/api/integrations/unreal_speech/credentials",
+    "/api/proxy/api/internal/integrations/unreal_speech/credentials",
     {
       data: {
         type: "api_key",
@@ -478,7 +480,7 @@ async function runInLibrary(page: Page, workflow: Workflow, topic: string) {
 
 async function readRun(page: Page, workflow: Workflow, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${workflow.graph.id}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${workflow.graph.id}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as {
@@ -549,7 +551,7 @@ async function importInLibrary(page: Page, filePath: string) {
 function isGraphCreation(response: Response) {
   return (
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith("/api/graphs")
+    new URL(response.url()).pathname.endsWith("/api/internal/graphs")
   );
 }
 
@@ -557,7 +559,7 @@ function isRunStart(graphID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${graphID}/execute/`,
+      `/api/internal/graphs/${graphID}/execute/`,
     );
 }
 

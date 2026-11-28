@@ -228,7 +228,7 @@ test.describe("marketplace journey", () => {
       "a rejected listing should not be in the marketplace",
     );
     const added = await shopper.page.request.post(
-      "/api/proxy/api/library/agents",
+      "/api/proxy/api/internal/library/agents",
       { data: { store_listing_version_id: submission.listing_version_id } },
     );
     expect(

@@ -17,8 +17,8 @@ import { expect, test } from "./fixtures";
 // page (fake-stripe.ts). One credit is one cent, so $7 buys 700.
 const TOP_UP_DOLLARS = 7;
 const TOP_UP = TOP_UP_DOLLARS * 100;
-const CREDITS_PATH = "/api/proxy/api/credits";
-const HISTORY_PATH = "/api/proxy/api/credits/transactions";
+const CREDITS_PATH = "/api/proxy/api/internal/credits";
+const HISTORY_PATH = "/api/proxy/api/internal/credits/transactions";
 // Page time the second test runs. The page's backup read comes 10 s after its
 // fulfil call (LATE_WEBHOOK_MS in useTopupCheckoutReturn.ts), and the clock is
 // paused before that call answers, so the backup is armed on page time the

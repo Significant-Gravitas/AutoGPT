@@ -58,7 +58,7 @@ const AGENT = "9c1f6a52-3c0e-4b7e-9d0a-6f1e2b3c4d5e";
 
 function failWith(status: number, detail: string) {
   server.use(
-    http.get("*/api/library/agents/:id", () =>
+    http.get("*/api/internal/library/agents/:id", () =>
       HttpResponse.json({ detail }, { status }),
     ),
   );
@@ -73,7 +73,7 @@ describe("a request that fails while rendering on the server", () => {
     await Sentry.flush(2000);
 
     const line =
-      "Request failed on server: GET /api/library/agents/{id} 502: Backend sent no response within 30000ms";
+      "Request failed on server: GET /api/internal/library/agents/{id} 502: Backend sent no response within 30000ms";
     expect(consoleError).toHaveBeenCalledExactlyOnceWith(line);
     const crumbs = sent[0].breadcrumbs?.filter((b) => b.category === "console");
     expect(crumbs?.map((b) => b.message)).toContain(line);
@@ -88,7 +88,7 @@ describe("a request that fails while rendering on the server", () => {
 
     expect(consoleError).not.toHaveBeenCalled();
     expect(consoleInfo).toHaveBeenCalledWith(
-      "Request failed on server: GET /api/library/agents/{id} 404: Library agent not found",
+      "Request failed on server: GET /api/internal/library/agents/{id} 404: Library agent not found",
     );
   });
 });
@@ -148,11 +148,11 @@ describe("a read whose backend connection drops while rendering on the server", 
 
     expect(response.status).toBe(200);
     expect(backend.requests).toEqual([
-      `GET /api/library/agents/${AGENT}`,
-      `GET /api/library/agents/${AGENT}`,
+      `GET /api/internal/library/agents/${AGENT}`,
+      `GET /api/internal/library/agents/${AGENT}`,
     ]);
     expect(consoleInfo).toHaveBeenCalledExactlyOnceWith(
-      "Retried GET /api/library/agents/{id} after a dropped connection (UND_ERR_SOCKET): 200",
+      "Retried GET /api/internal/library/agents/{id} after a dropped connection (UND_ERR_SOCKET): 200",
     );
     expect(consoleError).not.toHaveBeenCalled();
   });

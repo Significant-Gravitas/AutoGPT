@@ -19,7 +19,7 @@ function makeArtifact(
     id,
     title,
     mimeType: "text/plain",
-    sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
+    sourceUrl: `/api/proxy/api/internal/workspace/files/${id}/download`,
     origin,
   };
 }
@@ -117,7 +117,7 @@ describe("registerArtifactForAutoOpen", () => {
       id: A_ID,
       title: "File " + A_ID.slice(0, 8),
       mimeType: null,
-      sourceUrl: `/api/proxy/api/workspace/files/${A_ID}/download`,
+      sourceUrl: `/api/proxy/api/internal/workspace/files/${A_ID}/download`,
       origin: "agent",
     };
     // First registration tracks the ID but doesn't open the panel.
@@ -132,7 +132,7 @@ describe("registerArtifactForAutoOpen", () => {
       id: A_ID,
       title: "plan.md",
       mimeType: "text/markdown",
-      sourceUrl: `/api/proxy/api/workspace/files/${A_ID}/download`,
+      sourceUrl: `/api/proxy/api/internal/workspace/files/${A_ID}/download`,
       origin: "agent",
     };
     useCopilotUIStore.getState().registerArtifactForAutoOpen(richRef);

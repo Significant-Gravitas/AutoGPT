@@ -241,7 +241,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         const { hold, release } = createStreamHold(3);
         const expertId = "ec7e193e-a845-4acf-b273-ec736ea8ad36";
         server.use(
-          http.get("*/api/experts/identities", () =>
+          http.get("*/api/internal/experts/identities", () =>
             HttpResponse.json([
               {
                 id: expertId,
@@ -472,7 +472,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           ],
         }),
         http.get(
-          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
           ({ request }) => {
             resumeRequested();
             return streamSseResponse(
@@ -502,28 +502,31 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         });
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         server.use(
-          http.get("/api/proxy/api/chat/sessions/:sessionId", async () => {
-            sessionRequested();
-            await sessionReleased;
-            return HttpResponse.json({
-              id: TEST_SESSION_ID,
-              created_at: "2026-05-13T00:00:00Z",
-              updated_at: "2026-05-13T00:00:00Z",
-              user_id: "test-user",
-              chat_status: "running",
-              messages: [],
-              has_more_messages: false,
-              oldest_sequence: null,
-              active_stream: {
-                turn_id: "continuation-turn",
-                last_message_id: "msg-1",
-                started_at: "2026-05-13T00:00:00Z",
-              },
-              metadata: { dry_run: false, builder_graph_id: null },
-              expert_id: null,
-              background_pending: false,
-            });
-          }),
+          http.get(
+            "/api/proxy/api/internal/chat/sessions/:sessionId",
+            async () => {
+              sessionRequested();
+              await sessionReleased;
+              return HttpResponse.json({
+                id: TEST_SESSION_ID,
+                created_at: "2026-05-13T00:00:00Z",
+                updated_at: "2026-05-13T00:00:00Z",
+                user_id: "test-user",
+                chat_status: "running",
+                messages: [],
+                has_more_messages: false,
+                oldest_sequence: null,
+                active_stream: {
+                  turn_id: "continuation-turn",
+                  last_message_id: "msg-1",
+                  started_at: "2026-05-13T00:00:00Z",
+                },
+                metadata: { dry_run: false, builder_graph_id: null },
+                expert_id: null,
+                background_pending: false,
+              });
+            },
+          ),
         );
         await act(async () => initial.release());
         await advance(500);
@@ -583,7 +586,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           hold,
         }),
         http.post(
-          `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
+          `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
           queued,
         ),
       );
@@ -827,7 +830,7 @@ describe("on the AI SDK path", () => {
     const posts = vi.fn();
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         ({ request }) => {
           posts();
           return streamSseResponse(assistantTextChunks("Another reply."), {

@@ -14,7 +14,7 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-RELAY_PATH = "/api/anthropic-relay"
+RELAY_PATH = "/api/internal/anthropic-relay"
 RELAY_UNREACHABLE = (
     "Claude Code reaches Anthropic through this AutoGPT server, so the server "
     "must be reachable from E2B's cloud: set PLATFORM_BASE_URL to its public "

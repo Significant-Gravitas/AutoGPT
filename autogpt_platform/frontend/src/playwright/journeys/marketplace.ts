@@ -111,7 +111,9 @@ export function newListing(): Listing {
 }
 
 export async function readProfile(page: Page) {
-  const response = await page.request.get("/api/proxy/api/store/profile");
+  const response = await page.request.get(
+    "/api/proxy/api/internal/store/profile",
+  );
   expect(response.ok(), `reading the profile: ${response.status()}`).toBe(true);
   return (await response.json()) as { username: string; name: string };
 }
@@ -121,7 +123,7 @@ export async function createAgent(
   arithmetic: Arithmetic,
 ): Promise<Agent> {
   const name = createUniqueAgentName("Journey marketplace");
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "upload", graph: agentGraph(name, arithmetic) },
   });
   expect(response.ok(), `creating the agent: ${response.status()}`).toBe(true);
@@ -136,7 +138,7 @@ export async function saveVersion(
   arithmetic: Arithmetic,
 ): Promise<Agent> {
   const response = await page.request.put(
-    `/api/proxy/api/graphs/${agent.graphID}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}`,
     { data: { id: agent.graphID, ...agentGraph(agent.name, arithmetic) } },
   );
   expect(response.ok(), `saving the edit: ${response.status()}`).toBe(true);
@@ -264,18 +266,21 @@ export async function submitDirectly(
   listing: Listing,
   changesSummary?: string,
 ): Promise<Submission> {
-  const response = await page.request.post("/api/proxy/api/store/submissions", {
-    data: {
-      graph_id: agent.graphID,
-      graph_version: agent.version,
-      name: listing.title,
-      slug: listing.slug,
-      sub_heading: listing.tagline,
-      description: listing.description,
-      categories: ["operations"],
-      changes_summary: changesSummary,
+  const response = await page.request.post(
+    "/api/proxy/api/internal/store/submissions",
+    {
+      data: {
+        graph_id: agent.graphID,
+        graph_version: agent.version,
+        name: listing.title,
+        slug: listing.slug,
+        sub_heading: listing.tagline,
+        description: listing.description,
+        categories: ["operations"],
+        changes_summary: changesSummary,
+      },
     },
-  });
+  );
   expect(response.ok(), `submitting for review: ${response.status()}`).toBe(
     true,
   );
@@ -359,7 +364,7 @@ export async function submitReview(admin: Page, decide: Locator) {
 // through the page.
 export async function approveDirectly(admin: Page, submission: Submission) {
   const response = await admin.request.post(
-    `/api/proxy/api/store/admin/submissions/${submission.listing_version_id}/review`,
+    `/api/proxy/api/internal/store/admin/submissions/${submission.listing_version_id}/review`,
     {
       data: {
         store_listing_version_id: submission.listing_version_id,
@@ -376,7 +381,7 @@ export async function readAdminListing(
   listing: Listing,
 ): Promise<AdminListing> {
   const response = await admin.request.get(
-    "/api/proxy/api/store/admin/listings",
+    "/api/proxy/api/internal/store/admin/listings",
     { params: { search: listing.title } },
   );
   expect(
@@ -392,7 +397,9 @@ export async function readAdminListing(
 }
 
 export async function readMySubmissions(page: Page) {
-  const response = await page.request.get("/api/proxy/api/store/submissions");
+  const response = await page.request.get(
+    "/api/proxy/api/internal/store/submissions",
+  );
   expect(
     response.ok(),
     `reading the creator's submissions: ${response.status()}`,
@@ -409,7 +416,7 @@ export async function readStoreAgent(
   slug: string,
 ) {
   const response = await page.request.get(
-    `/api/proxy/api/store/agents/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
+    `/api/proxy/api/internal/store/agents/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
   );
   expect(response.ok(), `reading the listing: ${response.status()}`).toBe(true);
   return (await response.json()) as { store_listing_version_id: string };
@@ -585,7 +592,7 @@ async function waitForRun(page: Page, graphID: string, runID: string) {
 
 async function readRun(page: Page, graphID: string, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;
@@ -598,14 +605,16 @@ function escapeRegex(text: string) {
 function isMediaUpload(response: Response) {
   return (
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith("/api/store/submissions/media")
+    new URL(response.url()).pathname.endsWith(
+      "/api/internal/store/submissions/media",
+    )
   );
 }
 
 function isSubmissionCreate(response: Response) {
   return (
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith("/api/store/submissions")
+    new URL(response.url()).pathname.endsWith("/api/internal/store/submissions")
   );
 }
 
@@ -614,7 +623,7 @@ function isStoreSearch(term: string) {
     const url = new URL(response.url());
     return (
       response.request().method() === "GET" &&
-      url.pathname.endsWith("/api/store/agents") &&
+      url.pathname.endsWith("/api/internal/store/agents") &&
       url.searchParams.get("search_query") === term
     );
   };
@@ -623,7 +632,7 @@ function isStoreSearch(term: string) {
 function isLibraryAdd(response: Response) {
   return (
     response.request().method() === "POST" &&
-    new URL(response.url()).pathname.endsWith("/api/library/agents")
+    new URL(response.url()).pathname.endsWith("/api/internal/library/agents")
   );
 }
 
@@ -631,6 +640,6 @@ function isRunStart(graphID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${graphID}/execute/`,
+      `/api/internal/graphs/${graphID}/execute/`,
     );
 }

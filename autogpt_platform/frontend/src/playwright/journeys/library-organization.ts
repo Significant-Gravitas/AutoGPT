@@ -83,13 +83,13 @@ export async function createWorkflows(
 }
 
 async function createWorkflow(page: Page, name: string): Promise<Workflow> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "upload", graph: echoGraph(name) },
   });
   expect(response.ok(), `creating ${name}: ${response.status()}`).toBe(true);
   const graph = (await response.json()) as { id: string; version: number };
   const entry = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graph.id}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graph.id}`,
   );
   expect(entry.ok(), `reading ${name}'s Library entry`).toBe(true);
   return {
@@ -148,14 +148,17 @@ export async function createFolder(
     parentID?: string;
   },
 ) {
-  const response = await page.request.post("/api/proxy/api/library/folders", {
-    data: {
-      name: folder.name,
-      color: FOLDER_COLOR[folder.color],
-      icon: folder.icon,
-      parent_id: folder.parentID ?? null,
+  const response = await page.request.post(
+    "/api/proxy/api/internal/library/folders",
+    {
+      data: {
+        name: folder.name,
+        color: FOLDER_COLOR[folder.color],
+        icon: folder.icon,
+        parent_id: folder.parentID ?? null,
+      },
     },
-  });
+  );
   expect(
     response.status(),
     `creating the folder ${folder.name}: ${await response.text()}`,
@@ -171,7 +174,7 @@ export async function moveWorkflows(
 ) {
   for (const workflow of workflows) {
     const response = await page.request.post(
-      "/api/proxy/api/library/folders/agents/bulk-move",
+      "/api/proxy/api/internal/library/folders/agents/bulk-move",
       { data: { agent_ids: [workflow.libraryAgentID], folder_id: folderID } },
     );
     expect(response.ok(), `moving ${workflow.name}: ${response.status()}`).toBe(
@@ -183,7 +186,7 @@ export async function moveWorkflows(
 /** Runs the workflow to its end: a run is what the Last Run sort orders by. */
 export async function runToEnd(page: Page, workflow: Workflow) {
   const started = await page.request.post(
-    `/api/proxy/api/graphs/${workflow.graphID}/execute/${workflow.graphVersion}`,
+    `/api/proxy/api/internal/graphs/${workflow.graphID}/execute/${workflow.graphVersion}`,
     { data: { inputs: { note: workflow.name }, credentials_inputs: {} } },
   );
   expect(started.ok(), `running ${workflow.name}: ${started.status()}`).toBe(
@@ -194,7 +197,7 @@ export async function runToEnd(page: Page, workflow: Workflow) {
     .poll(
       async () => {
         const run = await page.request.get(
-          `/api/proxy/api/graphs/${workflow.graphID}/executions/${id}`,
+          `/api/proxy/api/internal/graphs/${workflow.graphID}/executions/${id}`,
         );
         return ((await run.json()) as { status: string }).status;
       },
@@ -205,7 +208,7 @@ export async function runToEnd(page: Page, workflow: Workflow) {
 
 export async function readEntry(page: Page, workflow: Workflow) {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/${workflow.libraryAgentID}`,
+    `/api/proxy/api/internal/library/agents/${workflow.libraryAgentID}`,
   );
   expect(response.ok(), `reading ${workflow.name}: ${response.status()}`).toBe(
     true,
@@ -214,9 +217,12 @@ export async function readEntry(page: Page, workflow: Workflow) {
 }
 
 export async function readFolders(page: Page, parentID?: string) {
-  const response = await page.request.get("/api/proxy/api/library/folders", {
-    params: parentID ? { parent_id: parentID } : {},
-  });
+  const response = await page.request.get(
+    "/api/proxy/api/internal/library/folders",
+    {
+      params: parentID ? { parent_id: parentID } : {},
+    },
+  );
   expect(response.ok(), `listing folders: ${response.status()}`).toBe(true);
   return ((await response.json()) as { folders: Folder[] }).folders;
 }
@@ -224,7 +230,7 @@ export async function readFolders(page: Page, parentID?: string) {
 /** The folder's status code and, when it is found, the folder. */
 export async function readFolder(page: Page, folderID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/folders/${folderID}`,
+    `/api/proxy/api/internal/library/folders/${folderID}`,
   );
   return {
     status: response.status(),
@@ -342,7 +348,9 @@ export async function createFolderInDialog(
   await dialog.getByRole("textbox", { name: "Folder name" }).fill(folder.name);
   await pickColor(page, dialog, folder.color);
   const icon = await pickIcon(dialog, 0);
-  const created = page.waitForResponse(isCall("POST", "/api/library/folders"));
+  const created = page.waitForResponse(
+    isCall("POST", "/api/internal/library/folders"),
+  );
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
   const response = await created;
   expect(response.status(), "creating the folder").toBe(201);
@@ -372,7 +380,7 @@ export async function editFolderInDialog(
   await pickColor(page, dialog, edit.color);
   const icon = await pickIcon(dialog, 1);
   const saved = page.waitForResponse(
-    isCall("PATCH", `/api/library/folders/${folder.id}`),
+    isCall("PATCH", `/api/internal/library/folders/${folder.id}`),
   );
   await dialog.getByRole("button", { name: "Save Changes" }).click();
   const response = await saved;
@@ -421,7 +429,7 @@ export async function deleteFolderInDialog(page: Page, folder: Folder) {
     "Workflows inside this folder will be moved back to your library.",
   );
   const deleted = page.waitForResponse(
-    isCall("DELETE", `/api/library/folders/${folder.id}`),
+    isCall("DELETE", `/api/internal/library/folders/${folder.id}`),
   );
   await dialog.getByRole("button", { name: "Delete Folder" }).click();
   expect((await deleted).status(), "deleting the folder").toBe(204);
@@ -438,7 +446,7 @@ export async function moveInDialog(
   await openMoveDialog(page, workflow);
   const dialog = moveDialog(page);
   const moved = page.waitForResponse(
-    isCall("POST", "/api/library/folders/agents/bulk-move"),
+    isCall("POST", "/api/internal/library/folders/agents/bulk-move"),
   );
   await dialog.getByRole("button").filter({ hasText: folder.name }).click();
   await expectMoved(await moved, workflow, folder.id);
@@ -459,7 +467,7 @@ export function moveDialog(page: Page) {
 export async function removeFromFolder(page: Page, workflow: Workflow) {
   await openCardMenu(page, workflow);
   const moved = page.waitForResponse(
-    isCall("POST", "/api/library/folders/agents/bulk-move"),
+    isCall("POST", "/api/internal/library/folders/agents/bulk-move"),
   );
   await page.getByRole("menuitem", { name: "Remove from folder" }).click();
   await expectMoved(await moved, workflow, null);
@@ -518,7 +526,7 @@ export async function setFavorite(
   // The heart shows on hover until the workflow is a favorite.
   await card.hover();
   const saved = page.waitForResponse(
-    isCall("PATCH", `/api/library/agents/${workflow.libraryAgentID}`),
+    isCall("PATCH", `/api/internal/library/agents/${workflow.libraryAgentID}`),
   );
   await card
     .getByRole("button", {
@@ -532,7 +540,7 @@ export async function setFavorite(
 
 export async function readFavoritesCount(page: Page) {
   const response = await page.request.get(
-    "/api/proxy/api/library/agents/favorites",
+    "/api/proxy/api/internal/library/agents/favorites",
   );
   expect(response.ok(), `listing favorites: ${response.status()}`).toBe(true);
   return ((await response.json()) as { pagination: { total_items: number } })
@@ -548,7 +556,7 @@ export async function search(page: Page, term: string) {
   const asked = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return (
-      url.pathname.endsWith("/api/library/agents") &&
+      url.pathname.endsWith("/api/internal/library/agents") &&
       url.searchParams.get("search_term") === term
     );
   });
@@ -583,7 +591,9 @@ export async function signOutAndBackIn(page: Page, user: JourneyUser) {
     data: {},
   });
   expect(signedOut.ok(), `signing out: ${signedOut.status()}`).toBe(true);
-  const refused = await page.request.get("/api/proxy/api/library/folders");
+  const refused = await page.request.get(
+    "/api/proxy/api/internal/library/folders",
+  );
   expect(
     refused.status(),
     "signed out, the folders should be out of reach",

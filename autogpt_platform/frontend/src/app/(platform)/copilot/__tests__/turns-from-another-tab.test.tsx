@@ -64,7 +64,7 @@ vi.mock("@/hooks/usePlatformPayment", () => ({
 }));
 
 const USER_ID = "test-user";
-const STREAM = `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`;
+const STREAM = `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`;
 const LIMA = "Reply with exactly one word: lima";
 const MIKE = "Reply with exactly one word: mike";
 const NOVEMBER = "Reply with exactly one word: november";
@@ -279,7 +279,7 @@ it(
 /** Opens this tab on the chat, with the live connection the page keeps. */
 async function openChat(live = installLiveSocket()) {
   renderHost({
-    sessionResponse: http.get("*/api/chat/sessions/:sessionId", () => {
+    sessionResponse: http.get("*/api/internal/chat/sessions/:sessionId", () => {
       reads += 1;
       if (failingReads > 0) {
         failingReads -= 1;

@@ -358,7 +358,7 @@ async function showOldRunThenReconnect(
   );
   server.use(
     http.get(
-      "/api/proxy/api/graphs/:graphId/executions/:graphExecId",
+      "/api/proxy/api/internal/graphs/:graphId/executions/:graphExecId",
       async () => {
         const read = await readOldRun();
         if (typeof read === "number") {
@@ -579,7 +579,7 @@ test("a retried refetch isn't overruled by an update from before its first attem
   serveActivity(async () => [run("run-1", AgentExecutionStatus.RUNNING)]);
   let requests = 0;
   server.use(
-    http.get("/api/proxy/api/executions", async () => {
+    http.get("/api/proxy/api/internal/executions", async () => {
       requests += 1;
       if (requests !== 2) {
         // Stopped, then resumed before the retry read it.

@@ -435,23 +435,26 @@ beforeEach(() => {
   setTabIntroSeen("build", USER_ID);
 
   server.use(
-    http.post("/api/proxy/api/graphs", async ({ request }) => {
+    http.post("/api/proxy/api/internal/graphs", async ({ request }) => {
       backend.creates++;
       const { graph } = (await request.json()) as { graph: Graph };
       const saved = saveVersion(graph);
       return typeof saved === "string"
-        ? refuse("POST", "/api/graphs", saved)
+        ? refuse("POST", "/api/internal/graphs", saved)
         : HttpResponse.json(saved);
     }),
-    http.put("/api/proxy/api/graphs/:graphID", async ({ request, params }) => {
-      const graphID = String(params.graphID);
-      const graph = (await request.json()) as Graph;
-      backend.updates.push(graph);
-      const saved = saveVersion(graph, graphID);
-      return typeof saved === "string"
-        ? refuse("PUT", `/api/graphs/${graphID}`, saved)
-        : HttpResponse.json({ graph: saved, skipped_webhook_presets: [] });
-    }),
+    http.put(
+      "/api/proxy/api/internal/graphs/:graphID",
+      async ({ request, params }) => {
+        const graphID = String(params.graphID);
+        const graph = (await request.json()) as Graph;
+        backend.updates.push(graph);
+        const saved = saveVersion(graph, graphID);
+        return typeof saved === "string"
+          ? refuse("PUT", `/api/internal/graphs/${graphID}`, saved)
+          : HttpResponse.json({ graph: saved, skipped_webhook_presets: [] });
+      },
+    ),
     getGetV1GetSpecificGraphMockHandler200(async ({ request, params }) => {
       const version = new URL(request.url).searchParams.get("version");
       await answerLoad(version ? "graph" : "latest graph");
@@ -687,7 +690,7 @@ describe("builder when fetching the open workflow again fails", () => {
   function refuseTheNextGraphFetch() {
     server.use(
       http.get(
-        `/api/proxy/api/graphs/${GRAPH_ID}`,
+        `/api/proxy/api/internal/graphs/${GRAPH_ID}`,
         () => HttpResponse.json({ detail: "Not allowed" }, { status: 403 }),
         { once: true },
       ),
@@ -829,7 +832,7 @@ describe("builder Run whose workflow never loads", () => {
   test("Run on a workflow whose blocks didn't load says so at once", async () => {
     saveVersion(SAVED_WORKFLOW);
     server.use(
-      http.get("/api/proxy/api/builder/blocks/batch", () =>
+      http.get("/api/proxy/api/internal/builder/blocks/batch", () =>
         HttpResponse.json(
           { detail: "Blocks are unavailable" },
           { status: 500 },
@@ -914,7 +917,7 @@ describe("builder Run while the workflow it names is still loading", () => {
   test("Run on a workflow whose graph request fails says so at once", async () => {
     saveVersion(SAVED_WORKFLOW);
     server.use(
-      http.get(`/api/proxy/api/graphs/${GRAPH_ID}`, async () => {
+      http.get(`/api/proxy/api/internal/graphs/${GRAPH_ID}`, async () => {
         await answerLoad("graph");
         return HttpResponse.json(
           { detail: `Workflow #${GRAPH_ID} not found` },
@@ -1026,7 +1029,7 @@ describe("builder Run while the version it waits for changes", () => {
     saveVersion(SAVED_WORKFLOW);
     let blockFailures = 1;
     server.use(
-      http.get("/api/proxy/api/builder/blocks/batch", () =>
+      http.get("/api/proxy/api/internal/builder/blocks/batch", () =>
         blockFailures-- > 0
           ? HttpResponse.json(
               { detail: "Blocks are unavailable" },

@@ -39,7 +39,7 @@ vi.mock("../TTSButton", () => ({
 
 const SESSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const SAVED_MESSAGE_ID = `${SESSION_ID}-seq-7`;
-const FEEDBACK_URL = `/api/proxy/api/chat/sessions/${SESSION_ID}/feedback`;
+const FEEDBACK_URL = `/api/proxy/api/internal/chat/sessions/${SESSION_ID}/feedback`;
 
 function reply(
   id = SAVED_MESSAGE_ID,

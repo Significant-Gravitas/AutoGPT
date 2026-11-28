@@ -328,15 +328,15 @@ function mockWorkflow({
         recommended_schedule_cron: null,
       }),
     ),
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json(
         providers.map((name) => ({ name, description: `${name} provider` })),
       ),
     ),
-    http.get("*/api/integrations/providers/system", () =>
+    http.get("*/api/internal/integrations/providers/system", () =>
       HttpResponse.json(systemProviders),
     ),
-    http.get("*/api/integrations/credentials", () =>
+    http.get("*/api/internal/integrations/credentials", () =>
       HttpResponse.json(savedCredentials),
     ),
     getGetV1ListGraphExecutionsMockHandler({
@@ -641,7 +641,7 @@ test("a key added from the run form is the one the run uses", async () => {
   });
   server.use(
     http.post(
-      "*/api/integrations/firecrawl/credentials",
+      "*/api/internal/integrations/firecrawl/credentials",
       async ({ request }) => {
         const { title } = (await request.json()) as { title: string };
         const created = { ...USER_KEY, id: "new-firecrawl-key", title };
@@ -1185,20 +1185,23 @@ function refusePlatformKeyOnSchedules() {
   const accepted: Array<{ credentials?: unknown }> = [];
   const refused: Array<{ credentials?: unknown }> = [];
   server.use(
-    http.post("*/api/graphs/:graphId/schedules", async ({ request }) => {
-      const body = (await request.json()) as { credentials?: unknown };
-      if (keyIn(body.credentials) === PLATFORM_KEY.id) {
-        refused.push(body);
-        return HttpResponse.json({ detail: REFUSED }, { status: 400 });
-      }
-      accepted.push(body);
-      return HttpResponse.json(
-        getPostV1CreateExecutionScheduleResponseMock({
-          id: "new-schedule",
-          graph_id: "graph-1",
-        }),
-      );
-    }),
+    http.post(
+      "*/api/internal/graphs/:graphId/schedules",
+      async ({ request }) => {
+        const body = (await request.json()) as { credentials?: unknown };
+        if (keyIn(body.credentials) === PLATFORM_KEY.id) {
+          refused.push(body);
+          return HttpResponse.json({ detail: REFUSED }, { status: 400 });
+        }
+        accepted.push(body);
+        return HttpResponse.json(
+          getPostV1CreateExecutionScheduleResponseMock({
+            id: "new-schedule",
+            graph_id: "graph-1",
+          }),
+        );
+      },
+    ),
   );
   return { accepted, refused };
 }

@@ -277,7 +277,7 @@ test.describe("route crawl journey", () => {
               {
                 status: 404,
                 method: "GET",
-                url: `/api/platform-linking/tokens/${UNKNOWN_LINK_TOKEN}/info`,
+                url: `/api/internal/platform-linking/tokens/${UNKNOWN_LINK_TOKEN}/info`,
               },
             ],
           },
@@ -549,7 +549,9 @@ function whyNotServed(route: string, paymentsOn: boolean) {
  * crawl leaves out a page that is there.
  */
 async function takesPayments(page: Page) {
-  const response = await page.request.get("/api/proxy/api/platform-config");
+  const response = await page.request.get(
+    "/api/proxy/api/internal/platform-config",
+  );
   expect(
     response.ok(),
     `reading the stack's platform config: ${response.status()}`,

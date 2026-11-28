@@ -76,11 +76,15 @@ const workConnection = {
 
 function mockMicrosoftConnection(credentials: unknown[]) {
   server.use(
-    http.get("*/api/integrations/providers", () => HttpResponse.json([])),
-    http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-      HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    http.get("*/api/internal/integrations/providers", () =>
+      HttpResponse.json([]),
     ),
-    http.post("*/api/integrations/microsoft/check", () =>
+    http.get(
+      "*/api/internal/integrations/:provider/credentials",
+      ({ params }) =>
+        HttpResponse.json(params.provider === "microsoft" ? credentials : []),
+    ),
+    http.post("*/api/internal/integrations/microsoft/check", () =>
       HttpResponse.json({
         verified: true,
         account_type: "work",

@@ -101,11 +101,13 @@ async function callTheApi(user: BurstUser, problems: string[]) {
   const statuses = await Promise.all(
     Array.from({ length: REQUESTS_PER_USER }, () =>
       user.page.request
-        .get("/api/proxy/api/library/agents?page_size=1")
+        .get("/api/proxy/api/internal/library/agents?page_size=1")
         .then((response) => response.status()),
     ),
   );
   for (const status of statuses.filter((status) => status !== 200)) {
-    problems.push(`${user.email}: GET /api/library/agents answered ${status}`);
+    problems.push(
+      `${user.email}: GET /api/internal/library/agents answered ${status}`,
+    );
   }
 }

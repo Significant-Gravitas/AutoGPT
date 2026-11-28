@@ -9,7 +9,7 @@ const SCHEDULES_UNAVAILABLE =
   "Schedules are temporarily unavailable — your schedules are safe and will run once it's back.";
 // The schedule lists a restarting scheduler answers 503.
 const SCHEDULE_READS =
-  /\/api\/proxy\/api\/(schedules(\/followups)?|graphs\/[^/]+\/schedules)(\?.*)?$/;
+  /\/api\/proxy\/api\/internal\/(schedules(\/followups)?|graphs\/[^/]+\/schedules)(\?.*)?$/;
 // Marks the 503s this journey fakes, so a real one still fails it.
 const INJECTED = { name: "x-journey-injected", value: "scheduler-outage" };
 
@@ -102,7 +102,7 @@ test.describe("schedules journey", () => {
     await page.reload();
     await expect(page.getByText("Evening report")).toHaveCount(0);
     const runs = await page.request.get(
-      `/api/proxy/api/graphs/${graphId}/executions`,
+      `/api/proxy/api/internal/graphs/${graphId}/executions`,
     );
     expect(await runs.json()).toMatchObject({ executions: [] });
   });
@@ -119,7 +119,7 @@ test.describe("schedules journey", () => {
       createUniqueAgentName("Journey firing schedule"),
     );
     const response = await page.request.post(
-      `/api/proxy/api/graphs/${graphId}/schedules`,
+      `/api/proxy/api/internal/graphs/${graphId}/schedules`,
       {
         data: {
           name: "Every minute",
@@ -177,7 +177,7 @@ async function whileSchedulerIsOut(page: Page, check: () => Promise<void>) {
           headers: { "Retry-After": "15", [INJECTED.name]: INJECTED.value },
           contentType: "application/json",
           body: JSON.stringify({
-            message: "Failed to process GET /api/schedules",
+            message: "Failed to process GET /api/internal/schedules",
             detail:
               "Schedules are temporarily unavailable. Try again in a moment.",
             hint: "Retry in 15 seconds.",
@@ -213,7 +213,7 @@ async function selectOption(
 
 async function listSchedules(page: Page, graphId: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/schedules`,
+    `/api/proxy/api/internal/graphs/${graphId}/schedules`,
   );
   expect(response.ok(), `listing schedules: ${response.status()}`).toBe(true);
   return (await response.json()) as Schedule[];
@@ -228,7 +228,7 @@ const RUN_SETTLED = /^(COMPLETED|FAILED|TERMINATED|REVIEW)$/;
 // newest first, so that is its last entry.
 async function firstRunId(page: Page, graphId: string): Promise<string> {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/executions`,
+    `/api/proxy/api/internal/graphs/${graphId}/executions`,
   );
   expect(response.ok(), `listing runs: ${response.status()}`).toBe(true);
   const { executions } = (await response.json()) as {
@@ -243,7 +243,7 @@ async function runStatus(
   runId: string,
 ): Promise<string> {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/executions/${runId}`,
+    `/api/proxy/api/internal/graphs/${graphId}/executions/${runId}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return ((await response.json()) as { status: string }).status;
@@ -254,7 +254,7 @@ async function deleteSchedule(
   scheduleId: string,
   { soft = false } = {},
 ) {
-  const url = `/api/proxy/api/schedules/${scheduleId}`;
+  const url = `/api/proxy/api/internal/schedules/${scheduleId}`;
   if (!soft) {
     const response = await page.request.delete(url);
     expect(
@@ -301,14 +301,14 @@ function expectWeekdayAt(schedule: Schedule, hour: number, minute: number) {
 
 async function setTimezone(page: Page) {
   const response = await page.request.post(
-    "/api/proxy/api/auth/user/timezone",
+    "/api/proxy/api/internal/auth/user/timezone",
     { data: { timezone: TIMEZONE } },
   );
   expect(response.ok(), "setting the user's timezone failed").toBe(true);
 }
 
 async function createAgent(page: Page, name: string): Promise<string> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: {
       source: "upload",
       graph: {

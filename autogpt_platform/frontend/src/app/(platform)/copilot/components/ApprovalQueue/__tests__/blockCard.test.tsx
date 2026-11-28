@@ -8,10 +8,10 @@ import { mail, CHAT_SESSION } from "./fixtures";
 
 function serve(schemaCalls: string[]) {
   server.use(
-    http.get(`*/api/review/session/${CHAT_SESSION}`, () =>
+    http.get(`*/api/internal/review/session/${CHAT_SESSION}`, () =>
       HttpResponse.json([mail()]),
     ),
-    http.get("*/api/builder/blocks/batch", ({ request }) => {
+    http.get("*/api/internal/builder/blocks/batch", ({ request }) => {
       schemaCalls.push(new URL(request.url).search);
       return HttpResponse.json([
         {

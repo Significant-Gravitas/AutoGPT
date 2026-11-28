@@ -82,7 +82,9 @@ const googleCredential = {
 const userSkills: Array<{ name: string; description: string }> = [];
 
 function userSkillsHandler() {
-  return http.get("/api/proxy/api/skills", () => HttpResponse.json(userSkills));
+  return http.get("/api/proxy/api/internal/skills", () =>
+    HttpResponse.json(userSkills),
+  );
 }
 
 function renderPage(credentials: CredentialsMetaResponse[]) {
@@ -211,7 +213,7 @@ describe("Marketplace skill page", () => {
       },
     );
     server.use(
-      http.get("/api/proxy/api/skills", () =>
+      http.get("/api/proxy/api/internal/skills", () =>
         HttpResponse.json([
           { name: "outreach-playbook", description: "Installed copy" },
         ]),
@@ -238,7 +240,7 @@ describe("Marketplace skill page", () => {
       },
     );
     server.use(
-      http.get("/api/proxy/api/skills", () =>
+      http.get("/api/proxy/api/internal/skills", () =>
         HttpResponse.json([
           { name: "outreach-playbook", description: "Installed copy" },
         ]),

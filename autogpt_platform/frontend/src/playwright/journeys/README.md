@@ -18,7 +18,9 @@ product does what the user expects.
     A journey that provokes an error on purpose declares it:
     ```ts
     test.use({
-      expectedResponses: [{ status: 401, url: "/api/proxy/api/auth/user" }],
+      expectedResponses: [
+        { status: 401, url: "/api/proxy/api/internal/auth/user" },
+      ],
     });
     ```
     App-wide noise that is reviewed and harmless goes in `KNOWN_BENIGN` in

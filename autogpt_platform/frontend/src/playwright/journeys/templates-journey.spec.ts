@@ -320,7 +320,7 @@ function link(source: string, output: string, sink: string, input: string) {
 
 async function createReplyAgent(page: Page): Promise<Agent> {
   const name = createUniqueAgentName("Journey template");
-  const response = await page.request.post("/api/proxy/api/graphs", {
+  const response = await page.request.post("/api/proxy/api/internal/graphs", {
     data: { source: "upload", graph: replyGraph(name, ORIGINAL_REPLY) },
   });
   expect(response.ok(), `creating the agent: ${response.status()}`).toBe(true);
@@ -337,7 +337,7 @@ async function createReplyAgent(page: Page): Promise<Agent> {
 // the Library agent moves to.
 async function saveEditedVersion(page: Page, agent: Agent) {
   const response = await page.request.put(
-    `/api/proxy/api/graphs/${agent.graphID}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}`,
     { data: { id: agent.graphID, ...replyGraph(agent.name, EDITED_REPLY) } },
   );
   expect(
@@ -350,7 +350,7 @@ async function saveEditedVersion(page: Page, agent: Agent) {
 
 async function readLibraryAgent(page: Page, graphID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/agents/by-graph/${graphID}`,
+    `/api/proxy/api/internal/library/agents/by-graph/${graphID}`,
   );
   expect(response.ok(), `reading the Library agent: ${response.status()}`).toBe(
     true,
@@ -406,7 +406,7 @@ async function startTaskFromRunDialog(page: Page, agent: Agent, note: string) {
 
 async function startRun(page: Page, agent: Agent, note: string) {
   const response = await page.request.post(
-    `/api/proxy/api/graphs/${agent.graphID}/execute/${agent.graphVersion}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/execute/${agent.graphVersion}`,
     { data: { inputs: { note }, credentials_inputs: {} } },
   );
   return startedRunID(response);
@@ -429,7 +429,7 @@ async function waitForRunToEnd(page: Page, agent: Agent, runID: string) {
 
 async function readRun(page: Page, agent: Agent, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${agent.graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/executions/${runID}`,
   );
   expect(response.ok(), `reading the run: ${response.status()}`).toBe(true);
   return (await response.json()) as Run;
@@ -437,7 +437,7 @@ async function readRun(page: Page, agent: Agent, runID: string) {
 
 async function listRunIDs(page: Page, agent: Agent) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${agent.graphID}/executions`,
+    `/api/proxy/api/internal/graphs/${agent.graphID}/executions`,
   );
   expect(response.ok(), `listing the runs: ${response.status()}`).toBe(true);
   const { executions } = (await response.json()) as {
@@ -471,7 +471,7 @@ async function saveRunAsTemplate(page: Page, runID: string, name: string) {
     .getByRole("textbox", { name: "Description", exact: true })
     .fill(TEMPLATE_DESCRIPTION);
   const created = page.waitForResponse(
-    isPresetCall("POST", "/api/library/presets"),
+    isPresetCall("POST", "/api/internal/library/presets"),
   );
   await dialog.getByRole("button", { name: "Create Template" }).click();
   const response = await created;
@@ -488,20 +488,23 @@ async function saveRunAsTemplate(page: Page, runID: string, name: string) {
 }
 
 async function createTemplate(page: Page, runID: string, name: string) {
-  const response = await page.request.post("/api/proxy/api/library/presets", {
-    data: {
-      name,
-      description: TEMPLATE_DESCRIPTION,
-      graph_execution_id: runID,
+  const response = await page.request.post(
+    "/api/proxy/api/internal/library/presets",
+    {
+      data: {
+        name,
+        description: TEMPLATE_DESCRIPTION,
+        graph_execution_id: runID,
+      },
     },
-  });
+  );
   expect(response.ok(), `saving the template: ${response.status()}`).toBe(true);
   return (await response.json()) as Template;
 }
 
 async function readTemplate(page: Page, templateID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/library/presets/${templateID}`,
+    `/api/proxy/api/internal/library/presets/${templateID}`,
   );
   expect(response.ok(), `reading the template: ${response.status()}`).toBe(
     true,
@@ -556,7 +559,7 @@ async function expectTemplateShows(
 
 async function saveTemplateChanges(page: Page, templateID: string) {
   const saved = page.waitForResponse(
-    isPresetCall("PATCH", `/api/library/presets/${templateID}`),
+    isPresetCall("PATCH", `/api/internal/library/presets/${templateID}`),
   );
   await page.getByRole("button", { name: "Save changes" }).click();
   const response = await saved;
@@ -573,7 +576,7 @@ async function saveTemplateChanges(page: Page, templateID: string) {
 // Starts a task from the open template, which moves the page to that task.
 async function startTaskFromTemplate(page: Page, templateID: string) {
   const started = page.waitForResponse(
-    isPresetCall("POST", `/api/library/presets/${templateID}/execute`),
+    isPresetCall("POST", `/api/internal/library/presets/${templateID}/execute`),
   );
   await page.getByRole("button", { name: "Start task from template" }).click();
   const id = await startedRunID(await started);
@@ -600,7 +603,7 @@ async function signOutAndBackIn(
   });
   expect(signedOut.ok(), `signing out: ${signedOut.status()}`).toBe(true);
   const refused = await page.request.get(
-    `/api/proxy/api/library/presets/${templateID}`,
+    `/api/proxy/api/internal/library/presets/${templateID}`,
   );
   expect(
     refused.status(),
@@ -628,7 +631,7 @@ function isRunStart(graphID: string) {
   return (response: Response) =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname.includes(
-      `/api/graphs/${graphID}/execute/`,
+      `/api/internal/graphs/${graphID}/execute/`,
     );
 }
 
