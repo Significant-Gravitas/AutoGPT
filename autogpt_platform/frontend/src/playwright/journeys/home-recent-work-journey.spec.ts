@@ -7,6 +7,7 @@ import {
   finishOttosGreeting,
   groupsListing,
   issue,
+  listSchedules,
   openHome,
   runRow,
   scheduleInLibrary,
@@ -14,6 +15,7 @@ import {
   statusOnHome,
   UNNAMED_WORKFLOW,
   waitForHomeToList,
+  type Workflow,
   workflowGroup,
 } from "./home-recent-work";
 import { pinKnownFailure } from "./known-failure";
@@ -32,13 +34,17 @@ import {
 // the real stack: the Library, the executor, the scheduler and the activity
 // log the scheduler writes.
 
-const test = journeyTest.extend<{ schedulesToDelete: string[] }>({
-  // A schedule left behind keeps firing on a long-lived stack.
-  schedulesToDelete: async ({ page }, provide) => {
-    const scheduleIDs: string[] = [];
-    await provide(scheduleIDs);
-    for (const scheduleID of scheduleIDs) {
-      await deleteSchedule(page, scheduleID, { mayBeGone: true });
+const test = journeyTest.extend<{ scheduledWorkflows: Workflow[] }>({
+  // A schedule left behind keeps firing on a long-lived stack. A test adds
+  // its workflow before scheduling it, so every schedule it has is deleted
+  // even when the test stops before it learns the schedule's id.
+  scheduledWorkflows: async ({ page }, provide) => {
+    const workflows: Workflow[] = [];
+    await provide(workflows);
+    for (const workflow of workflows) {
+      for (const schedule of await listSchedules(page, workflow)) {
+        await deleteSchedule(page, schedule.id);
+      }
     }
   },
 });
@@ -127,14 +133,14 @@ test.describe("Home recent work journey", () => {
   test(
     "a schedule made in a workflow's Library run dialog is listed on Home under that workflow, not under Otto",
     { annotation: issue(17360) },
-    async ({ page, journeyUser: _user, schedulesToDelete }, testInfo) => {
+    async ({ page, journeyUser: _user, scheduledWorkflows }, testInfo) => {
       const workflow = await createWorkflow(page, "Journey recent work");
+      scheduledWorkflows.push(workflow);
       const schedule = await scheduleInLibrary(
         page,
         workflow,
         `Journey schedule ${uniqueStamp()}`,
       );
-      schedulesToDelete.push(schedule.id);
       await waitForHomeToList(page, schedule);
 
       const card = await openHome(page);
@@ -160,14 +166,14 @@ test.describe("Home recent work journey", () => {
   test(
     "a schedule deleted in the Library is no longer listed on Home",
     { annotation: issue(17360) },
-    async ({ page, journeyUser: _user, schedulesToDelete }) => {
+    async ({ page, journeyUser: _user, scheduledWorkflows }) => {
       const workflow = await createWorkflow(page, "Journey recent work");
+      scheduledWorkflows.push(workflow);
       const schedule = await scheduleInLibrary(
         page,
         workflow,
         `Journey schedule ${uniqueStamp()}`,
       );
-      schedulesToDelete.push(schedule.id);
       // Listed first, so that it is gone afterwards means something.
       await waitForHomeToList(page, schedule);
       const before = await openHome(page);

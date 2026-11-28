@@ -127,20 +127,14 @@ export async function listSchedules(page: Page, workflow: Workflow) {
   return (await response.json()) as Schedule[];
 }
 
-/** Deletes a schedule through the API; `mayBeGone` for a cleanup that runs
- * whether or not the test deleted it first. */
-export async function deleteSchedule(
-  page: Page,
-  scheduleID: string,
-  { mayBeGone = false } = {},
-) {
+export async function deleteSchedule(page: Page, scheduleID: string) {
   const response = await page.request.delete(
     `/api/proxy/api/schedules/${scheduleID}`,
   );
-  const deleted = response.ok() || (mayBeGone && response.status() === 404);
-  expect(deleted, `deleting schedule ${scheduleID}: ${response.status()}`).toBe(
-    true,
-  );
+  expect(
+    response.ok(),
+    `deleting schedule ${scheduleID}: ${response.status()}`,
+  ).toBe(true);
 }
 
 /** Retires Otto's first greeting, as sending the first message does. Until
