@@ -1112,16 +1112,13 @@ class Requests:
                 json=json,
                 **kwargs,
             ) as response:
-                if self.raise_for_status:
-                    try:
-                        response.raise_for_status()
-                    except ClientResponseError as e:
-                        body = await _read_body(
-                            response, self.max_response_bytes, max_body_bytes
-                        )
-                        raise http_status_error(
-                            response.status, response.reason, body
-                        ) from e
+                # Checked as Response.raise_for_status checks it, not with aiohttp's,
+                # whose exception would repeat the request URL in every traceback.
+                if self.raise_for_status and response.status >= 400:
+                    body = await _read_body(
+                        response, self.max_response_bytes, max_body_bytes
+                    )
+                    raise http_status_error(response.status, response.reason, body)
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):
