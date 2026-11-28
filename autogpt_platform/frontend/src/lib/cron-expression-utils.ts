@@ -78,19 +78,19 @@ export function makeCronExpression(params: CronExpressionParams): string {
   if (frequency === "weekly") {
     const { minute, hour, days } = params;
     if (days.length === 0) return ""; // Return empty string for invalid weekly schedule
-    const weekDaysExpr = days.sort((a, b) => a - b).join(",");
+    const weekDaysExpr = days.toSorted((a, b) => a - b).join(",");
     return `${minute} ${hour} * * ${weekDaysExpr}`;
   }
   if (frequency === "monthly") {
     const { minute, hour, days } = params;
     if (days.length === 0) return ""; // Return empty string for invalid monthly schedule
-    const monthDaysExpr = days.sort((a, b) => a - b).join(",");
+    const monthDaysExpr = days.toSorted((a, b) => a - b).join(",");
     return `${minute} ${hour} ${monthDaysExpr} * *`;
   }
   if (frequency === "yearly") {
     const { minute, hour, months } = params;
     if (months.length === 0) return ""; // Return empty string for invalid yearly schedule
-    const monthList = months.sort((a, b) => a - b).join(",");
+    const monthList = months.toSorted((a, b) => a - b).join(",");
     return `${minute} ${hour} 1 ${monthList} *`;
   }
   if (frequency === "custom") {
