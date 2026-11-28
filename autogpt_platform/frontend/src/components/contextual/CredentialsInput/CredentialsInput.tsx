@@ -19,7 +19,11 @@ import { DeviceAuthCredentialsModal } from "./components/DeviceAuthCredentialsMo
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
-import { getRemovedCredentialMessage, isSystemCredential } from "./helpers";
+import {
+  getRefusedPlatformKeyMessage,
+  getRemovedCredentialMessage,
+  isSystemCredential,
+} from "./helpers";
 import {
   CredentialsInputState,
   useCredentialsInput,
@@ -95,6 +99,7 @@ export function CredentialsInput({
     systemCredentials,
     oAuthError,
     removedCredentialTitle,
+    hasRefusedPlatformKey,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
@@ -295,6 +300,20 @@ export function CredentialsInput({
                     removedCredentialTitle,
                     selectedCredential,
                     displayName,
+                  )}
+                </Text>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {hasRefusedPlatformKey && (
+            <Alert variant="warning" aria-live="polite" className="mt-2">
+              <AlertDescription>
+                <Text variant="body">
+                  {getRefusedPlatformKeyMessage(
+                    selectedCredential,
+                    displayName,
+                    userCredentials.length > 0,
                   )}
                 </Text>
               </AlertDescription>

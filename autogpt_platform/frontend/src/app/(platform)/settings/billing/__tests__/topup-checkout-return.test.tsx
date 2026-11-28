@@ -27,6 +27,10 @@ import { trialResponse } from "@/tests/integrations/trial-fixtures";
 
 import SettingsBillingPage from "../page";
 
+// The real timer, kept before a test fakes them, so stepping the page's clock
+// can still let the event loop turn.
+const realSetTimeout = globalThis.setTimeout;
+
 // Sign-in's start-up lookup, which a test holds to keep sign-in loading.
 vi.mock("@/lib/auth/actions", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/actions")>()),
@@ -215,6 +219,49 @@ describe("returning from a top-up Checkout", () => {
   });
 });
 
+describe("when the fulfil call answers before the page's first reads of the credits", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the credits from a fresh read, not the backup read 10 s later", async () => {
+    const platform = mockTopUpReturn({ slowFirstReads: true });
+    const { queryClient } = renderBillingPage();
+    await waitFor(() =>
+      expect(platform.ledger).toMatchObject({
+        fulfilCalls: 1,
+        balanceReads: 1,
+        historyReads: 2,
+      }),
+    );
+
+    await platform.answerFulfil();
+    // The page has handled the fulfil call's answer; the reads it sent
+    // earlier, holding the credits from before it, answer only now.
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    // From here only the steps below move the page's clock, never as far as
+    // the backup read, so on any runner that read can't stand in for the one
+    // the fulfil call's answer must send.
+    vi.setTimerTickMode("manual");
+    await platform.answerSlowReads();
+
+    await stepUntil(
+      () =>
+        queryBalance("$13.00") !== null &&
+        queryHistoryRow("Credits added") !== null,
+      REFRESH_BUDGET_MS,
+    );
+    const row = queryHistoryRow("Credits added")?.closest("tr");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByText("+$7.00")).toBeDefined();
+    vi.setTimerTickMode("interval");
+  });
+});
+
 describe("when Stripe's webhook adds the credits after the fulfil call", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -250,29 +297,52 @@ describe("when Stripe's webhook adds the credits after the fulfil call", () => {
 
 interface Options {
   fulfilFails?: boolean;
+  // The balance and history reads that read the ledger before the fulfil call
+  // credits it answer only when the test says, as a slow backend would.
+  slowFirstReads?: boolean;
 }
 
 // The platform's side of the top-up, for a buyer past onboarding. The page's
 // fulfil call is held until the test answers it; a successful one credits the
 // purchase, as the platform does once Stripe reports the session paid.
-function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
-  const ledger = { credited: false, balanceReads: 0, fulfilCalls: 0 };
+function mockTopUpReturn({
+  fulfilFails = false,
+  slowFirstReads = false,
+}: Options = {}) {
+  const ledger = {
+    credited: false,
+    balanceReads: 0,
+    historyReads: 0,
+    fulfilCalls: 0,
+  };
   const release = Promise.withResolvers<void>();
   const answered = Promise.withResolvers<void>();
+  const slowReads = Promise.withResolvers<void>();
   heldAnswers.push(async () => {
     release.resolve();
+    slowReads.resolve();
     if (ledger.fulfilCalls > 0) await answered.promise;
   });
+  async function waitIfSlow(credited: boolean) {
+    if (slowFirstReads && !credited) await slowReads.promise;
+  }
   server.use(
-    getGetV1GetUserCreditsMockHandler(() => {
+    getGetV1GetUserCreditsMockHandler(async () => {
       ledger.balanceReads += 1;
-      return { credits: ledger.credited ? BEFORE + TOP_UP : BEFORE };
+      const { credited } = ledger;
+      await waitIfSlow(credited);
+      return { credits: credited ? BEFORE + TOP_UP : BEFORE };
     }),
-    getGetV1GetCreditHistoryMockHandler(() => ({
-      transactions: ledger.credited ? [purchase, grant] : [grant],
-      next_transaction_time: null,
-      next_cursor: null,
-    })),
+    getGetV1GetCreditHistoryMockHandler(async () => {
+      ledger.historyReads += 1;
+      const { credited } = ledger;
+      await waitIfSlow(credited);
+      return {
+        transactions: credited ? [purchase, grant] : [grant],
+        next_transaction_time: null,
+        next_cursor: null,
+      };
+    }),
     getGetV1GetAutoTopUpMockHandler({ amount: 0, threshold: 0 }),
     getGetV1CheckIfOnboardingIsCompletedMockHandler200({ is_completed: true }),
     http.patch("*/api/credits", async () => {
@@ -294,6 +364,10 @@ function mockTopUpReturn({ fulfilFails = false }: Options = {}) {
       act(async () => {
         release.resolve();
         await answered.promise;
+      }),
+    answerSlowReads: () =>
+      act(async () => {
+        slowReads.resolve();
       }),
     creditFromWebhook: () => {
       ledger.credited = true;
@@ -367,4 +441,29 @@ function selectedTab() {
 
 function advance(ms: number) {
   return act(() => vi.advanceTimersByTimeAsync(ms));
+}
+
+// Page time a test steps through while waiting for the page, far short of the
+// hook's 10 s backup read.
+const REFRESH_BUDGET_MS = 2_000;
+const STEP_MS = 50;
+
+// Moves the page's clock a step at a time until check passes, within budgetMs.
+// Each step also lets the real event loop turn once, so work that waits on it
+// still lands when the runner is slow.
+async function stepUntil(check: () => boolean, budgetMs: number) {
+  for (let spent = 0; !check(); spent += STEP_MS) {
+    if (spent >= budgetMs) {
+      throw new Error(`Not shown within ${budgetMs} ms of page time`);
+    }
+    await advance(STEP_MS);
+    await act(() => new Promise((resolve) => realSetTimeout(resolve, 0)));
+  }
+}
+
+function queryBalance(amount: string) {
+  const card = screen
+    .queryByRole("button", { name: "Add credits" })
+    ?.closest("section");
+  return card ? within(card as HTMLElement).queryByText(amount) : null;
 }
