@@ -18,7 +18,8 @@ Supported formats:
 - **YAML** (``.yaml``, ``.yml``) — parsed via PyYAML's safe loader within size
   limits; containers only
 - **TOML** (``.toml``) — parsed via stdlib ``tomllib``
-- **Parquet** (``.parquet``) — via pandas/pyarrow → ``list[list[Any]]`` with header row
+- **Parquet** (``.parquet``) — via pandas/pyarrow in a child process with cell,
+  memory and time limits (``parquet_rows``) → ``list[list[Any]]`` with header row
 - **Excel** (``.xlsx``) — via pandas/openpyxl → ``list[list[Any]]`` with header row
   (legacy ``.xls`` is **not** supported — only the modern OOXML format)
 
@@ -47,6 +48,7 @@ import yaml
 
 from backend.util.bounded_yaml import load_bounded_yaml
 from backend.util.csv_delimiter import guess_delimiter
+from backend.util.parquet_rows import read_parquet_rows
 from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
 
 logger = logging.getLogger(__name__)
@@ -358,13 +360,6 @@ _TEXT_PARSERS: dict[str, Callable[[str], Any]] = {
 # ---------------------------------------------------------------------------
 
 
-def _parse_parquet(content: bytes) -> list[list[Any]]:
-    import pandas as pd
-
-    df = pd.read_parquet(io.BytesIO(content))
-    return _df_to_rows(df)
-
-
 def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
@@ -436,6 +431,6 @@ def _is_nan(cell: Any) -> bool:
 
 
 _BINARY_PARSERS: dict[str, Callable[[bytes], Any]] = {
-    "parquet": _parse_parquet,
+    "parquet": read_parquet_rows,
     "xlsx": _parse_xlsx,
 }
