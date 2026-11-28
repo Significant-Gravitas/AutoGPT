@@ -7,6 +7,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
+import { PROFILE_NAME_MAX_LENGTH } from "@/lib/auth/profile-field-lengths";
 import { EditNameDialog } from "../EditNameDialog";
 
 const mockToast = vi.hoisted(() => vi.fn());
@@ -177,5 +178,14 @@ describe("EditNameDialog", () => {
     fireEvent.change(input, { target: { value: "   " } });
 
     expect(getSaveButton().disabled).toBe(true);
+  });
+
+  test("takes no more of a name than the account accepts", async () => {
+    mockUpdateNameSuccess();
+    render(<EditNameDialog currentName="Alice" />);
+
+    const input = await openDialogAndGetInput();
+
+    expect(input.maxLength).toBe(PROFILE_NAME_MAX_LENGTH);
   });
 });

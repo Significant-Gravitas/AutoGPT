@@ -5,6 +5,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { PROFILE_NAME_MAX_LENGTH } from "@/lib/auth/profile-field-lengths";
 import { useState } from "react";
 import { PencilIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -88,6 +89,7 @@ export function EditNameDialog({ currentName }: Props) {
             label="Display name"
             placeholder="Your name"
             value={name}
+            maxLength={PROFILE_NAME_MAX_LENGTH}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (isKey(e, "Enter")) {
