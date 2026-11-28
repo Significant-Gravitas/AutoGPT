@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { User } from "@/lib/auth/types";
+import { getEmailChangeToast } from "@/lib/auth/email-change-toast";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -46,34 +47,25 @@ export function useAccountCard({ user }: { user: User }) {
   async function onSubmitEmail(values: EmailFormValues): Promise<boolean> {
     if (values.email === currentEmail) return false;
 
-    // Route the change only through Better Auth. A verified user approves it via
-    // a confirmation link sent to their CURRENT address (anti-takeover); an
-    // unverified user's change applies immediately. Platform User.email
+    // Route the change only through Better Auth. A verified user approves it
+    // via a confirmation link sent to their CURRENT address (anti-takeover); an
+    // unverified user's change applies immediately with email verification off,
+    // and from a link mailed to the new address with it on. Platform User.email
     // converges via the databaseHooks.user.update mirror in lib/auth/auth.ts —
     // writing it here in parallel would let it diverge to an unverified value.
     // Mirrors EmailForm.
     setIsUpdatingEmail(true);
     try {
-      await updateEmailViaAuthAPI(values.email);
+      const { user: updated } = await updateEmailViaAuthAPI(values.email);
       // Reset to the still-current address: on the verified path the row isn't
       // written until the link is clicked, so leaving the new value in the
       // field would let every further click send another email. Mirrors
       // EmailForm.
       emailForm.reset({ email: currentEmail });
-      toast(
-        user.email_verified
-          ? {
-              title: "Confirm your new email",
-              description:
-                "We sent a confirmation link to your current email address. Your email changes once you click it.",
-              variant: "success",
-            }
-          : {
-              title: "Email updated",
-              description: `Your email is now ${values.email}.`,
-              variant: "success",
-            },
-      );
+      toast({
+        ...getEmailChangeToast(user, values.email, updated?.email),
+        variant: "success",
+      });
       return true;
     } catch (err) {
       toast({

@@ -1151,11 +1151,18 @@ describe("password reset links", () => {
       await emailsSent();
       const token = lastResetToken("attacker@example.com", "reset_password");
 
-      // Applied on the spot: the account is unverified.
+      // Applied on the spot with verification off; with it on, once the new
+      // address's link is opened, as a mail scanner would.
       await api.changeEmail({
         body: { newEmail: "victim@gmail.com" },
         headers: session,
       });
+      if (requireVerification) {
+        await emailsSent();
+        await handler(
+          new Request(lastNewAddressLink("victim@gmail.com") ?? ""),
+        );
+      }
       await post(handler, "/reset-password", {
         token,
         newPassword: "the-attackers-new-password", // pragma: allowlist secret
@@ -1381,6 +1388,32 @@ describe("change-email verification emails", () => {
         newEmail: "new@example.com",
       },
       { to: "new@example.com", type: "verify_new_email", newEmail: undefined },
+    ]);
+  });
+
+  it("move an unverified account only once the new address opens its link (verification on)", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    const { handler, api } = await createAuthHandler(true, db);
+    sentEmails.length = 0;
+
+    await api.changeEmail({
+      body: { newEmail: "new@example.com", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const addressBeforeTheLink = db.UserAuthIdentity[0].email;
+    const mailed = [...sentEmails];
+    for (const { url } of mailed) await handler(new Request(url));
+    await emailsSent();
+
+    expect(db.UserAuthSession).toHaveLength(1);
+    expect(addressBeforeTheLink).toBe("old@example.com");
+    expect(mailed.map(({ to, type }) => ({ to, type }))).toEqual([
+      { to: "new@example.com", type: "verify_new_email" },
+    ]);
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ email: "new@example.com" }),
     ]);
   });
 
