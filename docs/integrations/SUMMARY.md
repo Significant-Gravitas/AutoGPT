@@ -137,6 +137,8 @@
 * [Jina Embeddings](block-integrations/jina/embeddings.md)
 * [Jina Fact Checker](block-integrations/jina/fact_checker.md)
 * [Jina Search](block-integrations/jina/search.md)
+* [Keenable Fetch](block-integrations/keenable/fetch.md)
+* [Keenable Search](block-integrations/keenable/search.md)
 * [Linear Comment](block-integrations/linear/comment.md)
 * [Linear Issues](block-integrations/linear/issues.md)
 * [Linear Projects](block-integrations/linear/projects.md)
