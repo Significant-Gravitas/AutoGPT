@@ -1,14 +1,23 @@
 import type { TableBlock } from "@/app/api/__generated__/models/tableBlock";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { getNumericColumns } from "../helpers";
 import { BlockCard } from "./BlockCard";
 
-interface Props {
-  block: TableBlock;
+export interface TableRowAction {
+  label: string;
+  onRun(rowIndex: number): void;
+  pendingRow?: number | null;
 }
 
-export function TableBlockView({ block }: Props) {
+interface Props {
+  block: TableBlock;
+  /** A button at the end of each row, as a page's row binding draws it. */
+  rowAction?: TableRowAction;
+}
+
+export function TableBlockView({ block, rowAction }: Props) {
   const numeric = getNumericColumns(block);
 
   return (
@@ -39,6 +48,11 @@ export function TableBlockView({ block }: Props) {
                   </Text>
                 </th>
               ))}
+              {rowAction ? (
+                <th scope="col" className="px-4 py-2.5">
+                  <span className="sr-only">Actions</span>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -70,6 +84,20 @@ export function TableBlockView({ block }: Props) {
                     </Text>
                   </td>
                 ))}
+                {rowAction ? (
+                  <td className="px-4 py-1.5 text-right align-middle">
+                    <Button
+                      size="small"
+                      variant="outline"
+                      loading={rowAction.pendingRow === rowIndex}
+                      disabled={rowAction.pendingRow != null}
+                      aria-label={`${rowAction.label}: ${row[0] ?? rowIndex + 1}`}
+                      onClick={() => rowAction.onRun(rowIndex)}
+                    >
+                      {rowAction.label}
+                    </Button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

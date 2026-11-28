@@ -29,6 +29,9 @@ CHECKED_IN_HANDLER = {
     "POST /api/chat/speech",
     "GET /api/integrations/codex/credentials/{credential_id}/account",
     "GET /api/integrations/codex/credentials/{credential_id}/rate-limits",
+    "GET /api/pages",
+    "GET /api/pages/pinned/{library_agent_id}",
+    "GET /api/pages/{page_id}",
     "GET /api/search/global",
 }
 
@@ -283,6 +286,8 @@ OPEN_WHILE_PAYWALLED = {
     "DELETE /api/library/agents/{library_agent_id}",
     "DELETE /api/library/folders/{folder_id}",
     "DELETE /api/library/presets/{preset_id}",
+    "DELETE /api/pages/{page_id}",
+    "DELETE /api/pages/{page_id}/sections/{index}",
     "DELETE /api/schedules/{schedule_id}",
     "POST /api/skill-learning/sources/{source_kind}/{source_ref}/exclude",
     "DELETE /api/skills/{name}",
@@ -314,6 +319,8 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/skill-learning/experts/{expert_id}/policy",
     "POST /api/skill-learning/skills/{name}/outcome",
     "POST /api/skill-learning/skills/{name}/policy",
+    "PATCH /api/pages/{page_id}",
+    "POST /api/pages/{page_id}/restore",
     "PATCH /api/workspace/files/{file_id}",
     "POST /api/workspace/folders",
     "POST /api/workspace/folders/files/bulk-move",

@@ -180,7 +180,12 @@ class UIBlocksResponse(ToolResponseBase):
 
 def render_ui_parameters() -> dict[str, Any]:
     """The input schema, flattened: this is sent to the model on every turn."""
-    schema = RenderUIInput.model_json_schema()
+    return compact_schema(RenderUIInput)
+
+
+def compact_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """*model*'s JSON schema inlined and without the limits enforced on the way in."""
+    schema = model.model_json_schema()
     definitions = schema.pop("$defs", {})
     return _compact(schema, definitions)
 

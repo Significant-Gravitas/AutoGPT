@@ -2,6 +2,7 @@ import type { ToolUIPart } from "ai";
 import { getBlockDisplayName } from "../../helpers/toolDisplay";
 import type { MessagePart } from "../ChatMessagesContainer/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { DESIGN_PAGE_PART_TYPE } from "../../tools/DesignPage/helpers";
 import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
 import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
 import { isQuestionTool } from "../QuestionDock/helpers";
@@ -215,6 +216,7 @@ export function isChainPart(part: MessagePart): boolean {
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
     part.type === RENDER_UI_PART_TYPE ||
+    part.type === DESIGN_PAGE_PART_TYPE ||
     isFeedbackCardPart(part) ||
     isExpertChangePart(part)
   ) {

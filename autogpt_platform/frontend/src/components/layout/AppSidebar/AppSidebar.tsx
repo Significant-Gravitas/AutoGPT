@@ -15,12 +15,14 @@ import {
 } from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isEditableElement } from "@/lib/platform";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   AddTeamIcon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
   Home10Icon,
+  LayoutTwoColumnIcon,
   Store01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -49,6 +51,12 @@ const MAIN_LINKS: NavLink[] = [
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
+
+const PAGES_LINK: NavLink = {
+  name: "Pages",
+  href: "/pages",
+  icon: LayoutTwoColumnIcon,
+};
 
 const WORKSPACE_LINKS: NavLink[] = [
   {
@@ -177,16 +185,18 @@ export function AppSidebar(props: Props) {
   const { isMobile } = useSidebar();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
+  const pagesEnabled = Boolean(useGetFlag(Flag.PAGES));
 
   const mainLinks = MAIN_LINKS.filter((link) => link.href !== "/library");
 
-  const workspaceLinks = [
+  const workspaceLinks: NavLink[] = [
     {
       name: "Team",
       href: "/team",
       icon: AddTeamIcon,
       tourTarget: "team" as const,
     },
+    ...(pagesEnabled ? [PAGES_LINK] : []),
     ...WORKSPACE_LINKS,
   ];
 

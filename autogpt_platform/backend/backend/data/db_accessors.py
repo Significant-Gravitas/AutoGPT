@@ -200,6 +200,16 @@ def execution_db():
     return execution_db
 
 
+def pages_db():
+    if db.is_connected():
+        from backend.api.features.pages import db as _pages_db
+
+        return _pages_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def user_db():
     if db.is_connected():
         from backend.data import user as _user_db

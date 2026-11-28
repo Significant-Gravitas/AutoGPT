@@ -34,6 +34,8 @@ EAGER_CORE: frozenset[str] = frozenset(
         "ask_question",
         # A presentation tool: Otto would never go searching for one.
         "render_ui",
+        # Its preview is a chat card, which a deferred call does not draw.
+        "design_page",
         "web_search",
         "web_fetch",
         # The three go together: read and write take a file id or path that

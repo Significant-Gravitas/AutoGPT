@@ -233,6 +233,13 @@ export const VisualAnswerEvent = {
   VISUAL_OPTION_CLICKED: "visual_option_clicked",
 } as const;
 
+export const PagesEvent = {
+  // A page Otto composed opened, from Pages or a workflow it is pinned to.
+  PAGE_OPENED: "page_opened",
+  // A run started from a page's form, quick run or row button.
+  PAGE_RUN_STARTED: "page_run_started",
+} as const;
+
 export const PostHogEvent = {
   ...PageEvent,
   ...DeploySkewEvent,
@@ -246,6 +253,7 @@ export const PostHogEvent = {
   ...VoiceModeEvent,
   ...DictationEvent,
   ...VisualAnswerEvent,
+  ...PagesEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
   ...TourEvent,

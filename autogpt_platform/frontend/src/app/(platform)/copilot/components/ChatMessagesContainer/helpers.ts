@@ -11,6 +11,7 @@ import {
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { parseTruncatedOutput } from "../ToolChain/resultHelpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { DESIGN_PAGE_PART_TYPE } from "../../tools/DesignPage/helpers";
 import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
@@ -33,6 +34,7 @@ export function isChainableToolPart(part: MessagePart): boolean {
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
     part.type === RENDER_UI_PART_TYPE ||
+    part.type === DESIGN_PAGE_PART_TYPE ||
     isFeedbackCardPart(part) ||
     isExpertChangePart(part)
   ) {

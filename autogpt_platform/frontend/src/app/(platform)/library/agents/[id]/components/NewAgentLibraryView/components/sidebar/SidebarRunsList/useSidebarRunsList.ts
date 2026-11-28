@@ -28,6 +28,7 @@ import { useSchedulerQueryOptions } from "@/services/schedules/useSchedulerQuery
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useRunsReadAfterReconnect } from "./useRunsReadAfterReconnect";
+import { useHasPinnedPage } from "@/app/(platform)/pages/components/PinnedPageMount/useHasPinnedPage";
 
 function parseTab(
   value: string | null,
@@ -72,6 +73,9 @@ export function useSidebarRunsList({
   });
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+  const pinnedPage = useHasPinnedPage(libraryAgentID);
+  // A workflow with a page opens on it, with no run or schedule picked.
+  const keepPage = pinnedPage.pending || pinnedPage.hasPage;
   const queryClient = useQueryClient();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
@@ -204,10 +208,10 @@ export function useSidebarRunsList({
   ]);
 
   useEffect(() => {
-    if (runs.length > 0 && tabValue === "runs" && !activeItem) {
+    if (runs.length > 0 && tabValue === "runs" && !activeItem && !keepPage) {
       onSelectRun(runs[0].id, "runs");
     }
-  }, [runs, activeItem, tabValue, onSelectRun]);
+  }, [runs, activeItem, tabValue, onSelectRun, keepPage]);
 
   // Nothing selected and schedules to show, either because there are no runs
   // or because the Scheduled tab is open: select the first schedule.
@@ -215,11 +219,11 @@ export function useSidebarRunsList({
     if (
       !activeItem &&
       schedules.length > 0 &&
-      (runs.length === 0 || tabValue === "scheduled")
+      ((runs.length === 0 && !keepPage) || tabValue === "scheduled")
     ) {
       onSelectRun(schedules[0].id, "scheduled");
     }
-  }, [activeItem, runs.length, schedules, tabValue, onSelectRun]);
+  }, [activeItem, runs.length, schedules, tabValue, onSelectRun, keepPage]);
 
   useEffect(() => {
     if (templates.length > 0 && tabValue === "templates" && !activeItem) {

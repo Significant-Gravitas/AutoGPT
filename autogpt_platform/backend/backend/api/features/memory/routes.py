@@ -157,6 +157,12 @@ async def _list_facts_impl(
     user_id: str, expert_id: str | None, limit: int
 ) -> MemoryFactListResponse:
     scope = await _resolve_scope(user_id, expert_id)
+    items = await read_live_facts(scope, limit)
+    return MemoryFactListResponse(expert_id=scope.expert_id, items=items)
+
+
+async def read_live_facts(scope: MemoryScope, limit: int) -> list[MemoryFact]:
+    """Live facts in *scope*'s memory, newest first; the scope is the caller's to check."""
     driver = open_driver(scope)
     try:
         result = await driver.execute_query(
@@ -183,7 +189,7 @@ async def _list_facts_impl(
     finally:
         await driver.close()
 
-    items = [
+    return [
         MemoryFact(
             uuid=str(r.get("uuid", "")),
             fact=r.get("fact"),
@@ -194,7 +200,6 @@ async def _list_facts_impl(
         )
         for r in rows
     ]
-    return MemoryFactListResponse(expert_id=scope.expert_id, items=items)
 
 
 @router.get("/facts", operation_id="list_my_memory_facts")

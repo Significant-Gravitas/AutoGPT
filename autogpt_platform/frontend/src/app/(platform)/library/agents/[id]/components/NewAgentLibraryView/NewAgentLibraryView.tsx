@@ -33,6 +33,7 @@ import {
 } from "./helpers";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
+import { PinnedPageMount } from "@/app/(platform)/pages/components/PinnedPageMount/PinnedPageMount";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -230,12 +231,14 @@ export function NewAgentLibraryView() {
             </div>
           </div>
           <div className="flex min-h-0 flex-1">
-            <EmptyTasks
-              agent={agent}
-              onRun={onRunInitiated}
-              onTriggerSetup={onTriggerSetup}
-              onScheduleCreated={onScheduleCreated}
-            />
+            <PinnedPageMount agent={agent}>
+              <EmptyTasks
+                agent={agent}
+                onRun={onRunInitiated}
+                onTriggerSetup={onTriggerSetup}
+                onScheduleCreated={onScheduleCreated}
+              />
+            </PinnedPageMount>
           </div>
         </div>
         {renderPublishAgentModal()}
@@ -369,12 +372,14 @@ export function NewAgentLibraryView() {
             agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
-            <EmptyTasks
-              agent={agent}
-              onRun={onRunInitiated}
-              onTriggerSetup={onTriggerSetup}
-              onScheduleCreated={onScheduleCreated}
-            />
+            <PinnedPageMount agent={agent}>
+              <EmptyTasks
+                agent={agent}
+                onRun={onRunInitiated}
+                onTriggerSetup={onTriggerSetup}
+                onScheduleCreated={onScheduleCreated}
+              />
+            </PinnedPageMount>
           </SelectedViewLayout>
         )}
       </div>
