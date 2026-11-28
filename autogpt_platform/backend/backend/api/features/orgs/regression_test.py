@@ -89,6 +89,7 @@ def _make_execution_row(
     m.inputs = None
     m.credentialInputs = None
     m.nodesInputMasks = None
+    m.without_inputs.return_value = m
     m.agentPresetId = None
     m.parentGraphExecutionId = None
     m.isShared = False
@@ -380,7 +381,7 @@ class TestExecutionUserIdIsolation:
         mock_actions.find_many = AsyncMock(return_value=[exec_row])
 
         with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
+            "backend.data.execution.GraphExecutionListRow.prisma",
             return_value=mock_actions,
         ):
             from backend.data.execution import get_graph_executions
@@ -404,7 +405,7 @@ class TestExecutionUserIdIsolation:
         mock_actions.find_many = AsyncMock(return_value=[])
 
         with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
+            "backend.data.execution.GraphExecutionListRow.prisma",
             return_value=mock_actions,
         ):
             from backend.data.execution import get_graph_executions
@@ -489,7 +490,7 @@ class TestExecutionUserIdIsolation:
         mock_actions.find_many = AsyncMock(return_value=[])
 
         with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
+            "backend.data.execution.GraphExecutionListRow.prisma",
             return_value=mock_actions,
         ):
             from backend.data.execution import get_graph_executions
@@ -2959,7 +2960,7 @@ class TestPR18Cutover:
         mock_actions.find_many = AsyncMock(return_value=[])
 
         with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
+            "backend.data.execution.GraphExecutionListRow.prisma",
             return_value=mock_actions,
         ):
             from backend.data.execution import get_graph_executions
@@ -2990,7 +2991,7 @@ class TestPR18Cutover:
         mock_actions.find_many = AsyncMock(return_value=[exec_row])
 
         with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
+            "backend.data.execution.GraphExecutionListRow.prisma",
             return_value=mock_actions,
         ):
             from backend.data.execution import get_graph_executions

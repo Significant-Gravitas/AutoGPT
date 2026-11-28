@@ -357,7 +357,7 @@ async def test_add_agent_to_library(mocker):
 
     # Check include parameter
     assert create_call_args.kwargs["include"] == library_agent_include(
-        "test-user", include_nodes=False, include_executions=False
+        include_nodes=False
     )
 
 
@@ -978,6 +978,7 @@ async def test_get_library_agent_loads_the_graphs_store_listing(mocker):
     mocker.patch.object(
         db.graph_db, "get_sub_graphs", mocker.AsyncMock(return_value=[])
     )
+    mocker.patch.object(db, "attach_latest_runs", mocker.AsyncMock())
     mock_from_db = mocker.patch.object(library_model.LibraryAgent, "from_db")
 
     await db.get_library_agent("library-id", "test-user")
@@ -2739,6 +2740,7 @@ def library_rows(mocker):
         "backend.api.features.library.db.library_model.LibraryAgent.from_db",
         return_value=MagicMock(id="entry-a"),
     )
+    mocker.patch.object(db, "attach_latest_runs", AsyncMock())
     mocker.patch("backend.api.features.library.db.schedule_library_agent_embedding")
     return rows
 

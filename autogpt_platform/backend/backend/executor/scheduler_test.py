@@ -18,7 +18,7 @@ from backend.copilot.dream.scheduling import DREAM_SYSTEM_JOBS
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.learning.dispositions import SkillLearningResult
 from backend.data import db
-from backend.data.execution import get_graph_executions
+from backend.data.execution import get_graph_execution, get_graph_executions
 from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     GraphExecutionJobArgs,
@@ -179,7 +179,9 @@ async def test_update_schedule_changes_timing_and_inputs_in_place(
             graph_id=test_graph.id, user_id=test_user.id
         )
         assert fired.trigger_ref == schedule.id
-        assert fired.inputs == {"input": "changed"}
+        # A list of runs leaves their inputs out; the run itself has them.
+        run = await get_graph_execution(test_user.id, fired.id)
+        assert run is not None and run.inputs == {"input": "changed"}
     finally:
         await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
 

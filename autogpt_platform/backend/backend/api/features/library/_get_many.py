@@ -9,7 +9,7 @@ import backend.data.graph as graph_db
 from backend.data.includes import library_agent_include
 
 from ._schedule_info import _fetch_schedule_info
-from .db import _fetch_execution_counts, _fetch_store_listing
+from .db import _fetch_execution_counts, _fetch_store_listing, attach_latest_runs
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +41,15 @@ async def get_library_agents_by_ids(
         return []
     rows = await prisma.models.LibraryAgent.prisma().find_many(
         where={"id": {"in": unique_ids}, "userId": user_id, "isDeleted": False},
-        include=library_agent_include(user_id),
+        include=library_agent_include(),
     )
     limit = asyncio.Semaphore(_DETAIL_LOAD_CONCURRENCY)
-    schedule_info, execution_counts, details = await asyncio.gather(
+    schedule_info, execution_counts, details, _ = await asyncio.gather(
         _fetch_schedule_info(user_id),
-        # The include loads only the latest few executions; cards show the total.
+        # Only the latest few runs are attached; cards show the total.
         _fetch_execution_counts(user_id, [row.agentGraphId for row in rows]),
         asyncio.gather(*(_load_details(row, limit) for row in rows)),
+        attach_latest_runs(user_id, rows),
     )
 
     by_id: dict[str, library_model.LibraryAgent] = {}

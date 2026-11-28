@@ -7,6 +7,7 @@ import pytest
 from prisma.enums import ResourceVisibility
 
 from backend.data.execution import (
+    GraphExecutionListRow,
     create_graph_execution,
     get_graph_execution,
     get_graph_execution_meta,
@@ -38,6 +39,7 @@ def mock_exec_client(mocker):
     mocker.patch.object(
         prisma.models.AgentGraphExecution, "prisma", return_value=client
     )
+    mocker.patch.object(GraphExecutionListRow, "prisma", return_value=client)
     mocker.patch(
         "backend.data.execution.get_user_team_ids",
         AsyncMock(return_value=["team-a"]),

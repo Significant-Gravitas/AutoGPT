@@ -182,9 +182,7 @@ async def restore_existing_library_agent(
             "isArchived": False,
             **_marketplace_metadata(store_listing_version),
         },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
+        include=library_agent_include(include_nodes=False),
     )
     if restored is None:
         return None
@@ -213,9 +211,7 @@ async def add_graph_to_library(
     PostgreSQL's transaction would leave that transaction aborted.
     """
     settings_json = SafeJson(GraphSettings().model_dump())
-    _include = library_agent_include(
-        user_id, include_nodes=False, include_executions=False
-    )
+    _include = library_agent_include(include_nodes=False)
     marketplace = _marketplace_metadata(store_listing_version)
     # A transactional caller resolves the tenancy before its transaction.
     if tx is None and organization_id is None:

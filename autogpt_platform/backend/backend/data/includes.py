@@ -115,53 +115,20 @@ LIBRARY_FOLDER_INCLUDE: prisma.types.LibraryFolderInclude = {
 
 
 def library_agent_include(
-    user_id: str,
     include_nodes: bool = True,
-    include_executions: bool = True,
-    execution_limit: int = MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
 ) -> prisma.types.LibraryAgentInclude:
+    """The relations a library agent read loads: its creator, its folder and its
+    graph, with the graph's nodes when ``include_nodes`` (``get_sub_graphs``
+    needs them).
+
+    The graph's runs are left out, since an include cannot leave out a run's
+    input columns; ``attach_latest_runs`` in ``api/features/library/db.py``
+    loads the latest few for an agent's status.
     """
-    Fully configurable includes for library agent queries with performance optimization.
-
-    Args:
-        user_id: User ID for filtering user-specific data
-        include_nodes: Whether to include graph nodes (default: True, needed for get_sub_graphs)
-        include_executions: Whether to include executions (default: True, safe with execution_limit)
-        execution_limit: Limit on executions to fetch (default: MAX_LIBRARY_AGENT_EXECUTIONS_FETCH)
-
-    Defaults maintain backward compatibility and safety - includes everything needed for all functionality.
-    For performance optimization, explicitly set include_nodes=False and include_executions=False
-    for listing views where frontend fetches data separately.
-
-    Performance impact:
-    - Default (full nodes + limited executions): Original performance, works everywhere
-    - Listing optimization (no nodes/executions): ~2s for 15 agents vs potential timeouts
-    - Unlimited executions: varies by user (thousands of executions = timeouts)
-    """
-    result: prisma.types.LibraryAgentInclude = {
-        "Creator": True,  # Always needed for creator info
-        "Folder": True,  # Always needed for folder info
+    return {
+        "Creator": True,
+        "Folder": True,
+        "AgentGraph": (
+            {"include": dict(AGENT_GRAPH_INCLUDE)} if include_nodes else True
+        ),
     }
-
-    # Build AgentGraph include based on requested options
-    if include_nodes or include_executions:
-        agent_graph_include: prisma.types.AgentGraphIncludeFromAgentGraph = {}
-
-        # Add nodes if requested (always full nodes)
-        if include_nodes:
-            agent_graph_include.update(AGENT_GRAPH_INCLUDE)  # Full nodes
-
-        # Add executions if requested
-        if include_executions:
-            agent_graph_include["Executions"] = {
-                "where": {"userId": user_id},
-                "order_by": {"createdAt": "desc"},
-                "take": execution_limit,
-            }
-
-        result["AgentGraph"] = {"include": agent_graph_include}
-    else:
-        # Default: Basic metadata only (fast - recommended for most use cases)
-        result["AgentGraph"] = True  # Basic graph metadata (name, description, id)
-
-    return result
