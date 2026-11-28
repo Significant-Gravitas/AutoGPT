@@ -82,12 +82,13 @@ async def test_oauth2_tokens_are_revoked_after_the_local_delete():
 @pytest.mark.asyncio
 async def test_webhooks_in_use_need_confirmation_and_nothing_is_deleted():
     creds = _oauth2_cred()
-    in_use = MagicMock(triggered_nodes=[MagicMock()], triggered_presets=[])
+    in_use = MagicMock(id="hook-1")
     with (
         patch(
             f"{ROUTER}.get_all_webhooks_by_creds",
             new=AsyncMock(return_value=[in_use]),
         ),
+        patch(f"{ROUTER}.webhooks_have_triggers", new=AsyncMock(return_value=True)),
         patch(f"{ROUTER}.creds_manager") as manager,
         patch(f"{ROUTER}._get_provider_oauth_handler") as get_handler,
     ):
@@ -114,13 +115,15 @@ def _hook_the_provider_refuses_to_delete() -> MagicMock:
 @pytest.mark.asyncio
 async def test_skipping_failed_prunes_still_deletes_and_revokes():
     creds = _oauth2_cred()
-    hook = MagicMock(id="hook-1", triggered_nodes=[], triggered_presets=[])
+    hook = MagicMock(id="hook-1")
     handler = MagicMock()
     handler.revoke_tokens = AsyncMock(return_value=True)
     with (
         patch(
             f"{ROUTER}.get_all_webhooks_by_creds", new=AsyncMock(return_value=[hook])
         ),
+        patch(f"{ROUTER}.webhooks_have_triggers", new=AsyncMock(return_value=False)),
+        patch(f"{ROUTER}.unlink_webhook_triggers", new=AsyncMock()),
         patch(
             f"{ROUTER}.get_webhook_manager",
             return_value=_hook_the_provider_refuses_to_delete(),
@@ -143,11 +146,13 @@ async def test_skipping_failed_prunes_still_deletes_and_revokes():
 @pytest.mark.asyncio
 async def test_the_disconnect_route_still_stops_on_a_prune_error(force: bool):
     creds = _oauth2_cred()
-    hook = MagicMock(id="hook-1", triggered_nodes=[], triggered_presets=[])
+    hook = MagicMock(id="hook-1")
     with (
         patch(
             f"{ROUTER}.get_all_webhooks_by_creds", new=AsyncMock(return_value=[hook])
         ),
+        patch(f"{ROUTER}.webhooks_have_triggers", new=AsyncMock(return_value=False)),
+        patch(f"{ROUTER}.unlink_webhook_triggers", new=AsyncMock()),
         patch(
             f"{ROUTER}.get_webhook_manager",
             return_value=_hook_the_provider_refuses_to_delete(),
@@ -237,12 +242,13 @@ async def test_mcp_credentials_are_revoked_with_a_handler_from_their_metadata():
 def test_route_still_asks_for_confirmation_when_webhooks_are_in_use(
     authenticated: None,
 ):
-    in_use = MagicMock(triggered_nodes=[MagicMock()], triggered_presets=[])
+    in_use = MagicMock(id="hook-1")
     with (
         patch(
             f"{ROUTER}.get_all_webhooks_by_creds",
             new=AsyncMock(return_value=[in_use]),
         ),
+        patch(f"{ROUTER}.webhooks_have_triggers", new=AsyncMock(return_value=True)),
         patch(f"{ROUTER}.creds_manager") as manager,
     ):
         manager.store.get_creds_by_id = AsyncMock(return_value=_oauth2_cred())

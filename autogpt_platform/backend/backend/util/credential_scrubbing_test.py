@@ -23,7 +23,12 @@ import pytest
 import sentry_sdk
 from fastapi import FastAPI, Request, WebSocket
 from prisma.errors import ClientNotConnectedError
-from prisma.models import AgentGraphExecution, IntegrationWebhook
+from prisma.models import (
+    AgentGraphExecution,
+    AgentNode,
+    AgentPreset,
+    IntegrationWebhook,
+)
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
@@ -479,6 +484,8 @@ async def test_webhook_ingress_logs_its_webhook_ids_only_by_prefix(
         COMPASS_WEBHOOK_ID: _webhook_row(COMPASS_WEBHOOK_ID, "compass"),
     }
     monkeypatch.setattr(IntegrationWebhook, "prisma", lambda: _WebhookTable(webhooks))
+    monkeypatch.setattr(AgentPreset, "prisma", lambda: _NoTriggers())
+    monkeypatch.setattr(AgentNode, "prisma", lambda: _NoTriggers())
     monkeypatch.setattr(
         integrations_router, "is_user_refused", AsyncMock(return_value=False)
     )
@@ -1139,3 +1146,14 @@ class _WebhookTable:
 
     async def find_unique(self, where: dict, include: object = None):
         return self.rows.get(where["id"])
+
+
+class _NoTriggers:
+    """What ``AgentPreset.prisma()`` and ``AgentNode.prisma()`` read for a
+    webhook with no triggers, without a database."""
+
+    async def count(self, **kwargs: object) -> int:
+        return 0
+
+    async def find_many(self, **kwargs: object) -> list:
+        return []
