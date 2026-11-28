@@ -16,16 +16,25 @@ describe("isTeamEmail", () => {
 });
 
 describe("assertTeamEmailUsesGoogle", () => {
-  it("throws only for a team address on the password sign-up path", () => {
+  it("throws only for a team address on a path that writes it unproven", () => {
     expect(() =>
       assertTeamEmailUsesGoogle("x@agpt.co", { path: "/sign-up/email" }),
     ).toThrow("Please use Google sign-in");
+    expect(() =>
+      assertTeamEmailUsesGoogle("x@agpt.co", { path: "/change-email" }),
+    ).toThrow("Please sign in with Google");
+    expect(() =>
+      assertTeamEmailUsesGoogle("x@agpt.co", { path: "/verify-email" }),
+    ).not.toThrow();
     expect(() =>
       assertTeamEmailUsesGoogle("x@agpt.co", { path: "/callback/google" }),
     ).not.toThrow();
     expect(() => assertTeamEmailUsesGoogle("x@agpt.co", null)).not.toThrow();
     expect(() =>
       assertTeamEmailUsesGoogle("x@example.com", { path: "/sign-up/email" }),
+    ).not.toThrow();
+    expect(() =>
+      assertTeamEmailUsesGoogle("x@example.com", { path: "/change-email" }),
     ).not.toThrow();
   });
 });
