@@ -43,7 +43,7 @@ export function AdminSkillSubmissions() {
           className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border-base bg-surface p-4"
         >
           <div className="min-w-0">
-            <Text variant="body-medium">
+            <Text variant="body" weight="medium">
               {submission.name}{" "}
               <span className="text-foreground-subtle">
                 v{submission.version}

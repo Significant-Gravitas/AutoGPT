@@ -2,7 +2,7 @@
 
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { Text } from "@/components/atoms/Text/Text";
-import type { Transition, Variants } from "framer-motion";
+import type { Variants } from "framer-motion";
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { ArtifactsList } from "./components/ArtifactsList/ArtifactsList";
@@ -19,8 +19,7 @@ import {
 } from "./components/WorkspaceFolders/folderTree";
 import { useArtifactsFolders } from "./useArtifactsFolders";
 import { useArtifactsPage } from "./useArtifactsPage";
-
-const EASE_OUT_SOFT: Transition["ease"] = [0.16, 1, 0.3, 1];
+import { duration, ease } from "@/components/styles/motion";
 
 const SECTION_VARIANTS: Variants = {
   hidden: { opacity: 0, y: 8, filter: "blur(8px)" },
@@ -28,13 +27,13 @@ const SECTION_VARIANTS: Variants = {
     opacity: 1,
     y: 0,
     filter: "blur(0px)",
-    transition: { duration: 0.45, ease: EASE_OUT_SOFT },
+    transition: { duration: duration.slower, ease: ease.emphasized },
   },
 };
 
 const REDUCED_SECTION_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };
 
 const MAIN_CLASS_NAME =

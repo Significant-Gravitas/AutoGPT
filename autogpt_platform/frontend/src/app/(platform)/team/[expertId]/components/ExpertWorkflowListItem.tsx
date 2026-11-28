@@ -61,13 +61,18 @@ export function ExpertWorkflowListItem({
         <NextLink
           href={libraryHref}
           aria-label={`Open ${name} tasks`}
-          className="absolute inset-0 z-0 rounded-lg"
+          className="absolute inset-0 z-base rounded-lg"
         />
       ) : null}
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-md-medium" tone="primary" className="truncate">
+          <Text
+            variant="body-md"
+            weight="medium"
+            tone="primary"
+            className="truncate"
+          >
             {name}
           </Text>
           <span
@@ -104,7 +109,7 @@ export function ExpertWorkflowListItem({
         ) : null}
       </div>
 
-      <div className="pointer-events-auto relative z-10 flex shrink-0 items-center justify-end gap-1">
+      <div className="pointer-events-auto relative z-raised flex shrink-0 items-center justify-end gap-1">
         <ExpertWorkflowActions
           workflow={workflow}
           expertId={expertId}

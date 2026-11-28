@@ -241,6 +241,27 @@ def test_a_billed_aimlapi_tool_asks_before_it_runs(tool, verdict):
         assert verdict_for_effect(mode, subject.effect) is verdict
 
 
+@pytest.mark.parametrize(
+    "tool, verdict, says_unknown",
+    [
+        # Lookups run without a card.
+        ("search_crm_objects", Verdict.RUN, False),
+        ("get_properties", Verdict.RUN, False),
+        ("tool_guidance", Verdict.RUN, False),
+        # A change to the account asks, and the card says why.
+        ("manage_crm_objects", Verdict.ASK, False),
+        ("manage_social_posts", Verdict.ASK, False),
+        # A tool HubSpot's list does not name still asks as unknown.
+        ("unlisted_tool", Verdict.ASK, True),
+    ],
+)
+def test_a_hubspot_lookup_runs_and_a_change_asks(tool, verdict, says_unknown):
+    subject = mcp_subject("https://mcp.hubspot.com", tool)
+    assert verdict_for_effect("auto", subject.effect) is verdict
+    assert ("does not know" in subject.reason) is says_unknown
+    assert subject.irreversible is (tool == "manage_social_posts")
+
+
 def test_a_schedule_card_offers_no_judge_rule():
     """The gate ignores a judge rule on a schedule, so its card must not offer one."""
     schedule = Subject(

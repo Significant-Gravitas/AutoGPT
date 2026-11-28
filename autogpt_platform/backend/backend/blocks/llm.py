@@ -425,7 +425,7 @@ def abandoned_call_stats(estimated_input_tokens: int) -> NodeExecutionStats:
     """The usage of a request that reached the provider and was cancelled
     before its reply: the estimated input tokens, as no reply reports the real
     count, with the output unknown. They are kept apart from the reported
-    usage, since only a run ended by a stop request is billed for them."""
+    usage, since only a run its user ended is billed for them."""
     return NodeExecutionStats(abandoned_input_token_count=estimated_input_tokens)
 
 

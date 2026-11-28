@@ -44,7 +44,8 @@ export function WorkflowDiagramBlockView({ block }: Props) {
                 )}
               >
                 <Text
-                  variant="body-medium"
+                  variant="body"
+                  weight="medium"
                   tone="primary"
                   className="break-words"
                 >
@@ -52,7 +53,8 @@ export function WorkflowDiagramBlockView({ block }: Props) {
                 </Text>
                 {step.detail ? (
                   <Text
-                    variant="small-medium"
+                    variant="small"
+                    weight="medium"
                     tone={status === "error" ? "error-strong" : "muted"}
                     tabular
                     className="mt-0.5 break-words"

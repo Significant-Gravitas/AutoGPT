@@ -127,9 +127,11 @@ test.describe("billing journey", () => {
     await holdWebhooks(sessionID);
 
     // With the webhook late, the return page fulfils the checkout itself.
-    // Against Stripe its balance read answers before that call, which waits
-    // on Stripe; the fake answers at once, so hold the call until the read
-    // is back, whatever the stack's speed.
+    // Against Stripe its balance reads usually answer before that call, which
+    // waits on Stripe; the fake answers at once, so hold the call until one
+    // is back, whatever the stack's speed. That can be the layout's read,
+    // leaving the balance card's own to answer after the call: the page must
+    // read the credits again either way.
     const balanceRead = page
       .waitForResponse(isBalanceRead, { timeout: 15_000 })
       .catch(() => null);

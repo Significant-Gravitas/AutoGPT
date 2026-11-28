@@ -33,7 +33,7 @@ export function EraseMemoryCard({
     <div className="flex flex-col gap-3 rounded-large border border-error/30 bg-surface px-4 py-4 shadow-message-table sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-col">
         <span className="flex text-error-foreground">
-          <Text variant="body-medium" as="span" tone="inherit">
+          <Text variant="body" weight="medium" as="span" tone="inherit">
             Erase {scopeName}&apos;s memory
           </Text>
         </span>

@@ -63,10 +63,13 @@ export function splitCredentialFieldsBySystem(
 
   for (const [key, schema] of credentialFields) {
     const providerNames = schema.credentials_provider || [];
-    const isSystemField = providerNames.some((providerName: string) => {
-      const providerData = allProviders[providerName];
-      return providerData?.isSystemProvider === true;
-    });
+    // A field whose steps refuse the platform's keys only takes the user's own
+    const isSystemField =
+      !schema.refuses_platform_credentials &&
+      providerNames.some((providerName: string) => {
+        const providerData = allProviders[providerName];
+        return providerData?.isSystemProvider === true;
+      });
 
     if (isSystemField) {
       systemFields.push([key, schema]);

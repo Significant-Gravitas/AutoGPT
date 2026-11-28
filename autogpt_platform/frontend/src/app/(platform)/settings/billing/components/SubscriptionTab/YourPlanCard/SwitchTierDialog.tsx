@@ -54,7 +54,8 @@ export function SwitchTierDialog({
             {title ? "Your subscription" : `Upgrade to ${targetTierLabel}`}
           </Text>
           <Text
-            variant="h3-tracking-tight"
+            variant="h3"
+            tracking="tight"
             as="span"
             // oxlint-disable-next-line design-system/no-restyle -- the dialog title sits on a 32px line under its eyebrow
             className="block leading-8"
@@ -80,7 +81,9 @@ export function SwitchTierDialog({
           <>
             {priceCents !== undefined && (
               <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3 rounded-2xl border border-border-base bg-surface-muted p-5">
-                <Text variant="large-medium">AutoGPT {targetTierLabel}</Text>
+                <Text variant="large" weight="medium">
+                  AutoGPT {targetTierLabel}
+                </Text>
                 <div>
                   <Text variant="h3" as="span">
                     {formatCents(priceCents)}

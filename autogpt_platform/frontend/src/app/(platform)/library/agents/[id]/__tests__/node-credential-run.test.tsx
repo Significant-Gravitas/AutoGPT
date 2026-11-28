@@ -1279,3 +1279,255 @@ test("a schedule for an LLM step on the user's OpenAI key starts on OpenAI's pla
     OPENAI_PLATFORM_KEY.id,
   );
 });
+
+// An Exa Websets step keeps what it makes in the Exa account behind its key,
+// so the backend refuses a run, schedule or trigger that gives it the
+// platform's key, and marks its field in the agent's credentials schema
+const WEBSETS_FIELD_SCHEMA = {
+  ...EXA_FIELD_SCHEMA,
+  refuses_platform_credentials: true,
+};
+const OTHER_EXA_KEY = {
+  id: "other-exa-key",
+  provider: "exa",
+  type: "api_key",
+  title: "Other Exa key",
+  is_system: false,
+};
+
+function mockWebsetsWorkflow(workflow: Workflow = {}) {
+  return mockWorkflow({
+    credentialFields: { [EXA_FIELD]: WEBSETS_FIELD_SCHEMA },
+    requiredFields: [EXA_FIELD],
+    providers: ["exa"],
+    systemProviders: ["exa"],
+    savedCredentials: [EXA_PLATFORM_KEY, USER_EXA_KEY],
+    ...workflow,
+  });
+}
+
+test.each([
+  { case: "no key of its own", stepCredentials: undefined },
+  {
+    case: "the platform's key, saved before the block refused it",
+    stepCredentials: savedOnStep(EXA_PLATFORM_KEY),
+  },
+])(
+  "a Websets step with $case starts on the user's only Exa key, not the platform's",
+  async ({ stepCredentials }) => {
+    const { executeBodies } = mockWebsetsWorkflow({ stepCredentials });
+    renderAgentPage();
+
+    await openRunForm();
+    // The only key that fits shows as a row, above any system credentials
+    expect(
+      await screen.findByText(USER_EXA_KEY.title, { exact: true }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull();
+    await clickWhenEnabled("Start Task");
+
+    await waitFor(() => expect(executeBodies).toHaveLength(1));
+    expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+      USER_EXA_KEY.id,
+    );
+  },
+);
+
+test("a Websets step with no key, for a user with two, starts on none and never offers the platform's key", async () => {
+  const { executeBodies } = mockWebsetsWorkflow({
+    savedCredentials: [EXA_PLATFORM_KEY, USER_EXA_KEY, OTHER_EXA_KEY],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  const picker = (await screen.findByRole("combobox", {
+    name: EXA_PICKER,
+  })) as HTMLSelectElement;
+  expect(picker.value).toBe("__none__");
+  expect(Array.from(picker.options, (option) => option.value)).toEqual([
+    "__none__",
+    USER_EXA_KEY.id,
+    OTHER_EXA_KEY.id,
+  ]);
+  expect(
+    screen.getByRole("button", { name: "Start Task" }).hasAttribute("disabled"),
+  ).toBe(true);
+
+  await userEvent.selectOptions(picker, OTHER_EXA_KEY.id);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+    OTHER_EXA_KEY.id,
+  );
+});
+
+test("a Websets step for a user with no Exa key of their own asks for one instead of using the platform's", async () => {
+  mockWebsetsWorkflow({ savedCredentials: [EXA_PLATFORM_KEY] });
+  renderAgentPage();
+
+  await openRunForm();
+  expect(
+    await screen.findByRole("button", { name: "Add API key" }),
+  ).toBeDefined();
+  expect(screen.queryByRole("button", { name: SYSTEM_SECTION })).toBeNull();
+  expect(screen.queryByText(EXA_PLATFORM_KEY.title)).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Start Task" }).hasAttribute("disabled"),
+  ).toBe(true);
+});
+
+test("a schedule for a Websets step keeps the user's Exa key the run form shows", async () => {
+  const { scheduleBodies } = mockWebsetsWorkflow({
+    stepCredentials: savedOnStep(USER_EXA_KEY),
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  expect(
+    await screen.findByText(USER_EXA_KEY.title, { exact: true }),
+  ).toBeDefined();
+  await clickWhenEnabled("Schedule Task");
+  // The schedule runs on the key the form shows, so there's nothing to say
+  expect(await screen.findByRole("button", { name: "Schedule" })).toBeDefined();
+  expect(screen.queryByText(/^Exa credentials:/)).toBeNull();
+  expect(screen.queryByRole("button", { name: USE_FORM_KEYS })).toBeNull();
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+  expect(keyIn(scheduleBodies[0].credentials, EXA_FIELD)).toBe(USER_EXA_KEY.id);
+});
+
+test("a trigger set up for a Websets step starts on the user's Exa key, not the platform's", async () => {
+  const { triggerBodies } = mockWebsetsWorkflow({
+    triggerSetupInfo: {
+      provider: "exa",
+      config_schema: { type: "object", properties: {} },
+      credentials_input_name: null,
+    },
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await userEvent.type(
+    await screen.findByPlaceholderText("Enter trigger name"),
+    "Webset updates",
+  );
+  expect(
+    await screen.findByText(USER_EXA_KEY.title, { exact: true }),
+  ).toBeDefined();
+  await clickWhenEnabled("Set up Trigger");
+
+  await waitFor(() => expect(triggerBodies).toHaveLength(1));
+  expect(keyIn(triggerBodies[0].agent_credentials, EXA_FIELD)).toBe(
+    USER_EXA_KEY.id,
+  );
+});
+
+test("a schedule for an optional Websets step keeps the user's Exa key the run form shows, rather than dropping it", async () => {
+  const { scheduleBodies } = mockWebsetsWorkflow({
+    stepCredentials: savedOnStep(USER_EXA_KEY),
+    requiredFields: [],
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  await expectPickerOn(USER_EXA_KEY, EXA_PICKER);
+  await clickWhenEnabled("Schedule Task");
+  expect(await screen.findByRole("button", { name: "Schedule" })).toBeDefined();
+  expect(screen.queryByText(/^Exa credentials:/)).toBeNull();
+  await clickWhenEnabled("Schedule");
+
+  await waitFor(() => expect(scheduleBodies).toHaveLength(1));
+  expect(keyIn(scheduleBodies[0].credentials, EXA_FIELD)).toBe(USER_EXA_KEY.id);
+});
+
+test("a field open to several providers whose steps refuse the platform's keys doesn't start on a platform key saved on them", async () => {
+  const { executeBodies } = mockLLMWorkflow({
+    stepCredentials: savedOnStep(ANTHROPIC_PLATFORM_KEY),
+    credentialFields: {
+      [LLM_FIELD]: { ...LLM_FIELD_SCHEMA, refuses_platform_credentials: true },
+    },
+  });
+  renderAgentPage();
+
+  await openRunForm();
+  // The user's own OpenAI key is the only one that fits
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, LLM_FIELD)).toBe(
+    USER_OPENAI_KEY.id,
+  );
+});
+
+// A template made from a run on the platform's key: one from before the block
+// refused it, or from before a Websets step joined the workflow's Exa field
+const TEMPLATE_ON_PLATFORM_KEY = {
+  [EXA_FIELD]: savedOnStep(EXA_PLATFORM_KEY),
+} as LibraryAgentPreset["credentials"];
+
+async function openRunFormFromTemplate() {
+  renderAgentPage(`activeTab=templates&activeItem=${TEMPLATE_ID}`);
+  await clickWhenEnabled("New workflow task");
+}
+
+test("a task from a template saved on the platform's key starts on the user's only Exa key", async () => {
+  const { executeBodies } = mockWebsetsWorkflow({
+    templateCredentials: TEMPLATE_ON_PLATFORM_KEY,
+  });
+  await openRunFormFromTemplate();
+
+  // Start Task waits for the required key
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+    USER_EXA_KEY.id,
+  );
+});
+
+test("a task from such a template, on an optional field, starts on the user's only Exa key rather than skipping the step", async () => {
+  const { executeBodies } = mockWebsetsWorkflow({
+    templateCredentials: TEMPLATE_ON_PLATFORM_KEY,
+    requiredFields: [],
+  });
+  await openRunFormFromTemplate();
+
+  await expectPickerOn(USER_EXA_KEY, EXA_PICKER);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+    USER_EXA_KEY.id,
+  );
+});
+
+test("a task from such a template, for a user with two Exa keys, waits for their pick", async () => {
+  const { executeBodies } = mockWebsetsWorkflow({
+    templateCredentials: TEMPLATE_ON_PLATFORM_KEY,
+    savedCredentials: [EXA_PLATFORM_KEY, USER_EXA_KEY, OTHER_EXA_KEY],
+  });
+  await openRunFormFromTemplate();
+
+  const picker = (await screen.findByRole("combobox", {
+    name: EXA_PICKER,
+  })) as HTMLSelectElement;
+  await waitFor(() => expect(picker.value).toBe("__none__"));
+  expect(Array.from(picker.options, (option) => option.value)).toEqual([
+    "__none__",
+    USER_EXA_KEY.id,
+    OTHER_EXA_KEY.id,
+  ]);
+  expect(
+    screen.getByRole("button", { name: "Start Task" }).hasAttribute("disabled"),
+  ).toBe(true);
+
+  await userEvent.selectOptions(picker, OTHER_EXA_KEY.id);
+  await clickWhenEnabled("Start Task");
+
+  await waitFor(() => expect(executeBodies).toHaveLength(1));
+  expect(keyIn(executeBodies[0].credentials_inputs, EXA_FIELD)).toBe(
+    OTHER_EXA_KEY.id,
+  );
+});

@@ -50,7 +50,7 @@ export function AutopilotModeSelector({
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
-              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-caption font-medium transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
+              "inline-flex h-8 items-center justify-center gap-1 rounded-pill text-caption font-medium transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
               isDefault
                 ? "w-8 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
                 : "px-2.5",

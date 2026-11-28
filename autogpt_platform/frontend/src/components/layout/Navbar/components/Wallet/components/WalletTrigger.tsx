@@ -105,14 +105,20 @@ function ClassicBalance({
   return (
     <div>
       <span className="mr-1 hidden xl:inline-block">Earn credits </span>
-      <Text variant="body-semibold-tight" as="span" tone="inherit">
+      <Text
+        variant="body"
+        weight="semibold"
+        leading="5"
+        as="span"
+        tone="inherit"
+      >
         {formattedCredits}
       </Text>
       {completedCount !== null && completedCount < totalCount && (
         <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-brand" />
       )}
-      <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform rounded-small bg-surface px-4 py-2 whitespace-nowrap shadow-md group-hover:block">
-        <Text variant="body-medium">
+      <div className="absolute bottom-[-2.5rem] left-1/2 z-overlay hidden -translate-x-1/2 transform rounded-small bg-surface px-4 py-2 whitespace-nowrap shadow-md group-hover:block">
+        <Text variant="body" weight="medium">
           {completedCount} of {totalCount} rewards claimed
         </Text>
       </div>

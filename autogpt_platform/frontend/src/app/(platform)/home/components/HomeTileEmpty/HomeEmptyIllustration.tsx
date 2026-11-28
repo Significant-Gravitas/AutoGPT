@@ -1,8 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-
-const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 // A compact take on the library's stacked-cards illustration, sized for a
 // panel rather than a page: three ghost rows settling into place.
@@ -39,8 +38,8 @@ export function HomeEmptyIllustration() {
               : { opacity: card.opacity, y: 0, scale: 1 }
           }
           transition={{
-            duration: shouldReduceMotion ? 0.2 : 0.45,
-            ease: EASE_OUT_QUINT,
+            duration: shouldReduceMotion ? duration.base : duration.slower,
+            ease: ease.glide,
             delay: shouldReduceMotion ? 0 : index * 0.08,
           }}
           className="origin-[120px_52px] [transform-box:fill-box]"

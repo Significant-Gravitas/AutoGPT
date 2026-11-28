@@ -38,7 +38,7 @@ export function RecordingButton({
       className={cn(
         className,
         isRecording &&
-          "animate-pulse bg-error text-action-foreground hover:bg-error-hover",
+          "animate-pulse bg-error text-foreground-on-color hover:bg-error-hover",
         isTranscribing && "bg-surface-hover text-foreground-subtle",
         isStreaming && "opacity-40",
         highlight &&

@@ -34,7 +34,12 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
           tone="brand-strong"
           className="shrink-0"
         />
-        <Text variant="small-medium" tone="accent" className="shrink-0">
+        <Text
+          variant="small"
+          weight="medium"
+          tone="accent"
+          className="shrink-0"
+        >
           {isDue ? "Sending…" : label}
         </Text>
         {job.message && (
@@ -45,11 +50,18 @@ export function ScheduledSendChip({ job, onEdit, onCancel, isBusy }: Props) {
       </div>
       {!isDue && (
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="xs" variant="ghost" onClick={onEdit} disabled={isBusy}>
+          <Button
+            size="xs"
+            shape="sharp"
+            variant="ghost"
+            onClick={onEdit}
+            disabled={isBusy}
+          >
             Edit
           </Button>
           <Button
             size="xs"
+            shape="sharp"
             variant="ghost"
             onClick={onCancel}
             disabled={isBusy}

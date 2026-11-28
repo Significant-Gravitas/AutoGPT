@@ -35,7 +35,7 @@ export const MainDashboardPage = () => {
             Workflow dashboard
           </Text>
           <div className="space-y-2">
-            <Text variant="h2" size="large-medium" tone="primary">
+            <Text variant="h2" size="large" weight="medium" tone="primary">
               Submit a New Workflow
             </Text>
             <Text variant="body" size="small">
@@ -63,7 +63,13 @@ export const MainDashboardPage = () => {
 
       {/* Agents Section */}
       <div>
-        <Text variant="h2" size="large-medium" tone="primary" className="mb-4">
+        <Text
+          variant="h2"
+          size="large"
+          weight="medium"
+          tone="primary"
+          className="mb-4"
+        >
           Your uploaded workflows
         </Text>
 

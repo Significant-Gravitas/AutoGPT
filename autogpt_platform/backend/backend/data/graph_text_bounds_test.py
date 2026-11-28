@@ -57,23 +57,43 @@ async def test_a_save_accepts_metadata_at_the_bound(field_name: str, mocker):
 
 @pytest.mark.asyncio
 async def test_a_workflow_named_at_the_bound_can_be_forked(mocker):
-    source = GraphModel.model_validate(
-        {
-            "name": "x" * GRAPH_TEXT_MAX_LENGTHS["name"],
-            "description": "",
-            "nodes": [],
-            "links": [],
-            "user_id": "user-1",
-            "created_at": datetime.now(UTC),
-        }
-    )
-    mocker.patch.object(graph_db, "get_graph", return_value=source)
-    mocker.patch.object(graph_db, "transaction", return_value=AsyncMock())
-    mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
+    source = _stored(mocker, name="x" * GRAPH_TEXT_MAX_LENGTHS["name"])
 
     with pytest.raises(_ReachedTheFirstQuery):
         await graph_db.fork_graph("graph-1", 1, "user-1")
     assert source.name.endswith(" (copy)")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "copy_with", [graph_db.fork_graph, graph_db.copy_graph], ids=["fork", "copy"]
+)
+async def test_a_stored_name_over_the_bound_is_cut_to_fit(copy_with, mocker):
+    limit = GRAPH_TEXT_MAX_LENGTHS["name"]
+    over = "x" * 500
+    sub = {"name": over, "description": "", "nodes": [], "links": []}
+    source = _stored(mocker, name=over, sub_graphs=[sub])
+
+    with pytest.raises(_ReachedTheFirstQuery):
+        await copy_with("graph-1", 1, "user-1")
+    assert source.sub_graphs[0].name == "x" * (limit - 1) + "…"
+    assert len(source.name) <= limit
+
+
+def _stored(mocker, **overrides) -> GraphModel:
+    """A stored workflow the fork or copy reads, which stops at its first query."""
+    fields: dict = {
+        "description": "",
+        "nodes": [],
+        "links": [],
+        "user_id": "user-1",
+        "created_at": datetime.now(UTC),
+    }
+    source = GraphModel.model_validate(fields | overrides)
+    mocker.patch.object(graph_db, "get_graph", return_value=source)
+    mocker.patch.object(graph_db, "transaction", return_value=AsyncMock())
+    mocker.patch.object(graph_db, "graph_owner_id", side_effect=_ReachedTheFirstQuery)
+    return source
 
 
 def test_a_short_name_is_forked_whole():

@@ -109,13 +109,12 @@ export function RaiseFlow() {
           <ScrollFade edge="bottom" isVisible={canScrollDown} />
         </div>
 
-        {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 40px panel radius has no rounded-* step (4xl is 32px) */}
-        <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-surface-hover/40 lg:order-2">
+        <div className="relative order-1 m-2 overflow-hidden rounded-5xl bg-surface-hover/40 lg:order-2">
           <DitheredWaves
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
           />
-          <div className="absolute top-4 left-4 z-10 flex gap-2 sm:top-6 sm:left-6">
+          <div className="absolute top-4 left-4 z-raised flex gap-2 sm:top-6 sm:left-6">
             <Button
               variant="icon"
               size="icon-sm"

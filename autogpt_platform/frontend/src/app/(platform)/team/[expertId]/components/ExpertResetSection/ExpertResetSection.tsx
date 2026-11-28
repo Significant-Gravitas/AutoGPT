@@ -29,7 +29,7 @@ export function ExpertResetSection({ expert }: Props) {
           <Icon icon={ArrowReloadHorizontalIcon} size={20} aria-hidden />
         </span>
         <div className="min-w-0">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Reset {expert.name}
           </Text>
           <Text variant="body-md" tone="secondary" className="mt-0.5">

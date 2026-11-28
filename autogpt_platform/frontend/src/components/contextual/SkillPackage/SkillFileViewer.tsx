@@ -38,7 +38,7 @@ export function SkillFileViewer({ source, path, onClose }: Props) {
               <Skeleton className="h-4 w-2/3" />
             </div>
           ) : unavailable ? (
-            <Text variant="body-tight" tone="muted">
+            <Text variant="body" leading="5" tone="muted">
               {unavailable}
             </Text>
           ) : (

@@ -34,12 +34,12 @@ export function SubmissionStatus({ status }: Props) {
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 rounded-full px-2.5 py-1",
+        "flex items-center gap-1.5 rounded-pill px-2.5 py-1",
         config.fill,
       )}
     >
       <div className={cn("h-3 w-3 rounded-full", config.dot)} />
-      <Text variant="body-tight" as="div" tone="secondary">
+      <Text variant="body" leading="5" as="div" tone="secondary">
         {config.label}
       </Text>
     </div>

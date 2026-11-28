@@ -32,7 +32,7 @@ export function OAuthFlowWaitingModal({
     >
       <Dialog.Content>
         {popupBlocked ? (
-          <Text variant="body-tight" tone="secondary">
+          <Text variant="body" leading="5" tone="secondary">
             Your browser blocked the sign-in window, so we opened it in a new
             tab. Switch to that tab and complete sign-in there.
             <br />
@@ -40,7 +40,7 @@ export function OAuthFlowWaitingModal({
             this dialog, and try connecting again.
           </Text>
         ) : (
-          <Text variant="body-tight" tone="secondary">
+          <Text variant="body" leading="5" tone="secondary">
             Complete the sign-in process in the sign-in window.
             <br />
             Closing this dialog will cancel the sign-in process.

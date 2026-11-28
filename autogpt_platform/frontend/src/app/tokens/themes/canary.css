@@ -1,0 +1,166 @@
+/*
+  The canary look: a dev tool, never imported by the app. It gives every
+  token a loud value no default has, so a screenshot shows at a glance what
+  follows the tokens and what does not: surfaces turn green, text magenta,
+  borders cyan, every corner square, every shadow red, the sans font Papyrus,
+  the mono font Comic Sans and every text size a quarter bigger.
+
+  scripts/ds/canary-check.ts injects it, sets `data-look="canary"` on <html>
+  and reports every element whose colour, radius or font is not one of these
+  values. Storybook's "Look" toolbar switches to it. A test keeps it complete:
+  a new colour, radius or text size needs a canary value here.
+
+  `--radius-full` keeps its value: it is for circles, which stay round in
+  any look; pills read `--radius-pill`. Colours are RGB triplets, as in
+  theme.css.
+*/
+html[data-look="canary"] {
+  /* Surfaces: green */
+  --color-canvas: 120 255 120;
+  --color-surface: 170 255 170;
+  --color-surface-muted: 150 245 150;
+  --color-surface-hover: 100 230 100;
+  --color-surface-active: 60 200 60;
+  --color-overlay: 0 160 0;
+  --color-scrim: 0 90 0;
+
+  /* Text: magenta */
+  --color-foreground-base: 200 0 200;
+  --color-foreground-strong: 180 0 180;
+  --color-foreground-emphasis: 160 0 160;
+  --color-foreground-body: 220 0 220;
+  --color-foreground-secondary: 240 0 240;
+  --color-foreground-tertiary: 255 60 255;
+  --color-foreground-subtle: 255 110 255;
+  --color-foreground-disabled: 255 160 255;
+  --color-placeholder: 255 85 255;
+
+  /* Borders: cyan */
+  --color-separator: 0 255 255;
+  --color-border-base: 0 220 220;
+  --color-border-strong: 0 180 180;
+  --color-focus: 0 130 255;
+
+  /* Action: orange */
+  --color-action: 255 120 0;
+  --color-action-hover: 230 95 0;
+  --color-action-foreground: 255 0 255;
+
+  /* Brand: violet */
+  --color-brand: 128 0 255;
+  --color-brand-hover: 100 0 220;
+  --color-accent-surface: 220 190 255;
+  --color-accent-strong: 80 0 200;
+
+  /* Status: crimson, amber, lime, blue */
+  --color-error: 230 0 50;
+  --color-error-hover: 200 0 40;
+  --color-error-foreground: 170 0 30;
+  --color-error-surface: 255 200 210;
+  --color-warning: 255 200 0;
+  --color-warning-foreground: 200 150 0;
+  --color-warning-surface: 255 240 160;
+  --color-warning-border: 255 220 60;
+  --color-success: 120 220 0;
+  --color-success-foreground: 90 170 0;
+  --color-success-surface: 220 255 170;
+  --color-info: 30 60 255;
+  --color-info-foreground: 20 40 200;
+  --color-info-surface: 190 200 255;
+  --color-error-inverse: 255 120 140;
+  --color-success-inverse: 170 255 60;
+
+  /* Accents */
+  --color-orange: 255 100 0;
+  --color-orange-foreground: 210 80 0;
+  --color-yellow: 240 255 0;
+  --color-yellow-foreground: 180 190 0;
+  --color-sky: 0 180 255;
+  --color-sky-foreground: 0 120 200;
+  --color-indigo: 60 0 255;
+  --color-pink: 255 0 150;
+  --color-pink-foreground: 200 0 120;
+
+  /* Builder: the canvas green, the node parts cyan */
+  --color-builder-canvas: 140 250 140;
+  --color-builder-grid: 0 240 240;
+  --color-node-surface: 190 255 190;
+  --color-node-border: 0 200 200;
+  --color-node-selected: 0 160 160;
+  --color-edge: 0 140 140;
+  --color-handle: 0 100 100;
+
+  /* Inverse, fills and shell */
+  --color-surface-inverse: 0 60 0;
+  --color-surface-inverse-hover: 0 40 0;
+  --color-foreground-inverse: 255 200 255;
+  --color-foreground-on-color: 230 120 255;
+  --color-fill-subtle: 150 100 0;
+  --color-fill-soft: 170 115 0;
+  --color-fill-medium: 135 90 0;
+  --color-fill-bold: 120 75 0;
+  --color-fill-strong: 100 60 0;
+  --color-shell: 90 220 90;
+  --color-shell-foreground: 140 0 140;
+  --color-shell-hover: 70 210 70;
+  --color-shell-active: 40 180 40;
+  --color-shell-border: 0 230 230;
+
+  /* Radius: square, except --radius-full */
+  --radius-none: 0px;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --radius-5xl: 0px;
+  --radius-2xl-inner: 0px;
+  --radius-pill: 0px;
+  --radius-xsmall: 0px;
+  --radius-small: 0px;
+  --radius-medium: 0px;
+  --radius-large: 0px;
+  --radius-xlarge: 0px;
+  --radius-2xlarge: 0px;
+
+  /* Shadows: pure red */
+  --shadow-color: 255 0 0;
+
+  /* Fonts: the variables the `font-sans` and `font-mono` classes read */
+  --font-geist-sans: "Papyrus", fantasy;
+  --font-poppins: "Papyrus", fantasy;
+  --font-geist-mono: "Comic Sans MS", cursive;
+
+  /* Type scale: every size and line height a quarter bigger */
+  --text-tiny: calc(0.625rem * 1.25);
+  --text-tiny--line-height: calc(0.875rem * 1.25);
+  --text-caption-sm: calc(0.6875rem * 1.25);
+  --text-caption-sm--line-height: calc(1rem * 1.25);
+  --text-caption: calc(0.75rem * 1.25);
+  --text-caption--line-height: calc(1.125rem * 1.25);
+  --text-body-sm: calc(0.8125rem * 1.25);
+  --text-body-sm--line-height: calc(1.25rem * 1.25);
+  --text-body: calc(0.875rem * 1.25);
+  --text-body--line-height: calc(1.375rem * 1.25);
+  --text-body-md: calc(0.9375rem * 1.25);
+  --text-body-md--line-height: calc(1.5rem * 1.25);
+  --text-body-lg: calc(1rem * 1.25);
+  --text-body-lg--line-height: calc(1.625rem * 1.25);
+  --text-lead: calc(1.25rem * 1.25);
+  --text-lead--line-height: calc(1.75rem * 1.25);
+  --text-heading-sm: calc(1.375rem * 1.25);
+  --text-heading-sm--line-height: calc(1.5rem * 1.25);
+  --text-heading-md: calc(1.5rem * 1.25);
+  --text-heading-md--line-height: calc(2rem * 1.25);
+  --text-heading: calc(1.75rem * 1.25);
+  --text-heading--line-height: calc(2.5rem * 1.25);
+  --text-title: calc(2rem * 1.25);
+  --text-title--line-height: calc(2.5rem * 1.25);
+  --text-display: calc(2.75rem * 1.25);
+  --text-display--line-height: calc(3.5rem * 1.25);
+  --text-hero: calc(4rem * 1.25);
+  --text-hero--line-height: 1; /* unitless: already follows the size */
+}

@@ -33,7 +33,7 @@ export function WizardPlaceholder({
           </Text>
           <Skeleton
             variant="translucent"
-            className="mt-4 h-10 w-40 rounded-full"
+            className="mt-4 h-10 w-40 rounded-pill"
             aria-hidden
           />
         </div>

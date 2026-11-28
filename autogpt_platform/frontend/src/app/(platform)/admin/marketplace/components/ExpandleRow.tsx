@@ -27,7 +27,7 @@ import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
 const STATUS_CHIP =
-  "inline-flex cursor-default items-center rounded-md border border-transparent px-2.5 py-0.5 text-caption font-semibold leading-4 text-action-foreground shadow";
+  "inline-flex cursor-default items-center rounded-md border border-transparent px-2.5 py-0.5 text-caption font-semibold leading-4 text-foreground-on-color shadow";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {
@@ -39,9 +39,7 @@ const getStatusBadge = (status: SubmissionStatus) => {
     case SubmissionStatus.REJECTED:
       return <span className={cn(STATUS_CHIP, "bg-error")}>Rejected</span>;
     default:
-      return (
-        <span className={cn(STATUS_CHIP, "bg-foreground-tertiary")}>Draft</span>
-      );
+      return <span className={cn(STATUS_CHIP, "bg-fill-soft")}>Draft</span>;
   }
 };
 
@@ -92,7 +90,7 @@ export function ExpandableRow({
                 <Link
                   href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
                 >
-                  <Button size="xs" variant="secondary">
+                  <Button size="xs" shape="sharp" variant="secondary">
                     <Icon aria-hidden icon={EyeIcon} className="h-4 w-4" />
                     Preview
                   </Button>
@@ -117,7 +115,9 @@ export function ExpandableRow({
           <td colSpan={7} className="p-0">
             <div className="bg-surface-hover/30 px-4 py-3">
               <Text
-                variant="body-semibold-tight"
+                variant="body"
+                weight="semibold"
+                leading="5"
                 as="h4"
                 tone="inherit"
                 className="mb-2"
@@ -219,7 +219,11 @@ export function ExpandableRow({
                                 <Link
                                   href={`/admin/marketplace/preview/${version.listing_version_id}`}
                                 >
-                                  <Button size="xs" variant="secondary">
+                                  <Button
+                                    size="xs"
+                                    shape="sharp"
+                                    variant="secondary"
+                                  >
                                     <Icon
                                       aria-hidden
                                       icon={EyeIcon}

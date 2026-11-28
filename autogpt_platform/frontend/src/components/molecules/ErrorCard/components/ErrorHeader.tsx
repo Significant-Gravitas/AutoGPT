@@ -16,7 +16,8 @@ export function ErrorHeader() {
       </div>
       <div data-slot="error-card-heading">
         <Text
-          variant="large-semibold"
+          variant="large"
+          weight="semibold"
           data-slot="error-card-title"
           tone="emphasis"
         >

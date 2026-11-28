@@ -292,6 +292,10 @@ def build_sdk_env(
     # CLI has been closed, killing the sub-agent and losing its work.  This
     # also stops the CLI from moving long tool calls to the background.
     env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+    # Run every sub-agent on the turn's model; without _FORCE the Agent tool's
+    # ``model`` argument and an agent type's own model both override ``inherit``.
+    env["CLAUDE_CODE_SUBAGENT_MODEL"] = "inherit"
+    env["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"] = "1"
     # Keep TodoWrite, the checklist the UI renders; the CLI otherwise swaps in
     # its TaskCreate/TaskUpdate tools.
     env["CLAUDE_CODE_ENABLE_TASKS"] = "0"

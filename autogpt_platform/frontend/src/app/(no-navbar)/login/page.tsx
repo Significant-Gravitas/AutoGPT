@@ -207,7 +207,7 @@ export default function LoginPage() {
       </FormProvider>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" tone="muted">
+        <Text variant="body" weight="medium" tone="muted">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

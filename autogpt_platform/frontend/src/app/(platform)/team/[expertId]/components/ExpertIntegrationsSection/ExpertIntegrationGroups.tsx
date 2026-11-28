@@ -17,6 +17,7 @@ import {
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 export const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",
@@ -43,7 +44,7 @@ const ITEM_VARIANTS: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+    transition: { duration: duration.slow, ease: ease.emphasized },
   },
 };
 const REDUCED_ITEM_VARIANTS: Variants = {
@@ -125,7 +126,12 @@ export function ExpertIntegrationGroups({
                       size={20}
                     />
                   </span>
-                  <Text variant="body-md-medium" as="span" tone="primary">
+                  <Text
+                    variant="body-md"
+                    weight="medium"
+                    as="span"
+                    tone="primary"
+                  >
                     {group.name}
                   </Text>
                   <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption font-medium text-foreground-secondary tabular-nums">
@@ -169,7 +175,7 @@ function ExpertIntegrationRow({ integration, isRemoving, onRemove }: RowProps) {
     >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <Text variant="body-md-medium" as="span" tone="primary">
+          <Text variant="body-md" weight="medium" as="span" tone="primary">
             {name}
           </Text>
           <span className="inline-flex items-center justify-center rounded-md bg-surface-hover px-1.5 py-0.5 font-sans text-caption leading-4 text-foreground-secondary">

@@ -36,7 +36,8 @@ interface ScheduleArgs {
 /**
  * The credentials a run form starts with, for each field still empty or on a
  * key the form picked itself: the user's own key the workflow's steps agree
- * on, else the platform's key when exactly one fits.
+ * on, else the platform's key when exactly one fits and no step under the
+ * field refuses it.
  */
 export function getDefaultRunCredentials({
   properties,
@@ -79,8 +80,10 @@ export function getDefaultRunCredentials({
  * on one of the user's own keys from the steps, and the user left alone, goes
  * back to the key it starts on without them: the platform's key for that
  * key's provider, else the only key that fits, else none. A required field
- * keeps the steps' key over none. The schedule dialog names the fields that
- * differ from the run form, and can schedule on the form's keys instead.
+ * keeps the steps' key over none. A field whose steps refuse the platform's
+ * keys keeps the user's own: the platform's would fail every run. The
+ * schedule dialog names the fields that differ from the run form, and can
+ * schedule on the form's keys instead.
  */
 export function getScheduleCredentials({
   properties,
@@ -96,6 +99,7 @@ export function getScheduleCredentials({
   for (const [key, schema] of Object.entries(properties)) {
     const current = credentials[key];
     if (!current || userFields.includes(key)) continue;
+    if (schema.refuses_platform_credentials) continue;
     if (!isOwnCredential(current, allProviders)) continue;
     const nodeCredential = findNodeCredential(
       schema,
@@ -125,12 +129,14 @@ export function getScheduleCredentials({
 }
 
 // The only platform key that fits the field, from the first of its providers
-// with one, or from the given provider alone
+// with one, or from the given provider alone. None for a field whose steps
+// refuse the platform's keys.
 function findPlatformCredential(
   schema: CredentialFieldSchema,
   allProviders: CredentialsProvidersContextType,
   provider?: string,
 ) {
+  if (schema.refuses_platform_credentials) return undefined;
   const supportedTypes = schema.credentials_types ?? [];
   const providers = provider ? [provider] : (schema.credentials_provider ?? []);
 

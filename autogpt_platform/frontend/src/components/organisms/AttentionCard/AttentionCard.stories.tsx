@@ -44,7 +44,12 @@ function Example(props: RootProps) {
             <Icon icon={Alert02Icon} size={16} />
           </AttentionCard.Icon>
           <AttentionCard.Content>
-            <Text variant="body-medium" as="span" className="text-inherit">
+            <Text
+              variant="body"
+              weight="medium"
+              as="span"
+              className="text-inherit"
+            >
               Your weekly report is waiting for approval
             </Text>
           </AttentionCard.Content>
@@ -92,7 +97,9 @@ export const ListWithSeparatorAndCount: Story = {
       <AttentionCard.Root {...args}>
         <AttentionCard.Row align="start" inset>
           <AttentionCard.Content>
-            <Text variant="body-medium">Lead Finder</Text>
+            <Text variant="body" weight="medium">
+              Lead Finder
+            </Text>
             <Text variant="body" tone="muted">
               Found 12 new leads overnight
             </Text>
@@ -102,7 +109,9 @@ export const ListWithSeparatorAndCount: Story = {
         <AttentionCard.Separator />
         <AttentionCard.Row align="start" inset>
           <AttentionCard.Content>
-            <Text variant="body-medium">Inbox Triage</Text>
+            <Text variant="body" weight="medium">
+              Inbox Triage
+            </Text>
             <Text variant="body" tone="muted">
               Sorted 48 emails into 5 folders
             </Text>
