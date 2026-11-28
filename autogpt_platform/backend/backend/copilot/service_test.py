@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from os import getenv
 
 import pytest
@@ -121,6 +122,24 @@ def test_voice_turn_prefix_is_hidden_from_the_user() -> None:
 
     typed = "How many agents do I have?"
     assert strip_injected_context_for_display(VOICE_TURN_PREFIX + typed) == typed
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_a_long_run_of_leading_blocks_is_walked_in_linear_time(unknown: bool) -> None:
+    """Each block is stepped over in place, never by copying the rest."""
+    from backend.copilot.service import (
+        split_leading_server_blocks,
+        strip_injected_context_for_display,
+    )
+
+    tag = "note" if unknown else SERVER_INJECTED_BLOCK_TAGS[0]
+    blocks = f"<{tag}></{tag}>\n\n" * 200_000
+    start = time.perf_counter()
+    shown = strip_injected_context_for_display(blocks + "hello")
+    server, typed = split_leading_server_blocks(blocks + "hello")
+    assert time.perf_counter() - start < 10.0
+    assert shown == (blocks + "hello" if unknown else "hello")
+    assert (server, typed) == (("", blocks + "hello") if unknown else (blocks, "hello"))
 
 
 def test_a_user_typing_the_voice_turn_tag_keeps_their_text() -> None:
