@@ -189,6 +189,13 @@ export const ROUTE_RULES: Record<string, RouteRule> = {
     reason: "asks for the email to send a reset link to",
     access: "public",
   },
+  "/auth/verify-email": {
+    reason:
+      "confirms an emailed verification link; opened without one, it shows the login page's expired-link notice",
+    access: "public",
+    landsOn: "/login",
+    signedInLandsOn: "/home",
+  },
   "/microsoft-setup": {
     reason: "setup notes for a Microsoft admin, who may have no account",
     access: "public",

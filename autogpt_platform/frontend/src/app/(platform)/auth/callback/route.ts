@@ -34,8 +34,9 @@ import { NextResponse } from "next/server";
 // exists and we only provision the backend user and decide where to send them.
 //
 // An email verification link lands here too (`?method=email`, see
-// lib/auth/email-verification.ts) after /api/auth/verify-email has signed the
-// user in, so a verified email sign-up is provisioned and counted here, once.
+// lib/auth/email-verification.ts) after the verify link's confirm page has
+// signed the user in, so a verified email sign-up is provisioned and counted
+// here, once.
 function getPublicOrigin(requestOrigin: string) {
   const configuredURL =
     process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_FRONTEND_BASE_URL;

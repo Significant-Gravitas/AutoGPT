@@ -1,20 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The sign_up conversion across the email verification round trip: the
-// sign-up action (no session yet) must not count the account, the verify link
-// landing on /auth/callback?method=email must count it, and only once.
+// sign-up action (no session yet) must not count the account, the confirm
+// page's click landing on /auth/callback?method=email must count it, and only
+// once.
 
 const mocks = vi.hoisted(() => ({
   signUpEmail: vi.fn(),
+  verifyEmail: vi.fn(),
   getServerSession: vi.fn(),
   scheduleAccountCreatedGoal: vi.fn(),
   cookieSet: vi.fn(),
   recordUserConsent: vi.fn(),
   provisionedUserIDs: new Set<string>(),
+  // The cookie the emailed link left for the confirm page.
+  heldLink: "",
 }));
 
+const RedirectSignal = vi.hoisted(
+  () =>
+    class RedirectSignal {
+      constructor(readonly url: string) {}
+    },
+);
+
 vi.mock("@/lib/auth/auth", () => ({
-  auth: { api: { signUpEmail: mocks.signUpEmail } },
+  auth: {
+    api: { signUpEmail: mocks.signUpEmail, verifyEmail: mocks.verifyEmail },
+  },
 }));
 vi.mock("@/lib/auth/server/getServerSession", () => ({
   getServerSession: mocks.getServerSession,
@@ -54,21 +67,61 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers()),
   cookies: vi.fn(async () => ({
     set: mocks.cookieSet,
-    get: vi.fn(),
-    delete: vi.fn(),
+    get: vi.fn((name: string) =>
+      name === "email_verification_link"
+        ? { value: mocks.heldLink }
+        : undefined,
+    ),
+    // Clears the held link only as a browser would: same name, same path.
+    delete: vi.fn((cookie: { name: string; path?: string }) => {
+      if (
+        cookie.name === "email_verification_link" &&
+        cookie.path === "/auth/verify-email"
+      ) {
+        mocks.heldLink = "";
+      }
+    }),
   })),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((url: string) => {
+    throw new RedirectSignal(url);
+  }),
+}));
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+  withServerActionInstrumentation: vi.fn(
+    (_name: string, _options: unknown, callback: () => unknown) => callback(),
+  ),
+}));
 
+import { confirmEmail } from "@/app/(no-navbar)/auth/verify-email/actions";
 import { signup } from "@/app/(no-navbar)/signup/actions";
 import { GET } from "../route";
 
 const origin = "http://localhost:3000";
-const password = "ValidPassword123!";
+const password = "ValidPassword123!"; // pragma: allowlist secret
 
-function clickVerificationLink(callbackURL: string) {
-  return GET(new Request(`${origin}${callbackURL}`));
+// The confirm page's button: Better Auth verifies the address and signs the
+// user in, the held link is cleared, and the action sends them on to the
+// link's callbackURL.
+async function clickVerify(callbackURL: string) {
+  mocks.heldLink = new URLSearchParams({
+    token: "link-token",
+    callbackURL,
+  }).toString();
+  mocks.verifyEmail.mockImplementation(async () => {
+    mocks.getServerSession.mockResolvedValue({ user: { id: "u-1" } });
+    return { status: true };
+  });
+  const signal = await confirmEmail().catch((thrown: unknown) => thrown);
+  if (!(signal instanceof RedirectSignal)) throw new Error("No redirect");
+  expect(mocks.verifyEmail).toHaveBeenCalledWith(
+    expect.objectContaining({ query: { token: "link-token" } }),
+  );
+  expect(mocks.heldLink).toBe("");
+  return GET(new Request(`${origin}${signal.url}`));
 }
 
 describe("sign_up conversion across email verification", () => {
@@ -77,7 +130,7 @@ describe("sign_up conversion across email verification", () => {
     mocks.provisionedUserIDs.clear();
   });
 
-  it("fires once, when the verification link signs the new user in", async () => {
+  it("fires once, when the confirm page's click signs the new user in", async () => {
     mocks.signUpEmail.mockResolvedValue({ token: null, user: { id: "u-1" } });
     mocks.getServerSession.mockResolvedValue(null);
 
@@ -87,12 +140,9 @@ describe("sign_up conversion across email verification", () => {
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
     expect(mocks.cookieSet).not.toHaveBeenCalled();
 
-    // Better Auth's /verify-email signs the user in, then redirects to the
-    // callbackURL the sign-up action gave it.
     const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;
-    mocks.getServerSession.mockResolvedValue({ user: { id: "u-1" } });
 
-    const landing = await clickVerificationLink(callbackURL);
+    const landing = await clickVerify(callbackURL);
 
     expect(landing.headers.get("location")).toBe(`${origin}/onboarding`);
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
@@ -104,8 +154,8 @@ describe("sign_up conversion across email verification", () => {
       expect.anything(),
     );
 
-    // A second click (or a reload of the landing) finds the user provisioned.
-    await clickVerificationLink(callbackURL);
+    // A reload of the landing finds the user provisioned.
+    await GET(new Request(`${origin}${callbackURL}`));
 
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
     expect(mocks.cookieSet).toHaveBeenCalledOnce();
@@ -122,9 +172,8 @@ describe("sign_up conversion across email verification", () => {
 
       // No cookie travels with it: only the link the email carries.
       const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;
-      mocks.getServerSession.mockResolvedValue({ user: { id: "u-1" } });
 
-      await clickVerificationLink(callbackURL);
+      await clickVerify(callbackURL);
 
       expect(mocks.recordUserConsent).toHaveBeenCalledOnce();
       expect(mocks.recordUserConsent).toHaveBeenCalledWith(
