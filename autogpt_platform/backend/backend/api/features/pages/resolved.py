@@ -228,3 +228,7 @@ class ResolvedPage(BaseModel):
     chat_session_id: str | None = None
     has_previous: bool = False
     sections: list[PageSection]
+    running: bool = Field(
+        False,
+        description="A run the page shows or follows is still going; re-read it soon.",
+    )

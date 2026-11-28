@@ -129,6 +129,7 @@ async def resolve_page(
         chat_session_id=chat_session_id,
         has_previous=has_previous,
         sections=list(sections),
+        running=_running(sections, followed),
     )
 
 
@@ -155,6 +156,28 @@ async def _guarded(
             f"Page section {index} ({section.kind}) could not be read", exc_info=True
         )
         return _notice(index, section, "failed", COULD_NOT_LOAD)
+
+
+_IN_FLIGHT = {"queued", "running"}
+
+
+def _running(
+    sections: Sequence[PageSection], followed: Sequence[GraphExecution]
+) -> bool:
+    """Whether a run on the page is going; one waiting on a person is not."""
+    statuses: list[str | None] = [run.status for run in followed]
+    for section in sections:
+        if section.kind == "latest_result":
+            statuses.append(section.run_status)
+        elif section.kind == "recent_runs":
+            statuses += [run.status for run in section.runs]
+        elif section.kind == "run_history":
+            statuses += [row.status for row in section.rows]
+        elif section.kind == "expert_work":
+            statuses += [item.status for item in section.items]
+        elif section.kind == "expert_status" and section.status == "working":
+            return True
+    return any(status and status.lower() in _IN_FLIGHT for status in statuses)
 
 
 async def _resolve(

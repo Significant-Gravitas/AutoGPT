@@ -58,7 +58,8 @@
         ],
         "button_label": "Run"
       }
-    ]
+    ],
+    "running": false
   },
   "saved": false
 }

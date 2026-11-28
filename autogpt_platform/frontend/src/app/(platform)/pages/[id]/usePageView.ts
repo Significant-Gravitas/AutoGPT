@@ -7,15 +7,13 @@ import { trackPageOpened } from "@/services/pages/pages-analytics";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { hasActiveResult } from "../components/Page/helpers";
+import { pagePollInterval } from "../components/Page/helpers";
 import type { PageLive } from "../components/Page/Page";
 import {
   useFollowedRunIDs,
   useFollowedRunStore,
 } from "../components/Page/store";
 import { usePageActions } from "../components/Page/usePageActions";
-
-const POLL_MS = 2_000;
 
 export function usePageView(pageID: string) {
   const runIDs = useFollowedRunIDs(pageID);
@@ -32,8 +30,8 @@ export function usePageView(pageID: string) {
         select: okData,
         // Following a new run must not blank the page and reset its forms.
         placeholderData: keepPreviousData,
-        refetchInterval: (q) =>
-          hasActiveResult(okData(q.state.data)) ? POLL_MS : false,
+        refetchInterval: (q) => pagePollInterval(okData(q.state.data)),
+        refetchOnWindowFocus: "always",
       },
     },
   );

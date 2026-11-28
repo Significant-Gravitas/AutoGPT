@@ -8,12 +8,10 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { trackPageOpened } from "@/services/pages/pages-analytics";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { hasActiveResult } from "../Page/helpers";
+import { pagePollInterval } from "../Page/helpers";
 import type { PageLive } from "../Page/Page";
 import { useFollowedRunIDs, useFollowedRunStore } from "../Page/store";
 import { usePageActions } from "../Page/usePageActions";
-
-const POLL_MS = 2_000;
 
 export function usePinnedPageMount(agent: LibraryAgent) {
   const enabled = Boolean(useGetFlag(Flag.PAGES));
@@ -32,8 +30,8 @@ export function usePinnedPageMount(agent: LibraryAgent) {
         retry: false,
         select: okData,
         placeholderData: keepPreviousData,
-        refetchInterval: (q) =>
-          hasActiveResult(okData(q.state.data)) ? POLL_MS : false,
+        refetchInterval: (q) => pagePollInterval(okData(q.state.data)),
+        refetchOnWindowFocus: "always",
       },
     },
   );

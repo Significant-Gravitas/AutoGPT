@@ -36895,6 +36895,12 @@
             },
             "type": "array",
             "title": "Sections"
+          },
+          "running": {
+            "type": "boolean",
+            "title": "Running",
+            "description": "A run the page shows or follows is still going; re-read it soon.",
+            "default": false
           }
         },
         "type": "object",

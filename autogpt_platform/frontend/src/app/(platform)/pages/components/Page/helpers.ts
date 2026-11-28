@@ -15,13 +15,12 @@ export function isRunActive(status: string | null | undefined) {
   return Boolean(status && ACTIVE_STATUSES.has(status));
 }
 
-/** Whether any result on the page is still running, so the page should poll. */
-export function hasActiveResult(page: ResolvedPage | undefined) {
-  return Boolean(
-    page?.sections.some(
-      (s) => s.kind === "latest_result" && isRunActive(s.run_status),
-    ),
-  );
+const RUNNING_POLL_MS = 2_000;
+const IDLE_POLL_MS = 30_000;
+
+/** How soon an open page reads itself again: quickly while a run on it is going. */
+export function pagePollInterval(page: ResolvedPage | undefined) {
+  return page?.running ? RUNNING_POLL_MS : IDLE_POLL_MS;
 }
 
 export interface FieldGroup {

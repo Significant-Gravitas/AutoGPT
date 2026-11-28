@@ -363,6 +363,73 @@ async def test_expert_sections_read_its_work_memory_and_activity(fakes: Fakes) -
     ]
 
 
+def going(run_id: str, status: ExecutionStatus) -> GraphExecution:
+    return GraphExecution.model_construct(
+        **dict(meta(run_id, status=status)), outputs={}
+    )
+
+
+@pytest.mark.parametrize(
+    "case, sections, followed, work, expert_status, expected",
+    [
+        ("followed run, form only", [BOUND_FORM], ["RUNNING"], [], "ready", True),
+        ("followed run finished", [BOUND_FORM], ["COMPLETED"], [], "ready", False),
+        ("followed run waits on a person", [ROW_TABLE], ["REVIEW"], [], "ready", False),
+        (
+            "expert working",
+            [{"kind": "expert_status", "expert": "nadia"}],
+            [],
+            [],
+            "working",
+            True,
+        ),
+        (
+            "expert work queued",
+            [{"kind": "expert_work", "expert": "nadia"}],
+            [],
+            ["queued"],
+            "ready",
+            True,
+        ),
+        (
+            "expert work done",
+            [{"kind": "expert_work", "expert": "nadia"}],
+            [],
+            ["completed"],
+            "ready",
+            False,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_page_reads_as_running_only_while_a_run_it_shows_or_follows_is_going(
+    fakes: Fakes,
+    case: str,
+    sections: list[dict[str, Any]],
+    followed: list[str],
+    work: list[str],
+    expert_status: str,
+    expected: bool,
+) -> None:
+    fakes.expert_runs = [
+        ExpertRun.model_construct(
+            execution_id=f"w{i}",
+            agent_name="Watch",
+            status=status,
+            started_at=NOW,
+            link="/x",
+        )
+        for i, status in enumerate(work)
+    ]
+    composed = MagicMock(status=expert_status, detail="", spend_cents=0)
+    runs = [going(f"f{i}", ExecutionStatus(s)) for i, s in enumerate(followed)]
+
+    with patch(f"{_MODULE}.compose_agent_statuses", return_value=[composed]):
+        page = await resolve(*sections, followed=runs)
+
+    assert page.running is expected, case
+
+
 @pytest.mark.asyncio
 async def test_one_section_that_fails_reads_couldnt_load_and_the_rest_still_show(
     fakes: Fakes,

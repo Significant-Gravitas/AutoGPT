@@ -3,8 +3,9 @@ import { server } from "@/mocks/mock-server";
 import { COPILOT_PROMPT_KEYS } from "@/services/copilot/prompt-handoff";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { QueryClient } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import PageViewPage from "../[id]/page";
 import { useFollowedRunStore } from "../components/Page/store";
 import PagesListPage from "../page";
@@ -34,6 +35,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
 beforeEach(() => {
   router.push.mockClear();
   useFollowedRunStore.setState({ runs: {} });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 const EXPERT = { expert_id: "nadia", expert_name: "Nadia" };
@@ -141,6 +146,62 @@ test("a page shows what its expert is doing, what it learned and what waits", as
     (await screen.findAllByText("Approve this invoice")).length,
   ).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+});
+
+test("a page re-reads itself every 2 s while a run on it is going, then every 30 s", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let reads = 0;
+  const done = page({
+    sections: [
+      {
+        kind: "expert_status",
+        index: 0,
+        ...EXPERT,
+        status: "ready",
+        detail: "Ready for the next task",
+        spend_cents: 120,
+      },
+    ],
+  });
+  server.use(
+    http.get("/api/proxy/api/pages/:pageID", () => {
+      reads += 1;
+      return HttpResponse.json(reads < 3 ? page({ running: true }) : done);
+    }),
+  );
+
+  render(<PageViewPage />);
+  expect(await screen.findByText("Running Competitor watch")).toBeDefined();
+  await vi.advanceTimersByTimeAsync(2_000);
+  await vi.advanceTimersByTimeAsync(2_000);
+
+  expect(await screen.findByText("Ready for the next task")).toBeDefined();
+  const settled = reads;
+  await vi.advanceTimersByTimeAsync(6_000);
+  expect(reads).toBe(settled);
+  await vi.advanceTimersByTimeAsync(30_000);
+  await waitFor(() => expect(reads).toBe(settled + 1));
+});
+
+test("a page re-reads itself when the window comes back into view", async () => {
+  let reads = 0;
+  server.use(
+    http.get("/api/proxy/api/pages/:pageID", () => {
+      reads += 1;
+      return HttpResponse.json(page());
+    }),
+  );
+
+  // The app's staleTime: data this fresh is not re-read on focus by default.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+  });
+  render(<PageViewPage />, { queryClient });
+  expect(await screen.findByText("Running Competitor watch")).toBeDefined();
+  const before = reads;
+  window.dispatchEvent(new Event("visibilitychange"));
+
+  await waitFor(() => expect(reads).toBe(before + 1));
 });
 
 test("renaming and undoing a change reach their routes", async () => {
