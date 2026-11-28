@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CredentialsFlatView } from "../CredentialsFlatView";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api/types";
@@ -297,5 +297,50 @@ describe("CredentialsFlatView", () => {
 
     expect(screen.getByText("Platform key")).toBeTruthy();
     expect(screen.queryByText(/\(deleted\)/)).toBeNull();
+  });
+
+  describe("a required field's only key", () => {
+    const platformKey = {
+      id: "firecrawl-default",
+      title: "Firecrawl API Key",
+      type: "api_key",
+      provider: "firecrawl",
+      is_system: true,
+    };
+    const firecrawl = {
+      provider: "firecrawl",
+      displayName: "Firecrawl",
+      credentials: [platformKey],
+      variant: "default" as const,
+    };
+
+    it("is listed for the user to pick when the input won't pick it", () => {
+      const onSelectCredential = vi.fn();
+      render(
+        <CredentialsFlatView
+          {...makeProps({
+            ...firecrawl,
+            listsSingleKey: true,
+            onSelectCredential,
+          })}
+        />,
+      );
+
+      const picker = screen.getByRole("combobox", {
+        name: "Select Firecrawl credential",
+      }) as HTMLSelectElement;
+      expect(picker.value).toBe("__none__");
+      fireEvent.change(picker, { target: { value: platformKey.id } });
+      expect(onSelectCredential).toHaveBeenCalledWith(platformKey.id);
+    });
+
+    it("is shown as the field's key otherwise", () => {
+      render(<CredentialsFlatView {...makeProps(firecrawl)} />);
+
+      expect(screen.getByText("Firecrawl API Key")).toBeTruthy();
+      expect(
+        screen.queryByRole("combobox", { name: "Select Firecrawl credential" }),
+      ).toBeNull();
+    });
   });
 });

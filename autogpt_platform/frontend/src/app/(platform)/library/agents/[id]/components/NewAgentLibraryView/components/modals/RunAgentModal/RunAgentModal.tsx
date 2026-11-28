@@ -23,11 +23,16 @@ import { RunAgentModalContextProvider } from "./context";
 import { useAgentRunModal } from "./useAgentRunModal";
 
 interface Props {
-  triggerSlot: React.ReactNode;
+  /** Opens the form; without one, the host opens it through `controlled`. */
+  triggerSlot?: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
   initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
+  /** Credential fields left for the user to pick a key for, e.g. one whose
+   *  key was deleted, each with the provider of the key it had: shown, and
+   *  never filled for them. */
+  fieldsToPick?: Record<string, string>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
@@ -35,7 +40,15 @@ interface Props {
    *  override the dialog title. */
   title?: string;
   dialogVariant?: "default" | "compact";
+  controlled?: { isOpen: boolean; set: (open: boolean) => void };
+  /** Shown above the task's inputs. */
+  notice?: React.ReactNode;
+  /** The form repeats a run: an optional credential it starts without is one
+   *  the run went without, so nothing fills it. */
+  keepsSkippedCredentials?: boolean;
 }
+
+const NO_FIELDS_TO_PICK: Record<string, string> = {};
 
 export function RunAgentModal({
   triggerSlot,
@@ -43,11 +56,15 @@ export function RunAgentModal({
   initialInputValues,
   initialTriggerConfigValues,
   initialInputCredentials,
+  fieldsToPick = NO_FIELDS_TO_PICK,
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
   title = "Run Workflow",
   dialogVariant = "default",
+  controlled,
+  notice,
+  keepsSkippedCredentials,
 }: Props) {
   const {
     // UI state
@@ -105,6 +122,8 @@ export function RunAgentModal({
     initialInputValues,
     initialTriggerConfigValues,
     initialInputCredentials,
+    controlled,
+    keepsSkippedCredentials,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -172,6 +191,10 @@ export function RunAgentModal({
   }
 
   function handleSetOpen(open: boolean) {
+    // The safety popup opens over the form and takes focus, which the form's
+    // dialog reads as a click outside it. A host that unmounts the form once
+    // it closes would take the popup, and the run it holds, with it.
+    if (!open && isSafetyPopupOpen) return;
     setIsOpen(open);
   }
 
@@ -214,12 +237,14 @@ export function RunAgentModal({
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >
-        <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
+        {triggerSlot ? <Dialog.Trigger>{triggerSlot}</Dialog.Trigger> : null}
         <Dialog.Content>
           <div ref={contentRef} className="flex min-h-full flex-col">
             <div className="flex-1">
               {/* Header */}
               <ModalHeader agent={agent} />
+
+              {notice ? <div className="mt-4">{notice}</div> : null}
 
               {/* Content */}
               {hasAnySetupFields ? (
@@ -243,6 +268,7 @@ export function RunAgentModal({
                       autoSelectInputCredentialsValue:
                         handleCredentialAutoSelect,
                       clearedCredentialFields: clearedFields,
+                      credentialFieldsToPick: fieldsToPick,
                       agentCredentialsInputFields,
                       nodeCredentials,
                       isResolvingCredentials,

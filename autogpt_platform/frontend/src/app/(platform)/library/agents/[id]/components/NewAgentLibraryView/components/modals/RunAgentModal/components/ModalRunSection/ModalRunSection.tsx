@@ -28,6 +28,7 @@ export function ModalRunSection() {
     setInputCredentialsValue,
     autoSelectInputCredentialsValue,
     clearedCredentialFields,
+    credentialFieldsToPick,
     nodeCredentials,
     isResolvingCredentials,
     nodeCredentialsUnknown,
@@ -156,6 +157,7 @@ export function ModalRunSection() {
                 nodeCredentials={nodeCredentials}
                 nodeCredentialsUnknown={nodeCredentialsUnknown}
                 clearedFields={clearedCredentialFields}
+                fieldsToPick={credentialFieldsToPick}
               />
             </div>
           )}

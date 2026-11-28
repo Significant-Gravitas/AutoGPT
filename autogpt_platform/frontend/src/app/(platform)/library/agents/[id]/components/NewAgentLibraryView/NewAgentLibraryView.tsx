@@ -323,6 +323,7 @@ export function NewAgentLibraryView() {
               agent={agent}
               runId={activeItemId}
               onSelectRun={handleSelectRun}
+              onScheduleCreated={onScheduleCreated}
               onClearSelectedRun={handleClearSelectedRun}
               banner={renderMarketplaceUpdateBanner()}
             />
