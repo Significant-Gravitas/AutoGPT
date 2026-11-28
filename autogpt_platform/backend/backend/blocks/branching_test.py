@@ -1,4 +1,4 @@
-"""ConditionBlock passes value1 through when a branch value is omitted."""
+"""Behaviour tests for ConditionBlock."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from backend.blocks.branching import ComparisonOperator, ConditionBlock
 from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
 from backend.executor.utils import validate_exec
+from backend.util import json
 from backend.util.exceptions import BlockExecutionError
 
 
@@ -69,7 +70,7 @@ async def test_explicit_false_value_is_kept():
 @pytest.mark.parametrize(
     "value1,value2,expected",
     [
-        (" 3 ", " 5 ", 3.0),
+        (" 3 ", " 5 ", 3),
         (" left ", "right", "left"),
         (False, True, False),
         (0, 1, 0),
@@ -159,3 +160,106 @@ def test_executor_rejects_invalid_inputs(fields: dict[str, object]):
 async def test_incomparable_values_raise_block_execution_error():
     with pytest.raises(BlockExecutionError, match="Comparison failed"):
         await _run(value1=[1], operator=">", value2=3)
+
+
+B0 = 9007199254740992  # 2**53
+B1 = 9007199254740993  # 2**53 + 1, not representable as a float
+C0 = 4503599627370496  # 2**52, where a float stops holding fractions
+LONG = "1" * 4301  # past int()'s 4300-digit limit; float() makes it inf
+
+
+@pytest.mark.parametrize(
+    "value1,operator,value2,result",
+    [
+        (str(B1), "==", str(B0), False),
+        (str(B1), "!=", str(B0), True),
+        (str(B1), ">", str(B0), True),
+        (str(B0), "<", str(B1), True),
+        (B1, "==", str(B1), True),
+        (str(B1), "==", B1, True),
+        ("-9223372036854775808", "<", "-9223372036854775807", True),
+        (" 3 ", "==", "3.0", True),
+        (str(B1), "==", f"{B1}.0", True),
+        (f"{B1}.0", ">", str(B0), True),
+        # Exact from 2**53 in any notation, so "1e23" is 10**23, not the float
+        # 1e23 (99999999999999991611392); 1e22 is a float exactly.
+        ("1e23", "==", "100000000000000000000000", True),
+        ("1e23", "==", 10**23, True),
+        ("1e23", "==", 1e23, False),
+        ("1e22", "==", 1e22, True),
+        (f"{B1}.5", "==", str(B1), False),
+        (f"{B1}.5", ">", str(B1), True),
+        (f"{B0}.5", "==", str(B0), False),
+        (f"{C0}.5", "==", str(C0), False),
+        (f"{C0}.5", ">", str(C0), True),
+        (f"-{C0}.5", "<", f"-{C0}", True),
+        (f"{C0 - 1}.9", "<", str(C0), True),
+        (f"{C0 - 1}.5", "==", str(C0 - 1), False),
+        pytest.param(LONG, "<", "2" * 4301, True, id="long-ints-order"),
+        pytest.param(LONG, "==", "1" * 4300 + "2", False, id="long-ints-differ"),
+        ("1e400", "<", "1e401", True),
+        pytest.param("1e10000000", ">", "9" * 4301, True, id="huge-exponent"),
+        pytest.param("inf", ">", LONG, True, id="inf-above-long-int"),
+        pytest.param(f"-{LONG}", ">", "-inf", True, id="minus-inf-below"),
+        (f"{B0}.5", ">", "nan", False),
+        ("nan", "<=", f"{B0}.5", False),
+        ("3", "<", "3.5", True),
+        ("1e3", "==", 1000, True),
+        ("0.1", "==", "0.10000000000000001", True),
+        ("nan", "==", "nan", False),
+        (" abc ", "==", "abc", True),
+        ("abc", "==", 3, False),
+    ],
+)
+async def test_condition_compares_numeric_strings_exactly(
+    value1: object, operator: str, value2: object, result: bool
+):
+    outputs = await _run(
+        value1=value1, operator=operator, value2=value2, yes_value="y", no_value="n"
+    )
+
+    assert outputs["result"] is result
+
+
+@pytest.mark.parametrize(
+    "value1,expected",
+    [(str(B1), B1), ("3", 3), (" 3.5 ", 3.5), (" abc ", "abc")],
+)
+async def test_condition_passthrough_keeps_parsed_value1(value1: str, expected: object):
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs == {"result": True, "yes_output": expected}
+    assert type(outputs["yes_output"]) is type(expected)
+
+
+@pytest.mark.parametrize(
+    "value1",
+    [
+        str(2**64),
+        str(-(2**63) - 1),
+        "1" * 400,
+        pytest.param(LONG, id="past-int-digit-limit"),
+    ],
+)
+async def test_condition_passthrough_of_out_of_range_int_is_serializable(
+    value1: str,
+):
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == float(value1)
+    json.dumps(outputs)
+
+
+async def test_condition_passthrough_of_large_fraction_is_serializable():
+    value1 = f"{B1}.5"
+    outputs = await _run(value1=value1, operator="==", value2=value1)
+
+    assert outputs["result"] is True
+    assert outputs["yes_output"] == float(value1)
+    json.dumps(outputs)
+
+
+async def test_condition_string_vs_number_ordering_still_fails():
+    with pytest.raises(BlockExecutionError, match="Comparison failed"):
+        await _run(value1="abc", operator=">", value2=3)

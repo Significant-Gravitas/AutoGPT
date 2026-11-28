@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
 import { LayoutGroup, motion, type Transition } from "framer-motion";
+import { spring } from "@/components/styles/motion";
 
 export interface ExpertFilterOption {
   id: string;
@@ -17,10 +18,9 @@ interface Props {
   onChange: (expertId: string | null) => void;
 }
 
-const snappySpring: Transition = {
+const pillSpring: Transition = {
   type: "spring",
-  stiffness: 350,
-  damping: 30,
+  ...spring.gentle,
   mass: 1,
 };
 
@@ -87,7 +87,7 @@ function ExpertTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "relative flex max-w-48 items-center gap-2 rounded-full py-1.5 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
+        "relative flex max-w-48 items-center gap-2 rounded-pill py-1.5 text-body font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-foreground-subtle",
         hasAvatar ? "pr-3.5 pl-1.5" : "px-4",
         active
           ? "text-foreground-strong"
@@ -98,17 +98,17 @@ function ExpertTab({
       {active ? (
         <motion.span
           layoutId="artifacts-expert-active"
-          className="absolute inset-0 rounded-full bg-surface-hover"
-          transition={snappySpring}
+          className="absolute inset-0 rounded-pill bg-surface-hover"
+          transition={pillSpring}
         />
       ) : null}
       {hasAvatar ? (
         // Decorative: the label carries the name for assistive tech.
-        <span aria-hidden className="relative z-10 shrink-0">
+        <span aria-hidden className="relative z-raised shrink-0">
           <ExpertAvatar name={label} avatarUrl={avatarUrl} size={22} />
         </span>
       ) : null}
-      <span className="relative z-10 truncate">{label}</span>
+      <span className="relative z-raised truncate">{label}</span>
     </button>
   );
 }

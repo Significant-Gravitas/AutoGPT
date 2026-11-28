@@ -70,6 +70,7 @@ from .service import (
     _strip_synthetic_reprompt_from_cli_jsonl,
     _TokenUsage,
 )
+from .usage_meter import UsageMeter
 
 
 class TestCliStderrRedaction:
@@ -2232,6 +2233,99 @@ class TestConsumeSdkUntilDone:
         assert loop_state.stream_error_msg == GATEWAY_REFUSED_MESSAGE
 
     @pytest.mark.asyncio
+    async def test_a_credit_billed_turn_grows_then_is_stopped_at_what_it_holds(
+        self, growing_turn
+    ):
+        """Its CLI backstop sits on the most it may hold, so the stream loop
+        stops it once its spend passes what it holds."""
+        from backend.copilot.response_model import StreamError, StreamTurnPaused
+
+        events, client, governor, seen = await self._drive_growing_turn(
+            growing_turn, calls=5
+        )
+
+        # It takes the dollar its ledger has left at $0.80, lands at $1.60 when
+        # no more is free, and is interrupted once its spend reaches $2.00.
+        assert seen == [
+            (100, False),
+            (200, False),
+            (200, False),
+            (200, False),
+            (200, True),
+        ]
+        assert governor.landing == "daily"
+        client.interrupt.assert_awaited_once()
+        paused = [e for e in events if isinstance(e, StreamTurnPaused)]
+        assert [p.pause["reason"] for p in paused] == ["daily"]
+        assert not any(isinstance(e, StreamError) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_a_tools_cost_brings_a_credit_billed_turns_stop_forward(
+        self, growing_turn
+    ):
+        """Cost a tool records after the turn's last top-up comes out of what
+        the model may still spend."""
+        with patch.object(growing_turn, "_debit", new=AsyncMock()):
+            _, client, _, seen = await self._drive_growing_turn(
+                growing_turn, calls=4, tools={2: 1_200_000}
+            )
+
+        # It holds $2 from $0.80 on; the tool's $1.20 leaves the model $0.80,
+        # so it is stopped at $1.20, not at $1.60 as if the tool spent nothing.
+        assert seen == [(100, False), (200, False), (200, True), (200, True)]
+        client.interrupt.assert_awaited_once()
+
+    async def _drive_growing_turn(
+        self, turn, *, calls: int, tools: dict[int, int] | None = None
+    ):
+        """Run ``calls`` 40-cent model calls of a credit-billed turn through
+        the stream loop, a tool recording ``tools[n]`` microdollars after call
+        n. Returns the events, the client, the governor and, per call, what
+        the turn held and whether the CLI was interrupted."""
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from backend.copilot.sdk.governor import TurnGovernor
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        governor = TurnGovernor(
+            budget=turn.budget,
+            step_checkin=450,
+            grow=turn.grow,
+            room=turn.model_room_usd,
+        )
+        governor.meter = _FortyCentCalls()
+        ctx, state, acc = self._ctx(), self._state(), self._acc()
+        state.governor = state.adapter.governor = governor
+        client = MagicMock()
+        client.interrupt = AsyncMock()
+        seen: list[tuple[int, bool]] = []
+
+        async def fake_iter(client, wake=None, tool_display_wake=None):
+            for call in range(1, calls + 1):
+                yield AssistantMessage(content=[TextBlock(text="x")], model="m")
+                seen.append((turn.held_credits, client.interrupt.called))
+                if tools and call in tools:
+                    await turn.record(tools[call])
+            yield ResultMessage(
+                subtype="error_during_execution",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=True,
+                num_turns=calls,
+                session_id="s1",
+                result="",
+            )
+
+        with patch("backend.copilot.sdk.service._iter_sdk_messages", new=fake_iter):
+            events = [
+                ev
+                async for ev in _consume_sdk_until_done(
+                    client, ctx, state, acc, self._loop_state()
+                )
+            ]
+        return events, client, governor, seen
+
+    @pytest.mark.asyncio
     async def test_heartbeat_sentinel_yields_heartbeat_event(self):
         """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
         the helper must refresh the lock and yield ``StreamHeartbeat``
@@ -3725,3 +3819,20 @@ class TestAppendWarmContext:
         )
         assert out.endswith("fresh</temporal_context>")
         assert INJECTED_MEMORY_MARKER in out
+
+
+class _FortyCentCalls(UsageMeter):
+    """A meter whose every model call costs 40 cents."""
+
+    spent = 0.0
+
+    def observe(self, message) -> None:
+        self.spent += 0.4
+
+    @property
+    def spent_usd(self) -> float:
+        return self.spent
+
+    @property
+    def last_main_call_usd(self) -> float:
+        return 0.4

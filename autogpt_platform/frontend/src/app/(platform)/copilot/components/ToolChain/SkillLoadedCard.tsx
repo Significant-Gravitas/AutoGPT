@@ -32,19 +32,21 @@ export function SkillLoadedCard({ output }: Props) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
           Skill loaded: {name} v{version} · {origin}
         </Text>
-        <Text variant="small-tight" tone="muted" className="truncate">
+        <Text variant="small" leading="4" tone="muted" className="truncate">
           Loaded for this task; loading is not a success record.
         </Text>
       </div>
       <Link
         href={href}
-        className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-secondary hover:bg-surface-active"
+        className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-secondary hover:bg-surface-active"
       >
         View change
       </Link>

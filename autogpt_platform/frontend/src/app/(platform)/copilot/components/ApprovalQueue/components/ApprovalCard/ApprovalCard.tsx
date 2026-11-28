@@ -89,7 +89,7 @@ export function ApprovalCard({
           </p>
         )}
         {reason && (
-          <Text variant="body-tight" tone="muted" className="-mt-1">
+          <Text variant="body" leading="5" tone="muted" className="-mt-1">
             {reason}
           </Text>
         )}

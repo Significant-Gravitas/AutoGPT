@@ -22,7 +22,8 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
   return (
     <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       <Button
-        variant="ghost-muted"
+        variant="ghost"
+        tone="quiet"
         size="icon-xs"
         shape="soft"
         withTooltip={false}
@@ -33,7 +34,8 @@ export function FileRowActions({ file, onDownload, onRequestDelete }: Props) {
       </Button>
       {canDelete && (
         <Button
-          variant="ghost-muted"
+          variant="ghost"
+          tone="quiet"
           size="icon-xs"
           shape="soft"
           withTooltip={false}

@@ -32,7 +32,7 @@ function CapabilityCard({ item }: { item: CapabilityListing }) {
         {badge && (
           <span
             className={
-              "shrink-0 rounded-full px-2 py-0.5 text-caption-sm leading-inherit " +
+              "shrink-0 rounded-pill px-2 py-0.5 text-caption-sm leading-inherit " +
               badge.className
             }
           >

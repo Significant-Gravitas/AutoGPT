@@ -55,7 +55,9 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
     <div className="flex flex-col gap-2 rounded-large border border-border-base px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <Text variant="body-medium">{stage.label}</Text>
+          <Text variant="body" weight="medium">
+            {stage.label}
+          </Text>
           {measured ? (
             <Badge variant={exceeded ? "error" : "success"}>
               {exceeded ? "over budget" : "measured"}
@@ -69,7 +71,7 @@ function StageRow({ stage }: { stage: WaterfallStage }) {
         </Text>
       </div>
       <div className="flex shrink-0 flex-col sm:items-end">
-        <Text variant="large-semibold" mono>
+        <Text variant="large" weight="semibold" mono>
           {formatMs(stage.durationMs)}
         </Text>
         <Text variant="small" tone="muted">

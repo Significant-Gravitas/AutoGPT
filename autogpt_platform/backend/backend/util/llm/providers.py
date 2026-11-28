@@ -44,7 +44,7 @@ import httpx
 import ollama
 import openai
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from openai.types.shared_params import ResponseFormatJSONObject
+from openai.types.shared_params import Reasoning, ResponseFormatJSONObject
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
@@ -63,6 +63,11 @@ from backend.util.llm.conversions import (
     extract_openai_tool_calls,
     extract_openrouter_cost,
     sanitize_messages_for_utf8,
+)
+from backend.util.llm.http_attempts import (
+    attempt_logging_http_client,
+    record_http_request,
+    record_http_response,
 )
 from backend.util.openai_responses import (
     convert_tools_to_responses_format,
@@ -131,6 +136,26 @@ _FLEX_SUPPORTED_PROVIDERS: set[str] = {"openai", "open_router"}
 # max_tokens: a call capped this low for a short answer can think its whole cap
 # away and answer nothing (1 in 5 store categories, 7 in 9 consult verdicts).
 NO_REASONING_MAX_TOKENS = 512
+
+# The native OpenAI and Anthropic paths: the least reasoning each model that
+# workflows move onto (#17071) accepts, from its provider's page on 2026-11-19.
+# Reasoning tokens count toward OpenAI's ``max_output_tokens``. A reply they use
+# up ends ``incomplete`` with no text, so AI Condition's 16-token call answers
+# nothing. GPT-6.1 Sol rejects ``none`` and ``minimal``, so ``low`` is its least.
+_OPENAI_LEAST_REASONING_EFFORT: dict[str, str] = {
+    "gpt-6-luna": "none",
+    "gpt-6.1-terra": "none",
+    "gpt-5.6-sol": "none",
+    "gpt-6.1-sol": "low",
+}
+# A small call on a model that still reasons at its least effort is capped at
+# no less than this, so the reasoning leaves room for the answer.
+SMALL_CALL_REASONING_FLOOR = 2048
+# Claude Sonnet 5.5 thinks before it answers unless sent this, and its thinking
+# counts against ``max_tokens``; ``{"type": "disabled"}`` returns a 400 on it.
+_ANTHROPIC_NO_UPFRONT_THINKING: dict[str, dict[str, str]] = {
+    "claude-sonnet-5-5": {"type": "between_tools"},
+}
 
 # Anthropic deprecated ``temperature`` on its newest model generation —
 # the API rejects it outright with "`temperature` is deprecated for
@@ -520,7 +545,7 @@ async def _call_openai_responses(
     timeout_seconds: float,
     service_tier: str | None = None,
 ) -> ProviderResponse:
-    client = openai.AsyncOpenAI(api_key=api_key)
+    reasoning, max_tokens = small_call_openai_reasoning(model, max_tokens)
     tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
     text_config: Any = openai.omit
     if force_json_output:
@@ -534,38 +559,44 @@ async def _call_openai_responses(
     if service_tier:
         extra_body["service_tier"] = service_tier
 
-    response = await client.responses.create(
-        model=model,
-        input=messages,  # type: ignore[arg-type]
-        tools=tools_param,  # type: ignore[arg-type]
-        max_output_tokens=max_tokens,
-        # Reasoning models (o-series) reject ``temperature`` — same guard
-        # as the Anthropic path: only send the field when the caller set
-        # one, never a default.
-        temperature=temperature if temperature is not None else openai.omit,
-        parallel_tool_calls=parallel_tool_calls,
-        text=text_config,  # type: ignore[arg-type]
-        # ``store=False`` keeps conversation state out of OpenAI's servers —
-        # we replay the full input on every turn instead. The cost is that a
-        # reasoning item (gpt-5*, o3*) emitted on turn N can't be referenced
-        # by its ``rs_...`` id on turn N+1 (nothing was persisted to look up;
-        # OpenAI 404s with "Item with id 'rs_...' not found"). Asking for
-        # ``reasoning.encrypted_content`` makes OpenAI return the reasoning
-        # item with an opaque encrypted blob the orchestrator re-inlines
-        # verbatim next turn, so the model gets its prior reasoning back
-        # without server-side state. Harmless for non-reasoning models
-        # (gpt-4.1/4o) — they emit no reasoning items, so nothing comes back.
-        # See OPEN-3187.
-        store=False,
-        include=["reasoning.encrypted_content"],
-        timeout=request_timeout(timeout_seconds),
-        # ``omit`` is only valid for TYPED params — the SDK strips it
-        # there. ``extra_body`` flows raw into ``options.extra_json``
-        # (``make_request_options`` checks ``is not None``), and
-        # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
-        # mapping`` on the sentinel. Absent extra_body must be ``None``.
-        extra_body=extra_body or None,
-    )
+    http_client = attempt_logging_http_client(openai.DefaultAsyncHttpxClient)
+    try:
+        client = openai.AsyncOpenAI(api_key=api_key, http_client=http_client)
+        response = await client.responses.create(
+            model=model,
+            input=messages,  # type: ignore[arg-type]
+            tools=tools_param,  # type: ignore[arg-type]
+            max_output_tokens=max_tokens,
+            reasoning=reasoning if reasoning is not None else openai.omit,
+            # Reasoning models (o-series) reject ``temperature`` — same guard
+            # as the Anthropic path: only send the field when the caller set
+            # one, never a default.
+            temperature=temperature if temperature is not None else openai.omit,
+            parallel_tool_calls=parallel_tool_calls,
+            text=text_config,  # type: ignore[arg-type]
+            # ``store=False`` keeps conversation state out of OpenAI's servers —
+            # we replay the full input on every turn instead. The cost is that a
+            # reasoning item (gpt-5*, o3*) emitted on turn N can't be referenced
+            # by its ``rs_...`` id on turn N+1 (nothing was persisted to look up;
+            # OpenAI 404s with "Item with id 'rs_...' not found"). Asking for
+            # ``reasoning.encrypted_content`` makes OpenAI return the reasoning
+            # item with an opaque encrypted blob the orchestrator re-inlines
+            # verbatim next turn, so the model gets its prior reasoning back
+            # without server-side state. Harmless for non-reasoning models
+            # (gpt-4.1/4o) — they emit no reasoning items, so nothing comes back.
+            # See OPEN-3187.
+            store=False,
+            include=["reasoning.encrypted_content"],
+            timeout=request_timeout(timeout_seconds),
+            # ``omit`` is only valid for TYPED params — the SDK strips it
+            # there. ``extra_body`` flows raw into ``options.extra_json``
+            # (``make_request_options`` checks ``is not None``), and
+            # ``_merge_mappings`` raises ``TypeError: 'Omit' object is not a
+            # mapping`` on the sentinel. Absent extra_body must be ``None``.
+            extra_body=extra_body or None,
+        )
+    finally:
+        await http_client.aclose()
 
     raw_tool_calls = extract_responses_tool_calls(response)
     tool_calls = None
@@ -636,7 +667,6 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -648,6 +678,8 @@ async def _call_anthropic_messages(
         create_kwargs["temperature"] = temperature
     if tool_choice is not None:
         create_kwargs["tool_choice"] = tool_choice
+    if (thinking := small_call_anthropic_thinking(model, max_tokens)) is not None:
+        create_kwargs["thinking"] = thinking
     if sysprompt.strip():
         # Anthropic rejects empty text blocks (HTTP 400) — only attach
         # the system field for non-whitespace prompts.
@@ -659,21 +691,26 @@ async def _call_anthropic_messages(
             }
         ]
 
+    http_client = attempt_logging_http_client(anthropic.DefaultAsyncHttpxClient)
     try:
-        resp = await client.messages.create(**create_kwargs)
-    except anthropic.BadRequestError as exc:
-        # Self-heal for models the deny-list doesn't know yet.
-        if "temperature" not in create_kwargs or not (
-            _is_temperature_deprecation_error(exc)
-        ):
-            raise
-        logger.warning(
-            "Anthropic model %s rejected temperature — retrying without it. "
-            "Add the model to _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES.",
-            model,
-        )
-        create_kwargs.pop("temperature")
-        resp = await client.messages.create(**create_kwargs)
+        client = anthropic.AsyncAnthropic(api_key=api_key, http_client=http_client)
+        try:
+            resp = await client.messages.create(**create_kwargs)
+        except anthropic.BadRequestError as exc:
+            # Self-heal for models the deny-list doesn't know yet.
+            if "temperature" not in create_kwargs or not (
+                _is_temperature_deprecation_error(exc)
+            ):
+                raise
+            logger.warning(
+                "Anthropic model %s rejected temperature — retrying without it. "
+                "Add the model to _ANTHROPIC_TEMPERATURE_DEPRECATED_PREFIXES.",
+                model,
+            )
+            create_kwargs.pop("temperature")
+            resp = await client.messages.create(**create_kwargs)
+    finally:
+        await http_client.aclose()
     if not resp.content:
         raise ValueError("No content returned from Anthropic.")
 
@@ -745,9 +782,8 @@ async def _call_groq(
     if tools:
         raise ValueError("Groq does not support tools.")
 
-    from groq import AsyncGroq  # local import — heavy SDK
+    import groq  # local import — heavy SDK
 
-    client = AsyncGroq(api_key=api_key)
     response_format = {"type": "json_object"} if force_json_output else None
     create_kwargs: dict[str, Any] = dict(
         model=model,
@@ -760,7 +796,12 @@ async def _call_groq(
     # the caller set one, so models that reject it never see the field.
     if temperature is not None:
         create_kwargs["temperature"] = temperature
-    response = await client.chat.completions.create(**create_kwargs)
+    http_client = attempt_logging_http_client(groq.DefaultAsyncHttpxClient)
+    try:
+        client = groq.AsyncGroq(api_key=api_key, http_client=http_client)
+        response = await client.chat.completions.create(**create_kwargs)
+    finally:
+        await http_client.aclose()
     if not response.choices:
         raise ValueError("Groq returned empty choices in response")
     return ProviderResponse(
@@ -917,7 +958,10 @@ async def _send_ollama_chat(
     client_kwargs: dict[str, Any] = {
         "host": host,
         "timeout": request_timeout(timeout_seconds),
-        "event_hooks": {"request": [_scope_ollama_key]},
+        "event_hooks": {
+            "request": [_scope_ollama_key, record_http_request],
+            "response": [record_http_response],
+        },
     }
     if not is_trusted:
         # The host passed the address check, but ollama.AsyncClient hands the
@@ -1033,7 +1077,6 @@ async def _call_openai_compat(
     client_kwargs: dict[str, Any] = {"base_url": base_url, "api_key": api_key}
     if default_headers:
         client_kwargs["default_headers"] = default_headers
-    client = openai.AsyncOpenAI(**client_kwargs)
 
     call_kwargs: dict[str, Any] = dict(
         model=model,
@@ -1073,7 +1116,12 @@ async def _call_openai_compat(
     if extra_body:
         call_kwargs["extra_body"] = extra_body
 
-    response = await client.chat.completions.create(**call_kwargs)
+    http_client = attempt_logging_http_client(openai.DefaultAsyncHttpxClient)
+    try:
+        client = openai.AsyncOpenAI(**client_kwargs, http_client=http_client)
+        response = await client.chat.completions.create(**call_kwargs)
+    finally:
+        await http_client.aclose()
     if not response.choices:
         raise ValueError(f"{base_url} returned empty choices in response")
 
@@ -1298,6 +1346,34 @@ def small_call_reasoning(model: str, max_tokens: int) -> dict[str, Any]:
     if not strip_anthropic_vendor_prefix(model).startswith(CLAUDE_5_FAMILY_PREFIXES):
         return {}
     return {"reasoning": {"enabled": False}}
+
+
+def small_call_openai_reasoning(
+    model: str, max_tokens: int
+) -> tuple[Reasoning | None, int]:
+    """``reasoning`` and ``max_output_tokens`` for a native OpenAI call.
+
+    A call capped at ``NO_REASONING_MAX_TOKENS`` or less, on a model in
+    ``_OPENAI_LEAST_REASONING_EFFORT``, asks for that model's least effort. A
+    model that still reasons at it is also capped at no less than
+    ``SMALL_CALL_REASONING_FLOOR``. Any other call goes as it is.
+    """
+    effort = _OPENAI_LEAST_REASONING_EFFORT.get(model)
+    if effort is None or max_tokens > NO_REASONING_MAX_TOKENS:
+        return None, max_tokens
+    if effort != "none":
+        max_tokens = max(max_tokens, SMALL_CALL_REASONING_FLOOR)
+    # The API takes ``none``; this SDK's ``ReasoningEffort`` predates it.
+    return cast(Reasoning, {"effort": effort}), max_tokens
+
+
+def small_call_anthropic_thinking(model: str, max_tokens: int) -> dict[str, str] | None:
+    """``thinking`` for a native Anthropic call capped at
+    ``NO_REASONING_MAX_TOKENS`` or less, on a model that thinks first unless
+    told not to. None for any other call, which keeps the model's default."""
+    if max_tokens > NO_REASONING_MAX_TOKENS:
+        return None
+    return _ANTHROPIC_NO_UPFRONT_THINKING.get(strip_anthropic_vendor_prefix(model))
 
 
 def timeout_error(target: str, timeout_seconds: float) -> TimeoutError:

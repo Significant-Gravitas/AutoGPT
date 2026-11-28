@@ -11,7 +11,7 @@ export function MainSearchResultPageLoading() {
       <div className="mx-auto min-h-screen w-full max-w-[1440px] px-6 md:px-10">
         {/* Go back button */}
         <div className="mt-5 mb-4">
-          <Skeleton className="h-9 w-24 rounded-full" />
+          <Skeleton className="h-9 w-24 rounded-pill" />
         </div>
 
         {/* Header: search term + search bar */}
@@ -21,16 +21,16 @@ export function MainSearchResultPageLoading() {
             <Skeleton className="h-8 w-56" />
           </div>
           <div className="flex-none">
-            <Skeleton className="h-[2.75rem] w-full rounded-full md:w-[439px]" />
+            <Skeleton className="h-[2.75rem] w-full rounded-pill md:w-[439px]" />
           </div>
         </div>
 
         {/* Filter chips + sort */}
         <div className="mt-6 flex flex-col gap-3 md:mt-9 md:flex-row md:items-center md:justify-between">
           <div className="flex gap-2">
-            <Skeleton className="h-9 w-16 rounded-full" />
-            <Skeleton className="h-9 w-20 rounded-full" />
-            <Skeleton className="h-9 w-24 rounded-full" />
+            <Skeleton className="h-9 w-16 rounded-pill" />
+            <Skeleton className="h-9 w-20 rounded-pill" />
+            <Skeleton className="h-9 w-24 rounded-pill" />
           </div>
           <Skeleton className="h-9 w-32 rounded-lg" />
         </div>

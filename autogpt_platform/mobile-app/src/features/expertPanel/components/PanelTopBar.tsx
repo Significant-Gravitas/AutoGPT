@@ -15,7 +15,7 @@ export function PanelTopBar({ sessionID, onClose }: Props) {
   const styles = useStyles();
   return (
     <View style={styles.bar}>
-      <IconButton icon={ArrowLeft01Icon} label="Back to chat" onPress={onClose} />
+      <IconButton icon={ArrowLeft01Icon} label="Back to chat" onPress={onClose} variant="floating" />
       <ShareChatButton sessionID={sessionID} />
     </View>
   );

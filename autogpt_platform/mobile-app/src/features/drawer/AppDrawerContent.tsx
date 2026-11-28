@@ -1,30 +1,26 @@
 import {
-  Cancel01Icon,
-  PencilEdit02Icon,
+  BubbleChatIcon,
+  Folder01Icon,
   Store01Icon,
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { IconButton } from "@/components/IconButton";
 import { createStyles, spacing, type, useColors } from "@/lib/theme";
 
-import { DrawerSearchField } from "./components/DrawerSearchField";
+import { DrawerHeader } from "./components/DrawerHeader";
 import { ExpertRecentRow } from "./components/ExpertRecentRow";
+import { NewChatButton } from "./components/NewChatButton";
 import { RecentHeading } from "./components/RecentHeading";
 import { SearchResultRow } from "./components/SearchResultRow";
 import { UserMenu } from "./components/UserMenu";
-import { DrawerRow } from "./DrawerRow";
+import { DrawerRow, ROW_INSET } from "./DrawerRow";
 import { useAppDrawer } from "./useAppDrawer";
+
+// The floating buttons' height, plus room to scroll the last row clear of them.
+const FOOTER_CLEARANCE = 48 + spacing.xl;
 
 interface Props {
   navigation: DrawerContentComponentProps["navigation"];
@@ -35,6 +31,9 @@ export function AppDrawerContent({ navigation }: Props) {
   const {
     query,
     setQuery,
+    isSearchOpen,
+    openSearch,
+    closeSearch,
     isSearching,
     groups,
     matches,
@@ -50,20 +49,18 @@ export function AppDrawerContent({ navigation }: Props) {
     newChat,
     openTeam,
     openMarketplace,
+    openFiles,
     openAllChats,
     openSettings,
     handleSignOut,
   } = useAppDrawer(navigation);
   const styles = useStyles();
   const colors = useColors();
+  const footerBottom = insets.bottom + spacing.sm;
+  const listPadding = { paddingBottom: footerBottom + FOOTER_CLEARANCE };
 
   function handleRefresh() {
     void refetch();
-  }
-
-  // The drawer covers the whole screen, so there is no page left to tap.
-  function handleClose() {
-    navigation.closeDrawer();
   }
 
   function renderEmpty() {
@@ -77,26 +74,44 @@ export function AppDrawerContent({ navigation }: Props) {
     );
   }
 
-  return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.sm },
-      ]}
-    >
-      <View style={styles.section}>
-        <View style={styles.top}>
-          <View style={styles.search}>
-            <DrawerSearchField value={query} onChangeText={setQuery} />
-          </View>
-          <IconButton icon={Cancel01Icon} label="Close menu" onPress={handleClose} />
+  function renderListHeader() {
+    if (isSearchOpen) return <RecentHeading />;
+    return (
+      <>
+        <View style={styles.nav}>
+          <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
+          <DrawerRow icon={Store01Icon} label="Marketplace" onPress={openMarketplace} />
+          <DrawerRow icon={BubbleChatIcon} label="All chats" onPress={openAllChats} />
+          <DrawerRow icon={Folder01Icon} label="Files" onPress={openFiles} />
         </View>
-        <DrawerRow icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
-        <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
-        <DrawerRow icon={Store01Icon} label="Marketplace" onPress={openMarketplace} />
-      </View>
+        <RecentHeading />
+      </>
+    );
+  }
+
+  function renderRefresh() {
+    return (
+      <RefreshControl
+        refreshing={isRefetching}
+        onRefresh={handleRefresh}
+        tintColor={colors.textTertiary}
+      />
+    );
+  }
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
+      <DrawerHeader
+        isSearchOpen={isSearchOpen}
+        query={query}
+        onChangeQuery={setQuery}
+        onOpenSearch={openSearch}
+        onCloseSearch={closeSearch}
+      />
       {isSearching ? (
         <FlatList
+          // A key per mode, so each list starts at its top.
+          key="search"
           data={matches}
           keyExtractor={(match) => match.session.id}
           renderItem={({ item }) => (
@@ -113,46 +128,36 @@ export function AppDrawerContent({ navigation }: Props) {
               <Text style={styles.notice}>No chats match.</Text>
             )
           }
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={handleRefresh}
-              tintColor={colors.textTertiary}
-            />
-          }
+          refreshControl={renderRefresh()}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           style={styles.list}
-          contentContainerStyle={styles.searchContent}
+          contentContainerStyle={[styles.searchContent, listPadding]}
         />
       ) : (
-        <>
-          <RecentHeading onOpenAllChats={openAllChats} />
-          <FlatList
-            data={groups}
-            keyExtractor={(group) => group.key}
-            renderItem={({ item }) => (
-              <ExpertRecentRow
-                group={item}
-                isActive={item.sessions.some(
-                  (session) => session.id === activeSessionID,
-                )}
-                onOpenChat={openChat}
-              />
-            )}
-            ListEmptyComponent={renderEmpty}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefetching}
-                onRefresh={handleRefresh}
-                tintColor={colors.textTertiary}
-              />
-            }
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-          />
-        </>
+        <FlatList
+          key="recent"
+          data={groups}
+          keyExtractor={(group) => group.key}
+          renderItem={({ item }) => (
+            <ExpertRecentRow
+              group={item}
+              isActive={item.sessions.some((session) => session.id === activeSessionID)}
+              onOpenChat={openChat}
+            />
+          )}
+          ListHeaderComponent={renderListHeader()}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={renderRefresh()}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, listPadding]}
+        />
       )}
-      <View style={styles.footer}>
+      {/* Floats over the list, which scrolls underneath. */}
+      <View style={[styles.footer, { bottom: footerBottom }]}>
+        <NewChatButton onPress={newChat} />
         <UserMenu
           name={userName ?? null}
           email={email ?? null}
@@ -165,27 +170,34 @@ export function AppDrawerContent({ navigation }: Props) {
   );
 }
 
+// No background: the drawer is see-through, so the page's shadow falls on the
+// menu's grey behind it (the app layout's root).
 const useStyles = createStyles((colors) => ({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.background,
-  },
-  section: { gap: spacing.xs },
-  top: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  search: { flex: 1 },
+  container: { flex: 1 },
+  nav: { paddingTop: spacing.sm },
   list: { flex: 1 },
-  listContent: { flexGrow: 1, gap: 2 },
-  searchContent: { flexGrow: 1, gap: 2, paddingTop: spacing.sm },
-  notice: {
-    ...type.small,
-    color: colors.textSecondary,
+  listContent: { flexGrow: 1, gap: 2, paddingHorizontal: spacing.md },
+  searchContent: {
+    flexGrow: 1,
+    gap: 2,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
-  footer: {
+  notice: {
+    ...type.small,
+    fontSize: 14,
+    color: colors.textSecondary,
+    paddingHorizontal: ROW_INSET,
     paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+  },
+  footer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.xl,
+    pointerEvents: "box-none",
   },
 }));

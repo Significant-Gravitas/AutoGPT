@@ -17,7 +17,7 @@ export function AutoGPTLogoWhite({
       xmlns="http://www.w3.org/2000/svg"
       aria-label="AutoGPT Logo"
       className={cn(
-        "text-action-foreground",
+        "text-foreground-inverse",
         className ?? "h-[3.375rem] w-auto",
       )}
       {...props}

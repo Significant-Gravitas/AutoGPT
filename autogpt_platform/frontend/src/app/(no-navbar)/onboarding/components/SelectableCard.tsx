@@ -39,7 +39,12 @@ export function SelectableCard({
       <span className="flex items-center justify-center text-foreground-tertiary">
         {icon}
       </span>
-      <Text variant="body-medium" as="span" className="whitespace-nowrap">
+      <Text
+        variant="body"
+        weight="medium"
+        as="span"
+        className="whitespace-nowrap"
+      >
         {label}
       </Text>
     </button>

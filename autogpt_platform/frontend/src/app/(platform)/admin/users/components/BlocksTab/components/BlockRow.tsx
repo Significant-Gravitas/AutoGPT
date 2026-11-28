@@ -31,7 +31,10 @@ export function BlockRow({ block }: Props) {
           <Icon icon={isIP ? GlobeIcon : MailAtSign01Icon} size={16} />
         </span>
         <Text
-          variant={isIP ? "body-mono-tight" : "body-medium"}
+          variant="body"
+          weight={isIP ? undefined : "medium"}
+          mono={isIP}
+          leading={isIP ? "5" : undefined}
           as="span"
           className="truncate"
           translate="no"

@@ -190,7 +190,12 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Running Executions
                     </Text>
                     <p className="text-heading font-bold">
@@ -204,7 +209,12 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Queued in Database
                     </Text>
                     <p className="text-heading font-bold">
@@ -223,7 +233,12 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Queued in RabbitMQ
                     </Text>
                     <p className="text-heading font-bold">
@@ -276,13 +291,18 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Completed (24h)
                     </Text>
                     <p className="text-heading font-bold">
                       {executionData.completed_24h}
                     </p>
-                    <Text variant="small-tight" tone="secondary">
+                    <Text variant="small" leading="4" tone="secondary">
                       {executionData.completed_1h} in last hour
                     </Text>
                   </div>
@@ -293,13 +313,18 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Throughput Rate
                     </Text>
                     <p className="text-heading font-bold">
                       {executionData.throughput_per_hour.toFixed(1)}
                     </p>
-                    <Text variant="small-tight" tone="secondary">
+                    <Text variant="small" leading="4" tone="secondary">
                       completions per hour
                     </Text>
                   </div>
@@ -310,7 +335,12 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Cancel Queue Depth
                     </Text>
                     <p className="text-heading font-bold">
@@ -349,7 +379,12 @@ export function DiagnosticsContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       User Schedules
                     </Text>
                     <p className="text-heading font-bold">
@@ -368,13 +403,18 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Upcoming Runs (1h)
                     </Text>
                     <p className="text-heading font-bold">
                       {scheduleData.total_runs_next_hour}
                     </p>
-                    <Text variant="small-tight" tone="secondary">
+                    <Text variant="small" leading="4" tone="secondary">
                       from {scheduleData.schedules_next_hour} schedule
                       {scheduleData.schedules_next_hour !== 1 ? "s" : ""}
                     </Text>
@@ -386,13 +426,18 @@ export function DiagnosticsContent() {
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <Text variant="body-medium-tight" tone="muted">
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      leading="5"
+                      tone="muted"
+                    >
                       Upcoming Runs (24h)
                     </Text>
                     <p className="text-heading font-bold">
                       {scheduleData.total_runs_next_24h}
                     </p>
-                    <Text variant="small-tight" tone="secondary">
+                    <Text variant="small" leading="4" tone="secondary">
                       from {scheduleData.schedules_next_24h} schedule
                       {scheduleData.schedules_next_24h !== 1 ? "s" : ""}
                     </Text>

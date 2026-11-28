@@ -37,7 +37,9 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import (
     bounded_rpush,
     capped_rpush_if_hash_field,
+    hash_compare_and_set,
     pop_matching_list_prefix,
+    pop_or_close_list,
     string_compare_and_set,
 )
 
@@ -57,6 +59,10 @@ PENDING_BUFFER_FULL_REFUSAL = (
 _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
+# A last look pops again after a batch of nothing but malformed entries. One
+# pop takes the whole capped buffer, so this cap only stops a producer that
+# keeps writing them.
+_LAST_LOOK_ATTEMPTS = 3
 
 # Secondary queue: carries drained-but-awaiting-persist PendingMessages from
 # the tool wrapper (which injects them into tool output) to sdk/service.py
@@ -66,6 +72,17 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
 _NOTIFY_PAYLOAD = "1"
+
+# Session-meta fields (stream_registry's hash) the push gate reads.  A turn
+# whose last look found the buffer empty writes its own ``turn_id`` into
+# ``follow_ups_closed_by`` (``drain_pending_or_close``), and the gate refuses
+# pushes while that matches the meta's ``turn_id``.  The next turn's own
+# ``turn_id`` reopens it, and so does a rerun of the same turn
+# (``reopen_follow_ups``).
+_SESSION_STATUS_FIELD = "status"
+_SESSION_RUNNING = "running"
+_SESSION_TURN_FIELD = "turn_id"
+_FOLLOW_UPS_CLOSED_BY_FIELD = "follow_ups_closed_by"
 
 # Client idempotency keys (``StreamChatRequest.message_id``, already scoped to
 # user + session) of sends the chat API has accepted.  A buffered message has
@@ -358,7 +375,8 @@ async def push_pending_message_if_session_running(
     session_meta_key: str,
     deduplicate: bool = False,
 ) -> int | None:
-    """Append a pending message only while the stream meta is still running."""
+    """Append a pending message only while the stream meta is still running
+    and its turn has not yet taken its last look at the buffer."""
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
@@ -366,8 +384,8 @@ async def push_pending_message_if_session_running(
     new_length = await capped_rpush_if_hash_field(
         redis,
         hash_key=session_meta_key,
-        hash_field="status",
-        expected="running",
+        hash_field=_SESSION_STATUS_FIELD,
+        expected=_SESSION_RUNNING,
         list_key=key,
         value=payload,
         max_len=MAX_PENDING_MESSAGES,
@@ -376,10 +394,13 @@ async def push_pending_message_if_session_running(
             pending_message_receipt_key(session_id, message.id) if deduplicate else None
         ),
         message_id=message.id,
+        closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
+        owner_field=_SESSION_TURN_FIELD,
     )
     if new_length is None:
         logger.info(
-            "pending_messages: skipped push to session=%s because no running turn exists",
+            "pending_messages: skipped push to session=%s because no running "
+            "turn will read the buffer again",
             session_id,
         )
         return None
@@ -432,12 +453,83 @@ async def drain_pending_messages(
         lpop_result = await pop_matching_list_prefix(redis, key, prefix)
     else:
         lpop_result = await cast("Any", redis.lpop(key, batch_limit))
-    if not lpop_result:
-        return []
-    raw_popped: list[Any] = list(lpop_result)
+    return _parse_drained(session_id, lpop_result)
 
+
+async def drain_pending_or_close(
+    session_id: str, *, session_meta_key: str, turn_id: str
+) -> list[PendingMessage]:
+    """Pop one batch of pending messages, or close the buffer if it is empty.
+
+    For turn *turn_id*'s last look at the buffer, after which it ends. With
+    nothing queued, the turn closes the buffer to itself in the same atomic
+    step, so a follow-up from then on is refused (its sender starts a new
+    turn) instead of accepted into a buffer no turn will drain. A batch
+    found here leaves the buffer open for the turn that continues with it,
+    and a turn the session meta no longer names (one that outlived its
+    registration) closes nothing, so it cannot shut its successor's buffer.
+    A batch with nothing parseable in it counts as nothing: the turn looks
+    again, so the buffer still closes when that was all it held.
+    """
+    redis = await get_redis_async()
+    for _ in range(_LAST_LOOK_ATTEMPTS):
+        popped = await pop_or_close_list(
+            redis,
+            hash_key=session_meta_key,
+            list_key=_buffer_key(session_id),
+            max_items=MAX_PENDING_MESSAGES,
+            gate_field=_SESSION_STATUS_FIELD,
+            expected=_SESSION_RUNNING,
+            closed_by_field=_FOLLOW_UPS_CLOSED_BY_FIELD,
+            owner_field=_SESSION_TURN_FIELD,
+            owner=turn_id,
+        )
+        messages = _parse_drained(session_id, popped)
+        if messages or not popped:
+            return messages
+    logger.warning(
+        "pending_messages: last look for session=%s found only malformed "
+        "entries %d times; leaving the buffer open",
+        session_id,
+        _LAST_LOOK_ATTEMPTS,
+    )
+    return []
+
+
+async def reopen_follow_ups(
+    session_id: str, *, session_meta_key: str, turn_id: str
+) -> None:
+    """Reopen the buffer an earlier attempt of turn *turn_id* closed.
+
+    A redelivered turn runs again under the same ``turn_id`` and no new
+    ``create_session``, so the marker its crashed attempt's last look wrote
+    would refuse every follow-up sent during the rerun. Only that turn's own
+    marker is cleared. Best effort: after a Redis error the rerun still runs,
+    and its follow-ups get the 409 clients resend as a new turn.
+    """
+    try:
+        redis = await get_redis_async()
+        await hash_compare_and_set(
+            redis,
+            session_meta_key,
+            _FOLLOW_UPS_CLOSED_BY_FIELD,
+            expected=turn_id,
+            new="",
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: could not reopen follow-ups for session=%s: %s",
+            session_id,
+            e,
+        )
+
+
+def _parse_drained(session_id: str, popped: Any) -> list[PendingMessage]:
+    """The messages a drain popped, oldest first, without malformed entries."""
+    if not popped:
+        return []
     # redis-py may return bytes or str depending on decode_responses.
-    decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
+    decoded: list[str] = [_decode_redis_item(item) for item in list(popped)]
 
     messages: list[PendingMessage] = []
     for payload in decoded:

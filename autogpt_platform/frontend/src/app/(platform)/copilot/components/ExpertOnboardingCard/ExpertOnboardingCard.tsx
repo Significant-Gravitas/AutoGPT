@@ -18,6 +18,7 @@ import { OnboardingReview } from "./components/OnboardingReview";
 import { parseExpertOnboarding, type ExpertOnboardingOutput } from "./helpers";
 import { PendingOnboardingContext } from "./PendingOnboardingContext";
 import { useExpertOnboardingCard } from "./useExpertOnboardingCard";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   part: ToolUIPart;
@@ -132,8 +133,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
     <div
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
-      className="w-full max-w-xl overflow-hidden rounded-lg border border-border-base bg-surface shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)] outline-none"
+      className="w-full max-w-xl overflow-hidden rounded-lg border border-border-base bg-surface shadow-popover-raised outline-none"
     >
       <div
         role="progressbar"
@@ -147,8 +147,10 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
         className="h-1 bg-surface-hover"
       >
         <div
-          className="h-full bg-action transition-[width] duration-300 ease-out"
-          style={{ width: `${(shown / total) * 100}%` }}
+          className="h-full w-(--progress) bg-action transition-[width] duration-300 ease-out"
+          style={
+            { "--progress": `${(shown / total) * 100}%` } as React.CSSProperties
+          }
         />
       </div>
 
@@ -159,7 +161,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           key={currentStep?.keyword ?? "review"}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+          transition={{ duration: duration.base, ease: ease.outQuint }}
           className="flex flex-col gap-4 px-4 pt-4 sm:px-5 sm:pt-5"
         >
           {currentStep ? (

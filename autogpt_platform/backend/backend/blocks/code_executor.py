@@ -18,10 +18,12 @@ from backend.blocks.code_executor_helpers import (
     ProgrammingLanguage,
     build_variable_injection,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -437,6 +439,11 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -584,6 +591,11 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -694,6 +706,10 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             ],
             test_mock={"execute_code": _mock_execute_code},
         )
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # Its code stops at `run_code`'s own limit, inside the reconnect's margin.
+        return self.walltime_bound(RESUMED_SANDBOX_SECONDS)
 
     async def run(
         self,

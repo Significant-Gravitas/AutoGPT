@@ -124,6 +124,7 @@ export default function OnboardingPage() {
           type="button"
           variant="toggle"
           size="xs"
+          shape="sharp"
           onClick={prevStep}
           leadingIcon={ArrowLeft01Icon}
           className="absolute top-6 left-6"
@@ -175,6 +176,7 @@ export default function OnboardingPage() {
           href="/logout"
           variant="toggle"
           size="xs"
+          shape="sharp"
           leadingIcon={Logout03Icon}
           className="absolute bottom-6 left-6"
         >

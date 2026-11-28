@@ -67,7 +67,7 @@ export function QueueBadge({ sessionID }: Props) {
       <Tooltip>
         <TooltipTrigger asChild>
           <span
-            className="inline-flex items-center gap-1 rounded-full bg-accent-surface px-2 py-0.5 text-caption-sm leading-inherit font-medium text-accent-strong"
+            className="inline-flex items-center gap-1 rounded-pill bg-accent-surface px-2 py-0.5 text-caption-sm leading-inherit font-medium text-accent-strong"
             data-testid="queue-badge-queued"
           >
             <Icon icon={HourglassIcon} size={12} />
@@ -87,7 +87,7 @@ export function QueueBadge({ sessionID }: Props) {
               disabled={isCancelling}
               aria-label="Cancel queued task"
               data-testid="queue-cancel-button"
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:text-error-foreground disabled:opacity-50"
+              className="inline-flex h-4 w-4 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:text-error-foreground disabled:opacity-50"
             >
               <Icon icon={CancelCircleIcon} size={14} />
             </button>

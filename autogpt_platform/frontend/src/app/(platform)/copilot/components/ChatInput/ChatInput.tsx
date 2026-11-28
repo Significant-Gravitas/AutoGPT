@@ -306,10 +306,12 @@ export const ChatInput = memo(function ChatInput({
     isTranscribing,
     transcriptionError,
     hasFailedRecording,
+    isRecordingUnreadable,
     retryTranscription,
     downloadFailedRecording,
     dismissTranscriptionError,
     elapsedTime,
+    startRecording,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
     showMicButton,
@@ -322,6 +324,8 @@ export const ChatInput = memo(function ChatInput({
     inputId,
     isStreaming,
   });
+  // The mic button is also the Stop control, so Record again follows it.
+  const isMicDisabled = disabled || isTranscribing || isStreaming;
 
   const { isGlowing: isMicGlowing, dismissGlow } = useOnboardingMicGlow({
     isTranscribing,
@@ -467,13 +471,11 @@ export const ChatInput = memo(function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-border-base shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
+          "relative z-raised flex-col overflow-hidden !rounded-4xl border-border-base shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
-            // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
-            "gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
+            "gap-3 !rounded-3xl border-border-base px-3.5 pt-3 pb-3.5 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong",
           isCompact &&
             "!rounded-xl border-border-base shadow-message-table has-[[data-slot=input-group-control]:focus-visible]:border-foreground-subtle",
           isRecording &&
@@ -485,7 +487,9 @@ export const ChatInput = memo(function ChatInput({
           <TranscriptionErrorBar
             message={transcriptionError}
             isRetrying={isTranscribing}
-            onRetry={retryTranscription}
+            onRetry={isRecordingUnreadable ? undefined : retryTranscription}
+            onRecordAgain={isRecordingUnreadable ? startRecording : undefined}
+            isRecordAgainDisabled={isMicDisabled}
             onDownload={downloadFailedRecording}
             onDismiss={dismissTranscriptionError}
             className={stacked ? undefined : "mt-1.5"}
@@ -610,7 +614,7 @@ export const ChatInput = memo(function ChatInput({
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 isStreaming={isStreaming}
-                disabled={disabled || isTranscribing || isStreaming}
+                disabled={isMicDisabled}
                 highlight={isMicGlowing}
                 className={iconButtonClass}
                 onClick={() => {
@@ -630,7 +634,7 @@ export const ChatInput = memo(function ChatInput({
                   hasAttachments ? undefined : () => void handleEnqueue()
                 }
                 className={cn(
-                  "size-[2.625rem] rounded-full border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
+                  "size-[2.625rem] rounded-pill border-action bg-action text-action-foreground hover:border-action-hover hover:bg-action-hover disabled:border-border-base disabled:bg-surface-active disabled:text-action-foreground disabled:opacity-100",
                   sendButtonClass,
                 )}
               >

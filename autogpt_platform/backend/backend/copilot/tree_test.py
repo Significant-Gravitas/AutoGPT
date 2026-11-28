@@ -168,6 +168,7 @@ def test_isolate_also_drops_outward_and_memory_write_tools() -> None:
     assert isolate.tools is not None
     assert isolate.tools.isdisjoint(ISOLATE_DENIED_TOOLS)
     assert isolate.tools.isdisjoint(DESCENT_DENIED_TOOLS)
+    assert "schedule_routine" not in isolate.tools
     assert "memory_search" in isolate.tools  # reading is fine; writing is not
 
 

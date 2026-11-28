@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import copy
 import functools
 import hashlib
 import json
@@ -11,7 +12,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
@@ -103,7 +104,11 @@ from backend.copilot.model import (
     get_chat_session_metadata,
 )
 from backend.copilot.optimize_blocks import optimize_block_descriptions
-from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.permissions import (
+    ALL_TOOL_NAMES,
+    CopilotPermissions,
+    routine_disabled_tools,
+)
 from backend.copilot.scheduled_chats.notices import (
     SkippedRun,
     post_notice,
@@ -113,7 +118,7 @@ from backend.copilot.scheduled_chats.notices import (
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import experts_db, orgs_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.memory_schedule import ScopeRunKind
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -537,6 +542,26 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
     return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
 
 
+def _scheduled_turn_permissions(
+    args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
+) -> CopilotPermissions | None:
+    """The filter a fire runs under: the scheduling turn's, kept with the job,
+    and a routine's own on top of it."""
+    if args.routine_id is None:
+        return args.permissions
+    own = _routine_turn_permissions(routine)
+    if args.permissions is None:
+        return own
+    allowed = args.permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    # Both as one deny-list: an allow-list left empty would read as no filter.
+    return args.permissions.model_copy(
+        update={
+            "tools": sorted((ALL_TOOL_NAMES - allowed) | set(own.tools)),
+            "tools_exclude": True,
+        }
+    )
+
+
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
@@ -566,6 +591,7 @@ async def _execute_copilot_turn(**kwargs):
         args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
     try:
+        args = await _in_current_membership(args)
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
         # for the scheduled message to land.  For an explicit session_id
@@ -730,11 +756,7 @@ async def _execute_copilot_turn(**kwargs):
             # user also drives themselves, and muting the conversation would
             # take capabilities away from the person sitting in it. What is
             # unattended is this turn.
-            permissions=(
-                _routine_turn_permissions(routine)
-                if args.routine_id is not None
-                else None
-            ),
+            permissions=_scheduled_turn_permissions(args, routine),
             # Nobody watches a scheduled turn, so the executor alerts when it
             # fails after this dispatch succeeded (SECRT-2799).
             scheduled=ScheduledTurnOrigin(
@@ -793,6 +815,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _in_current_membership(args: "CopilotTurnJobArgs") -> "CopilotTurnJobArgs":
+    """A turn runs in the org and team it was scheduled in only while its owner
+    still belongs to them; otherwise in the owner's default, as a run does."""
+    if not args.organization_id or await orgs_db().is_active_member(
+        args.user_id, args.organization_id, args.team_id
+    ):
+        return args
+    organization_id, team_id = await orgs_db().resolve_default_tenancy(args.user_id)
+    return args.model_copy(
+        update={"organization_id": organization_id, "team_id": team_id}
+    )
 
 
 async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
@@ -1117,6 +1152,8 @@ async def _reschedule_one_shot(
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
+            # And the filter the scheduling turn ran under.
+            permissions=args.permissions,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1253,6 +1290,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             return
         _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
+            args = await _in_current_membership(args)
             try:
                 await _dispatch_at_reset_turn(args, kind, chat.session)
             except ConcurrentTurnLimitError as cap:
@@ -1431,6 +1469,7 @@ async def _put_back_at_reset_turn(
             purpose=args.purpose,
             schedule_id=args.schedule_id,
             created_at=args.created_at,
+            permissions=args.permissions,
         )
     except Exception:
         logger.warning(
@@ -2706,6 +2745,12 @@ class GraphExecutionJobArgs(BaseModel):
     # every execution this schedule fires. Optional for backward compat
     # with rows persisted before expert attribution.
     expert_id: str | None = None
+    # True while the job is paused only because its expert was let go: set
+    # when the archive pauses a running job, and re-hiring resumes exactly
+    # the jobs carrying it. Any other pause or resume clears it, so one the
+    # user paused stays paused across the re-hire. Jobs stored without the
+    # field read False, so re-hire leaves them paused.
+    paused_by_expert_archive: bool = False
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -2769,6 +2814,9 @@ class CopilotTurnJobArgs(BaseModel):
     # When the job was first set, kept when it is put back for a retry; a
     # resume stands down if the user carried the chat on after it.
     created_at: datetime | None = None
+    # The filter of the turn that set the job, which every fire runs under.
+    # None when it had none, and on rows persisted before this field.
+    permissions: CopilotPermissions | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -2882,6 +2930,12 @@ _SCHEDULE_KEY_TAKEN = (
     "This conflicts with a schedule an earlier attempt made. Check your "
     "schedules before trying again."
 )
+
+# What a graph schedule create asks for, which a create sent again must match.
+# The archive's mark is pause state, set later like ``next_run_time``.
+_GRAPH_CREATE_FIELDS = set(GraphExecutionJobArgs.model_fields) - {
+    "paused_by_expert_archive"
+}
 
 
 def _as_json(args: dict[str, Any]) -> str:
@@ -3580,24 +3634,33 @@ class Scheduler(AppService):
         ``ConflictingIdError`` is raised and the job is left as it was.
         """
         assert job_args.schedule_id is not None
-        self._check_schedule_capacity(job_args, replaces=replaces)
-        job = self.scheduler.add_job(
-            dispatch_func,
-            kwargs=job_args.model_dump(mode="json"),
-            name=name,
-            trigger=trigger,
-            jobstore=Jobstores.EXECUTION.value,
-            replace_existing=replace_existing,
-            id=job_args.schedule_id,
-        )
-        # Index AFTER add_job: a pre-add row would race the read path's
-        # dangling-row cleanup (row visible, job not yet persisted → row
-        # deleted → schedule invisible until reconcile).
-        self._upsert_schedule_index_row(job.id, job_args)
-        # Invalidate the read cache so the new job shows up on the next
-        # ``get_execution_schedules`` call instead of waiting up to
-        # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
-        self._invalidate_jobs_cache()
+        # Counting the owner's schedules and adding this one are one step:
+        # two creates that both counted the last free slot would both take
+        # it (#16910). The lock holds through the index row and the cache
+        # invalidation, which the next count reads. It serializes the creates
+        # of one scheduler process. Rollouts recreate the scheduler, so two
+        # never run at once there. A pod deleted outside a rollout, or a
+        # drained node, can briefly overlap its replacement, and in that
+        # window an account can go one over its limit.
+        with self._schedule_capacity_lock:
+            self._check_schedule_capacity(job_args, replaces=replaces)
+            job = self.scheduler.add_job(
+                dispatch_func,
+                kwargs=job_args.model_dump(mode="json"),
+                name=name,
+                trigger=trigger,
+                jobstore=Jobstores.EXECUTION.value,
+                replace_existing=replace_existing,
+                id=job_args.schedule_id,
+            )
+            # Index AFTER add_job: a pre-add row would race the read path's
+            # dangling-row cleanup (row visible, job not yet persisted → row
+            # deleted → schedule invisible until reconcile).
+            self._upsert_schedule_index_row(job.id, job_args)
+            # Invalidate the read cache so the new job shows up on the next
+            # ``get_execution_schedules`` call instead of waiting up to
+            # ``_JOBS_CACHE_TTL_S`` seconds for the cached list to expire.
+            self._invalidate_jobs_cache()
         return job
 
     def _check_schedule_capacity(
@@ -3720,6 +3783,14 @@ class Scheduler(AppService):
                 graph_credentials_inputs=input_credentials,
             )
         )
+        if expert_id is not None:
+            # Each run would be refused for a key the expert was never
+            # granted, and a scheduled run's refusal is only logged.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, expert_id, input_credentials
+                )
+            )
 
         try:
             job = self._persist_schedule(
@@ -3770,12 +3841,8 @@ class Scheduler(AppService):
         info = _job_to_info(job)
         if not (
             isinstance(info, GraphExecutionJobInfo)
-            and _as_json(
-                info.model_dump(
-                    mode="json", include=set(GraphExecutionJobArgs.model_fields)
-                )
-            )
-            == _as_json(job_args.model_dump(mode="json"))
+            and _as_json(info.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS))
+            == _as_json(job_args.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS))
             and _fires_alike(job.trigger, trigger)
         ):
             raise ConflictError(_SCHEDULE_KEY_TAKEN)
@@ -3807,6 +3874,7 @@ class Scheduler(AppService):
         schedule_id: str | None = None,
         created_at: datetime | None = None,
         replaces_schedule_ids: list[str] | None = None,
+        permissions: CopilotPermissions | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3828,6 +3896,9 @@ class Scheduler(AppService):
 
         *replaces_schedule_ids* names jobs this one takes the place of, so a
         routine given a new cadence is not refused for its own current jobs.
+
+        *permissions* is the filter of the turn making the schedule; every
+        fire runs under it.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3869,6 +3940,7 @@ class Scheduler(AppService):
             routine_schedule_id=routine_schedule_id,
             purpose=purpose,
             created_at=created_at or datetime.now(timezone.utc),
+            permissions=permissions,
         )
         if purpose != "followup":
             default_name = AT_RESET_JOB_NAMES[purpose]
@@ -3973,52 +4045,92 @@ class Scheduler(AppService):
         jobstore writes as a single row update: a concurrent reader sees the
         old schedule or the new one, never a mix. Omitted fields keep their
         current value, and a paused schedule stays paused.
+
+        New inputs are checked against the graph before the jobstore lock is
+        taken, since the check reads the database. The job is then read again
+        under the lock and the write built from that read, so a pause or
+        resume landing in between keeps its next run time and its archive
+        mark.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="update")
-        if not isinstance(info, GraphExecutionJobInfo):
-            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
-
-        job_args = _updated_graph_job_args(
-            info,
-            name=name,
-            cron=cron,
-            input_data=input_data,
-            input_credentials=input_credentials,
-        )
         if input_data is not None or input_credentials is not None:
-            run_async(
-                execution_utils.validate_and_construct_node_execution_input(
-                    graph_id=job_args.graph_id,
-                    user_id=user_id,
-                    graph_inputs=job_args.input_data,
-                    graph_version=job_args.graph_version,
-                    graph_credentials_inputs=job_args.input_credentials,
-                )
+            self._validate_schedule_inputs(
+                schedule_id, user_id, input_data, input_credentials
             )
-
-        changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
-        if name:
-            changes["name"] = job_args.agent_name
-        if cron is not None or user_timezone:
-            trigger = _build_trigger(
-                cron=job_args.cron,
-                run_at=None,
-                user_timezone=user_timezone or info.timezone,
+        with self._jobstore_locked():
+            job, info = self._authorized_graph_job(schedule_id, user_id)
+            job_args = _updated_graph_job_args(
+                info,
+                name=name,
+                cron=cron,
+                input_data=input_data,
+                input_credentials=input_credentials,
             )
-            changes["trigger"] = trigger
-            if job.next_run_time is not None:
-                changes["next_run_time"] = trigger.get_next_fire_time(
-                    None, datetime.now(timezone.utc)
+            changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+            if name:
+                changes["name"] = job_args.agent_name
+            if cron is not None or user_timezone:
+                trigger = _build_trigger(
+                    cron=job_args.cron,
+                    run_at=None,
+                    user_timezone=user_timezone or info.timezone,
                 )
-        updated = self.scheduler.modify_job(
-            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
-        )
+                changes["trigger"] = trigger
+                if job.next_run_time is not None:
+                    changes["next_run_time"] = trigger.get_next_fire_time(
+                        None, datetime.now(timezone.utc)
+                    )
+            updated = self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
         logger.info(
             f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
             f"{_timezone_from_job(updated)}"
         )
         return GraphExecutionJobInfo.from_db(job_args, updated)
+
+    def _validate_schedule_inputs(
+        self,
+        schedule_id: str,
+        user_id: str,
+        input_data: GraphInput | None,
+        input_credentials: dict[str, CredentialsMetaInput] | None,
+    ) -> None:
+        """Check new inputs against the schedule's graph, an input left out at
+        its stored value. Runs without the jobstore lock, which would hold up
+        every pause, resume and fire while the check reads the database."""
+        _, info = self._authorized_graph_job(schedule_id, user_id)
+        merged = _updated_graph_job_args(
+            info,
+            name=None,
+            cron=None,
+            input_data=input_data,
+            input_credentials=input_credentials,
+        )
+        run_async(
+            execution_utils.validate_and_construct_node_execution_input(
+                graph_id=merged.graph_id,
+                user_id=user_id,
+                graph_inputs=merged.input_data,
+                graph_version=merged.graph_version,
+                graph_credentials_inputs=merged.input_credentials,
+            )
+        )
+        if merged.expert_id is not None:
+            # As at creation, on the keys each run will carry after the edit.
+            run_async(
+                execution_utils._enforce_expert_credential_scope(
+                    user_id, merged.expert_id, merged.input_credentials
+                )
+            )
+
+    def _authorized_graph_job(
+        self, schedule_id: str, user_id: str
+    ) -> tuple[JobObj, GraphExecutionJobInfo]:
+        job, info = self._authorized_job(schedule_id, user_id, action="update")
+        if not isinstance(info, GraphExecutionJobInfo):
+            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
+        return job, info
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
@@ -4045,41 +4157,120 @@ class Scheduler(AppService):
             raise NotAuthorizedError("User ID does not match the job's user ID")
         return job, info
 
+    def _jobstore_locked(self) -> AbstractContextManager[Any]:
+        """APScheduler's jobstore lock, held from a read of a job to the write
+        built from it. Pause, resume and both edits hold it, so none of them
+        writes back state another has changed meanwhile. Reentrant: APScheduler
+        takes it again inside ``modify_job``, and for each pass over due jobs.
+
+        The lock is per process. While two scheduler processes overlap, as
+        when a pod and its replacement both run, they can still race on one
+        schedule.
+
+        ``_jobstores_lock`` is private to APScheduler 3.11, and
+        ``scheduler_shutdown_test`` fails if an upgrade renames it."""
+        return self.scheduler._jobstores_lock
+
     @expose
-    def pause_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+    def pause_execution_schedule(
+        self, schedule_id: str, user_id: str, for_expert_archive: bool = False
+    ) -> bool:
         """Suspend a schedule without discarding it.
 
         APScheduler persists a pause as ``next_run_time = NULL``, which
         ``get_execution_schedules`` already skips — so a paused schedule
         disappears from every read path while keeping its trigger, inputs
         and credentials intact for ``resume_execution_schedule``. Returns
-        False when it was already paused, so callers don't double-log.
+        whether this call stopped a running schedule, so callers don't
+        double-log.
+
+        *for_expert_archive* is the archive flow pausing a graph schedule for
+        re-hire: it marks the job ``paused_by_expert_archive``, but never one
+        that was already paused, since that pause was someone else's. Any
+        other pause clears the mark, even on a job already paused, so the
+        schedule stays paused when the expert is hired again.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="pause")
-        if job.next_run_time is None:
-            return False
-        logger.info(f"Pausing job {schedule_id} (kind={info.kind})")
-        self.scheduler.pause_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        # The mark goes back with the job's other kwargs, which an edit or
+        # another pause could change between the read and the write.
+        with self._jobstore_locked():
+            job, info = self._authorized_job(schedule_id, user_id, action="pause")
+            running = job.next_run_time is not None
+            changes: dict[str, Any] = {"next_run_time": None} if running else {}
+            if isinstance(info, GraphExecutionJobInfo):
+                marked = for_expert_archive and (
+                    running or info.paused_by_expert_archive
+                )
+                if marked != info.paused_by_expert_archive:
+                    changes["kwargs"] = {
+                        **job.kwargs,
+                        "paused_by_expert_archive": marked,
+                    }
+            if not changes:
+                return False
+            logger.info(
+                f"Pausing job {schedule_id} (kind={info.kind}, "
+                f"for_expert_archive={for_expert_archive}, was_running={running})"
+            )
+            self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
-        return True
+        return running
 
     @expose
-    def resume_execution_schedule(self, schedule_id: str, user_id: str) -> bool:
+    def resume_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        only_if_paused_by_expert_archive: bool = False,
+    ) -> bool:
         """Reverse of ``pause_execution_schedule``.
 
         APScheduler recomputes ``next_run_time`` from the trigger, so fires
         missed while paused are NOT backfilled — a re-hired expert picks up
         at her next cadence instead of replaying the whole archived window.
         Returns False when the schedule was not paused.
+
+        Re-hiring passes *only_if_paused_by_expert_archive*, which resumes
+        a schedule only if the archive paused it (the job's
+        ``paused_by_expert_archive`` mark) and otherwise returns False. Every
+        resume clears the mark.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="resume")
-        if job.next_run_time is not None:
-            return False
-        # Resuming computes the next fire time from the stored trigger.
-        if isinstance(job.trigger, CronTrigger):
-            check_cron_fires(job.trigger, info.cron or "")
-        logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
-        self.scheduler.resume_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
+        with self._jobstore_locked():
+            job, info = self._authorized_job(schedule_id, user_id, action="resume")
+            if job.next_run_time is not None:
+                return False
+            marked = (
+                isinstance(info, GraphExecutionJobInfo)
+                and info.paused_by_expert_archive
+            )
+            if only_if_paused_by_expert_archive and not marked:
+                return False
+            # Resuming computes the next fire time from the stored trigger. The
+            # check changes the end date of the trigger it is given, so it gets
+            # a copy, and the next fire time below comes from the stored one.
+            if isinstance(job.trigger, CronTrigger):
+                check_cron_fires(copy.copy(job.trigger), info.cron or "")
+            logger.info(f"Resuming job {schedule_id} (kind={info.kind})")
+            # APScheduler's ``resume_job``, with the mark cleared in the same
+            # write: a trigger with no next fire time removes the job.
+            next_run_time = job.trigger.get_next_fire_time(
+                None, datetime.now(self.scheduler.timezone)
+            )
+            if next_run_time is None:
+                self.scheduler.remove_job(
+                    schedule_id, jobstore=Jobstores.EXECUTION.value
+                )
+            else:
+                changes: dict[str, Any] = {"next_run_time": next_run_time}
+                if marked:
+                    changes["kwargs"] = {
+                        **job.kwargs,
+                        "paused_by_expert_archive": False,
+                    }
+                self.scheduler.modify_job(
+                    schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+                )
         self._invalidate_jobs_cache()
         return True
 
@@ -4092,33 +4283,37 @@ class Scheduler(AppService):
         The job keeps its id, which is what its failure streak, its notes and
         Resume all name it by. A paused one stays paused: changing how often it
         runs is not the same thing as starting it again. A routine's jobs are
-        not changed here; its row owns their crons.
+        not changed here; its row owns their crons. Read and written under
+        the jobstore lock, so a pause landing in between is kept.
         """
-        job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
-        if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
-            raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
-        if info.routine_id is not None:
-            raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
-        # The zone the dialog showed its times in: a follow-up saved before
-        # user_timezone existed keeps its zone on the trigger alone.
-        trigger = _build_trigger(
-            cron=cron, run_at=None, user_timezone=info.user_timezone or info.timezone
-        )
-        args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
-            update={"cron": cron}
-        )
-        changes: dict[str, object] = {
-            "trigger": trigger,
-            "kwargs": args.model_dump(mode="json"),
-        }
-        if job.next_run_time is not None:
-            changes["next_run_time"] = trigger.get_next_fire_time(
-                None, datetime.now(timezone.utc)
+        with self._jobstore_locked():
+            job, info = self._authorized_job(schedule_id, user_id, action="reschedule")
+            if not isinstance(info, CopilotTurnJobInfo) or info.cron is None:
+                raise NotFoundError(f"Job #{schedule_id} is not a repeating follow-up.")
+            if info.routine_id is not None:
+                raise NotFoundError(f"Job #{schedule_id} belongs to a routine.")
+            # The zone the dialog showed its times in: a follow-up saved before
+            # user_timezone existed keeps its zone on the trigger alone.
+            trigger = _build_trigger(
+                cron=cron,
+                run_at=None,
+                user_timezone=info.user_timezone or info.timezone,
             )
-        logger.info(f"Changing the cadence of job {schedule_id}")
-        updated = self.scheduler.modify_job(
-            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
-        )
+            args = CopilotTurnJobArgs.model_validate(job.kwargs).model_copy(
+                update={"cron": cron}
+            )
+            changes: dict[str, object] = {
+                "trigger": trigger,
+                "kwargs": args.model_dump(mode="json"),
+            }
+            if job.next_run_time is not None:
+                changes["next_run_time"] = trigger.get_next_fire_time(
+                    None, datetime.now(timezone.utc)
+                )
+            logger.info(f"Changing the cadence of job {schedule_id}")
+            updated = self.scheduler.modify_job(
+                schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+            )
         self._invalidate_jobs_cache()
         return CopilotTurnJobInfo.from_db(args, updated)
 
@@ -4160,6 +4355,9 @@ class Scheduler(AppService):
     # Process-wide; guards both lists and the version. A threading lock because
     # APScheduler's thread and the Pyro RPC workers both read.
     _jobs_cache_lock = threading.Lock()
+    # Held from a create's count of its owner's schedules through its
+    # add_job, index row and cache invalidation.
+    _schedule_capacity_lock = threading.RLock()
     # Bumped by every invalidation. A read that started before one must not
     # write its result back: it may predate the mutation.
     _jobs_cache_version: int = 0

@@ -13,6 +13,7 @@ from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 
 from backend.blocks._base import (
@@ -59,6 +60,16 @@ def serialize_email_recipients(recipients: list[str]) -> str:
     headers clean (mirrors the strip done in ``validate_email_recipients``).
     """
     return ", ".join(addr.strip() for addr in recipients)
+
+
+def parse_email_recipients(header_value: str) -> list[str]:
+    """Parse a To/Cc/Bcc header into addresses, skipping blank entries.
+
+    ``getaddresses`` yields a blank address for a missing header on Pythons
+    with the strict parser (3.13, 3.12.6+, 3.11.10+), and on every version
+    for group syntax such as ``undisclosed-recipients:;``.
+    """
+    return [addr.strip() for _, addr in getaddresses([header_value]) if addr.strip()]
 
 
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
@@ -386,6 +397,14 @@ class GmailBase(Block, ABC):
         for label in labels:
             if label["name"] == label_name:
                 return label["id"]
+        # Gmail treats user label names as case-insensitive: "work" and
+        # "Work" are the same label, and creating one beside the other
+        # conflicts. System labels (INBOX, TRASH, UNREAD...) still need their
+        # exact name, so "trash" doesn't quietly move a message to the bin.
+        wanted = label_name.lower()
+        for label in labels:
+            if label.get("type") == "user" and label["name"].lower() == wanted:
+                return label["id"]
         return None
 
 
@@ -544,16 +563,9 @@ class GmailReadBlock(GmailBase):
 
             attachments = await self._get_attachments(service, msg)
 
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
+            to_recipients = parse_email_recipients(headers.get("to", ""))
+            cc_recipients = parse_email_recipients(headers.get("cc", ""))
+            bcc_recipients = parse_email_recipients(headers.get("bcc", ""))
 
             email = Email(
                 threadId=msg.get("threadId", None),
@@ -925,15 +937,29 @@ class GmailAddLabelBlock(GmailBase):
 
     async def _get_or_create_label(self, service, label_name: str) -> str:
         label_id = await self._get_label_id(service, label_name)
-        if not label_id:
+        if label_id:
+            return label_id
+        try:
             label = await asyncio.to_thread(
                 lambda: service.users()
                 .labels()
                 .create(userId="me", body={"name": label_name})
                 .execute()
             )
-            label_id = label["id"]
-        return label_id
+        except HttpError as e:
+            if e.resp.status != 409:
+                raise
+            # The label appeared since the lookup, or the name clashes
+            # with one Gmail reserves.
+            label_id = await self._get_label_id(service, label_name)
+            if label_id:
+                return label_id
+            raise ValueError(
+                f'Gmail can\'t create the label "{label_name}" because it '
+                "clashes with an existing or reserved label name. "
+                "Try a different name."
+            ) from e
+        return label["id"]
 
 
 class GmailRemoveLabelBlock(GmailBase):
@@ -996,21 +1022,28 @@ class GmailRemoveLabelBlock(GmailBase):
 
     async def _remove_label(self, service, message_id: str, label_name: str) -> dict:
         label_id = await self._get_label_id(service, label_name)
-        if label_id:
-            result = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
-                .execute()
-            )
-            if not result.get("labelIds"):
-                return {
-                    "status": "Label already removed or not applied",
-                    "label_id": label_id,
-                }
-            return {"status": "Label removed successfully", "label_id": label_id}
-        else:
-            return {"status": "Label not found", "label_name": label_name}
+        if not label_id:
+            return {"status": "Label not found", "label_id": ""}
+        # The modify response can't say whether the label was there before
+        # (Gmail omits labelIds once none are left), so check first.
+        message = await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .get(userId="me", id=message_id, format="minimal")
+            .execute()
+        )
+        if label_id not in message.get("labelIds", []):
+            return {
+                "status": "Label already removed or not applied",
+                "label_id": label_id,
+            }
+        await asyncio.to_thread(
+            lambda: service.users()
+            .messages()
+            .modify(userId="me", id=message_id, body={"removeLabelIds": [label_id]})
+            .execute()
+        )
+        return {"status": "Label removed successfully", "label_id": label_id}
 
 
 class GmailGetThreadBlock(GmailBase):
@@ -1135,16 +1168,9 @@ class GmailGetThreadBlock(GmailBase):
             body = await self._get_email_body(msg, service)
             attachments = await self._get_attachments(service, msg)
 
-            # Parse all recipients
-            to_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("to", "")])
-            ]
-            cc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("cc", "")])
-            ]
-            bcc_recipients = [
-                addr.strip() for _, addr in getaddresses([headers.get("bcc", "")])
-            ]
+            to_recipients = parse_email_recipients(headers.get("to", ""))
+            cc_recipients = parse_email_recipients(headers.get("cc", ""))
+            bcc_recipients = parse_email_recipients(headers.get("bcc", ""))
 
             email = Email(
                 threadId=msg.get("threadId", thread_id),

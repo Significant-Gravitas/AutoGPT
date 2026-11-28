@@ -14,7 +14,8 @@ export function DeleteAccountButton() {
   return (
     <>
       <Button
-        variant="ghost-muted"
+        variant="ghost"
+        tone="quiet"
         size="small"
         onClick={openFlow}
         leftIcon={<Icon icon={UserRemove01Icon} size={16} />}

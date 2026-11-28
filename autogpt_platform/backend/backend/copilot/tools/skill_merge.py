@@ -15,7 +15,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel
 
-from backend.data.skill_package import MergedText, merge_text
+from backend.data.skill_package import MergeBudget, MergedText, merge_text
 
 from .skill_frontmatter import dump_skill_frontmatter, load_skill_frontmatter
 
@@ -25,10 +25,13 @@ _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
 _MISSING = object()
 
 
-def merge_skill_markdown(base: str, ours: str, theirs: str) -> MergedText:
+def merge_skill_markdown(
+    base: str, ours: str, theirs: str, budget: MergeBudget | None = None
+) -> MergedText:
     """Three-way merge of a ``SKILL.md``: *ours* is the owner's copy, *theirs*
     the update, *base* the version the copy was installed from. The owner's
     side wins any field or hunk both sides changed differently."""
+    budget = budget or MergeBudget()
     if ours == theirs:
         return MergedText(text=ours, conflicted=False)
     if base == ours:
@@ -37,9 +40,11 @@ def merge_skill_markdown(base: str, ours: str, theirs: str) -> MergedText:
         return MergedText(text=ours, conflicted=False)
     b, o, t = _split(base), _split(ours), _split(theirs)
     if b is None or o is None or t is None:
-        return merge_text(base, ours, theirs)
-    frontmatter = _merge_frontmatter(b.frontmatter, o.frontmatter, t.frontmatter)
-    body = merge_text(b.body, o.body, t.body)
+        return merge_text(base, ours, theirs, budget)
+    frontmatter = _merge_frontmatter(
+        b.frontmatter, o.frontmatter, t.frontmatter, budget
+    )
+    body = merge_text(b.body, o.body, t.body, budget)
     return MergedText(
         text=f"---\n{frontmatter.text}\n---\n{body.text}",
         conflicted=frontmatter.conflicted or body.conflicted,
@@ -58,7 +63,9 @@ def _split(text: str) -> _Split | None:
     return _Split(frontmatter=match.group(1), body=match.group(2))
 
 
-def _merge_frontmatter(base: str, ours: str, theirs: str) -> MergedText:
+def _merge_frontmatter(
+    base: str, ours: str, theirs: str, budget: MergeBudget
+) -> MergedText:
     """Field by field. The text comes back untouched from whichever side the
     result equals, so a frontmatter nobody changed keeps the catalog's bytes;
     only a real three-way combination is re-rendered."""
@@ -68,7 +75,7 @@ def _merge_frontmatter(base: str, ours: str, theirs: str) -> MergedText:
         return MergedText(text=theirs, conflicted=False)
     b, o, t = _mapping(base), _mapping(ours), _mapping(theirs)
     if b is None or o is None or t is None:
-        return merge_text(base, ours, theirs)
+        return merge_text(base, ours, theirs, budget)
     merged: dict[str, Any] = {}
     conflicted = False
     for key in [

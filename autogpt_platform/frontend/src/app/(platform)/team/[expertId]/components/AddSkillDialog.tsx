@@ -212,7 +212,8 @@ function SkillOption({
       </span>
       <span className="min-w-0 flex-1">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone="primary"
           className="block truncate"

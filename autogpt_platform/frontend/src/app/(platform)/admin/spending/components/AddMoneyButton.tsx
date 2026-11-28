@@ -64,6 +64,7 @@ export function AdminAddMoneyButton({
     <>
       <Button
         size="xs"
+        shape="sharp"
         variant="primary"
         onClick={(e) => {
           e.stopPropagation();

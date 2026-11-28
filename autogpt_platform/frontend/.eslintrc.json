@@ -28,6 +28,11 @@
     // Disable temporarily as we have some `any` in the codebase and we need to got case by case
     // and see if they can be fixed.
     "@typescript-eslint/no-explicit-any": "off",
+    // A raw <img> skips next/image sizing and lazy loading. Use next/image, or
+    // opt out with `// eslint-disable-next-line @next/next/no-img-element --
+    // <reason>` when it can't work (a host next.config.mjs doesn't list, a
+    // blob or data URL).
+    "@next/next/no-img-element": "error",
     // Allow unused vars that start with underscore (convention for intentionally unused)
     "@typescript-eslint/no-unused-vars": [
       "error",
@@ -66,6 +71,41 @@
         "selector": "SwitchStatement[discriminant.type='MemberExpression'][discriminant.computed=false][discriminant.property.name='key'] > SwitchCase > :matches(Literal[value=/^(Enter|Escape|Tab|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|PageUp|PageDown|Home|End|Backspace|Delete| )$/], Identifier[name=/(^KEY_|_KEY$)/])",
         "message": "Do not switch on e.key directly; use isKey(e, \"Enter\") from @/lib/keyboard so IME composition is respected."
       }
+    ],
+    // A relative time ("5 minutes ago") reads the clock, and the server's clock
+    // and the visitor's never agree: formatted while a server-rendered
+    // component renders, it hydrates to different text, React error #418
+    // (#17309, #17310). Render <RelativeTime> or call useRelativeTime from
+    // @/components/atoms/RelativeTime, which serve the date itself until the
+    // page has hydrated. A file that formats one only where no render runs
+    // (an event handler, a toast) may join the allow-list, the
+    // "no-restricted-imports": "off" override below, with its reason.
+    // scripts/eslint-relative-time-rules.test.ts covers the rule and the list.
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "date-fns",
+            "importNames": ["formatDistanceToNow", "formatDistanceToNowStrict"],
+            "message": "It reads the clock, which differs between the server and the browser hydrating its HTML (React error #418). Render <RelativeTime date={…} /> or call useRelativeTime() from @/components/atoms/RelativeTime instead."
+          }
+        ],
+        // Static imports only: require("date-fns"), import("date-fns") and a
+        // relative ./time import from inside lib/utils aren't caught, so
+        // don't reach the formatters those ways.
+        "patterns": [
+          {
+            "group": ["date-fns/**/formatDistanceToNow*"],
+            "message": "It reads the clock, which differs between the server and the browser hydrating its HTML (React error #418). Render <RelativeTime date={…} /> or call useRelativeTime() from @/components/atoms/RelativeTime instead."
+          },
+          {
+            "group": ["**/lib/utils/time"],
+            "importNames": ["formatTimeAgo"],
+            "message": "It reads the clock, which differs between the server and the browser hydrating its HTML (React error #418). Render <RelativeTime date={…} variant=\"short\" /> or call useRelativeTime(date, \"short\") from @/components/atoms/RelativeTime instead."
+          }
+        ]
+      }
     ]
   },
   "overrides": [
@@ -90,6 +130,19 @@
         "react-hooks/unsupported-syntax": "off",
         "react-hooks/use-memo": "off"
       }
+    },
+    {
+      // The relative-time allow-list: files that may import the formatters
+      // that read the clock, each with the reason it never formats one in
+      // the server's HTML or in the render that hydrates it. This switches
+      // the whole no-restricted-imports rule off for them, so a ban added to
+      // that rule later doesn't reach them either.
+      "files": [
+        // The hook RelativeTime is built on: it returns the date itself until
+        // the page has hydrated, and the relative time only after.
+        "src/components/atoms/RelativeTime/useRelativeTime.ts"
+      ],
+      "rules": { "no-restricted-imports": "off" }
     },
     {
       // Keep in sync with reactCompilerSources in next.config.mjs, the

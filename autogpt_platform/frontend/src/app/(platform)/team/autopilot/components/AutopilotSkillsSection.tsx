@@ -25,7 +25,7 @@ export function AutopilotSkillsSection({ skills }: Props) {
   return (
     <section>
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           Otto&apos;s Skills
         </Text>
         <ToolbarSearch

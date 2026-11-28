@@ -60,6 +60,7 @@ export function ApproveRejectButtons({
       {!isApproved && (
         <Button
           size="xs"
+          shape="sharp"
           variant="secondary"
           onClick={(e) => {
             e.stopPropagation();
@@ -78,6 +79,7 @@ export function ApproveRejectButtons({
       )}
       <Button
         size="xs"
+        shape="sharp"
         variant="secondary"
         onClick={(e) => {
           e.stopPropagation();

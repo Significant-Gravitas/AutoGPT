@@ -5,12 +5,20 @@ import {
   describeErrorEvent,
   isAuthenticationClose,
   logWebSocketClose,
-  logWebSocketIssue,
 } from "./websocket-logging";
+import {
+  SubscribeRetries,
+  type WebSocketRequest,
+  withJitter,
+} from "./websocket-retry";
 
 interface Handlers {
   onConnect: () => void;
-  /** After a reconnect, once the server has handled what onConnect sent. */
+  /**
+   * Whenever live state should be re-read: after a reconnect, once the
+   * server has handled what onConnect sent, and after a subscribe it could
+   * not complete settles on a retry, on any connection.
+   */
   onReconnect: () => void;
   onDisconnect: () => void;
   onMessage: (event: MessageEvent) => void;
@@ -24,6 +32,9 @@ const MAX_RETRY_DELAY_MS = 30_000;
 const HEALTHY_AFTER_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 100_000;
 const HEARTBEAT_TIMEOUT_MS = 10_000;
+// The first pong waits for the server to check the token as well as to open
+// the socket's event stream.
+const SIGN_IN_TIMEOUT_MS = 30_000;
 // The server answers the ordering ping only after every resubscription, and
 // opening a shard's event stream for one can take it up to 15 s (OPEN_TIMEOUT_S
 // in backend/data/sharded_pubsub.py); each answer to a subscribe restarts this.
@@ -54,7 +65,13 @@ export class BackendWebSocket {
   private pongsOwed = 0;
   private pongsUntilResubscribed = 0;
   private sentDuringResubscribeCheck = false;
+  // What makes the views re-read at the next caught-up pong.
+  private rereadAfterReconnect = false;
+  private rereadAfterRetries = false;
   private watchingPage = false;
+  private retries = new SubscribeRetries((request) =>
+    this.resubscribe(request),
+  );
 
   constructor(
     private url: string,
@@ -125,11 +142,9 @@ export class BackendWebSocket {
         else this.finishConnecting();
         return;
       }
-      const socket = new WebSocket(
-        `${this.url}?token=${encodeURIComponent(token)}`,
-      );
+      const socket = new WebSocket(this.url);
       this.socket = socket;
-      this.attach(socket, generation);
+      this.attach(socket, generation, token);
     } catch (error) {
       if (generation !== this.generation) return;
       console.warn("[BackendAPI] Could not connect WebSocket:", error);
@@ -154,28 +169,29 @@ export class BackendWebSocket {
     return this.socket === socket && this.generation === generation;
   }
 
-  private attach(socket: WebSocket, generation: number) {
+  private attach(socket: WebSocket, generation: number, token: string) {
     socket.onopen = () => {
       if (!this.current(socket, generation) || hasDisconnectIntent()) {
         socket.close();
         return;
       }
-      this.ping(socket, generation);
+      // The token goes in the first message, never in the URL. The server
+      // handles messages in order, so the pong to this ping confirms it.
+      socket.send(JSON.stringify({ method: "authenticate", data: { token } }));
+      this.ping(socket, generation, SIGN_IN_TIMEOUT_MS);
     };
     socket.onmessage = (event) => this.receive(socket, generation, event);
     socket.onclose = (event) => this.closed(socket, generation, event);
+    // The browser fires `close` after every `error`, and closed() reports the
+    // drop with its close code, so this event is not reported again.
     socket.onerror = (event) => {
       if (
         !this.current(socket, generation) ||
         this.authenticatedSocket !== socket
       )
         return;
-      const { summary, extra } = describeErrorEvent(event, this.url);
-      logWebSocketIssue(
-        "error",
-        `[BackendAPI] WebSocket error: ${summary}`,
-        extra,
-      );
+      const { summary } = describeErrorEvent(event, this.url);
+      console.debug(`[BackendAPI] WebSocket error: ${summary}`);
     };
   }
 
@@ -197,6 +213,7 @@ export class BackendWebSocket {
       if (this.pongsUntilResubscribed > 0 && answersARequest(message)) {
         this.armDeadline(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
       }
+      if (this.retries.read(message)) this.rereadAfterRetries = true;
       this.handlers.onMessage(event);
       return;
     }
@@ -214,10 +231,26 @@ export class BackendWebSocket {
         this.checkResubscribed(socket, generation);
         return;
       }
+      this.caughtUp();
+    }
+  }
+
+  // The server has handled everything sent before the last ping. After a
+  // reconnect the views re-read at once: the subscriptions that went through
+  // are live. A subscribe still being retried makes them re-read once more
+  // when it settles, so the last read follows it.
+  private caughtUp() {
+    this.retries.settle();
+    const retrying = this.retries.waiting;
+    if (this.rereadAfterReconnect) {
       // A reconnect only counts as healthy once it has caught up.
       this.startHealthyTimer();
-      this.handlers.onReconnect();
+    } else if (!this.rereadAfterRetries || retrying) {
+      return;
     }
+    this.rereadAfterReconnect = false;
+    this.rereadAfterRetries = retrying;
+    this.handlers.onReconnect();
   }
 
   // A pong follows backend authentication; transport open alone does not.
@@ -235,10 +268,11 @@ export class BackendWebSocket {
       this.startHealthyTimer();
       return;
     }
-    this.resubscribedTimer = setTimeout(
-      () => this.checkResubscribed(socket, generation),
-      Math.random() * RECONNECT_REFETCH_SPREAD_MS,
-    );
+    this.rereadAfterReconnect = true;
+    this.resubscribedTimer = setTimeout(() => {
+      this.resubscribedTimer = undefined;
+      this.checkResubscribed(socket, generation);
+    }, Math.random() * RECONNECT_REFETCH_SPREAD_MS);
   }
 
   // The server answers a socket's messages in order, so the pong to this
@@ -249,6 +283,17 @@ export class BackendWebSocket {
     this.sentDuringResubscribeCheck = false;
     this.ping(socket, generation, RESUBSCRIBED_TIMEOUT_MS);
     this.pongsUntilResubscribed = this.pongsOwed;
+  }
+
+  // Views re-read once the server has answered this, so a ping follows it,
+  // unless one already out or the one after the spread will.
+  private resubscribe(request: WebSocketRequest) {
+    const socket = this.socket;
+    // Not sent: the socket is closing, and its close clears the retries.
+    if (!socket || !this.send(JSON.stringify(request))) return;
+    if (this.pongsUntilResubscribed > 0) return;
+    if (this.resubscribedTimer !== undefined) return;
+    this.checkResubscribed(socket, this.generation);
   }
 
   private startHealthyTimer() {
@@ -327,6 +372,10 @@ export class BackendWebSocket {
     clearTimeout(this.heartbeatTimeout);
     clearTimeout(this.healthyTimer);
     clearTimeout(this.resubscribedTimer);
+    this.resubscribedTimer = undefined;
+    this.retries.clear();
+    this.rereadAfterReconnect = false;
+    this.rereadAfterRetries = false;
     this.pongsOwed = 0;
     this.pongsUntilResubscribed = 0;
     this.sentDuringResubscribeCheck = false;
@@ -365,12 +414,6 @@ export class BackendWebSocket {
       void this.open(this.generation);
     }
   };
-}
-
-// Equal jitter: a random point in the second half of the step, so clients
-// dropped together (a server restart) don't all come back at once.
-function withJitter(delay: number) {
-  return Math.round(delay / 2 + (Math.random() * delay) / 2);
 }
 
 function hasDisconnectIntent(): boolean {

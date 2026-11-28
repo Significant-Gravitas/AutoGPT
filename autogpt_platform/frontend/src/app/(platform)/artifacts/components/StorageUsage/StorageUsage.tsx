@@ -4,7 +4,6 @@ import { useGetWorkspaceStorageUsage } from "@/app/api/__generated__/endpoints/w
 import { Progress } from "@/components/atoms/Progress/Progress";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { formatFileSize } from "../ArtifactsList/helpers";
 
 export function StorageUsage() {
@@ -20,7 +19,7 @@ export function StorageUsage() {
         className="flex items-center gap-3"
         data-testid="storage-usage-loading"
       >
-        <Skeleton className="h-1.5 w-32 rounded-full" />
+        <Skeleton className="h-1.5 w-32 rounded-pill" />
         <Skeleton className="h-3 w-28" />
       </div>
     );
@@ -48,12 +47,9 @@ export function StorageUsage() {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={usedLabel}
-        className={cn(
-          // oxlint-disable-next-line design-system/no-restyle -- a slim grey meter; Progress has no size or tone variants
-          "h-1.5 w-32 bg-surface-hover",
-          // oxlint-disable-next-line design-system/no-restyle -- the meter turns red near the quota
-          percent > 95 ? "[&>div]:bg-error" : "[&>div]:bg-foreground-subtle",
-        )}
+        track="subtle"
+        tone={percent > 95 ? "error" : "muted"}
+        className="h-1.5 w-32"
       />
       <Text variant="small" as="span" tone="secondary">
         <span className="font-medium text-foreground-body">

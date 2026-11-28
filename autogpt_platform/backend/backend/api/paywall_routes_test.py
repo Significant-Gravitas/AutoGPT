@@ -255,6 +255,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/my-unpublished-agents",
     "GET /api/store/skills/submissions",
     "GET /api/store/submissions",
+    "GET /api/store/submissions/live/{graph_id}",
     "GET /api/store/submissions/media/{owner_user_id}/{media_type}/{filename}",
     "GET /api/workspace/files",
     "GET /api/workspace/files/{file_id}/download",
@@ -323,6 +324,12 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
     "POST /api/auth/email/suppression",
+    # The OAuth clients a sign-in must use to connect, which the frontend's
+    # server asks for before anyone has signed in.
+    "GET /api/auth/sign-in-connection",
+    # The frontend's server keeps the connection a sign-in granted. A new
+    # account has no plan yet, and using the connection checks for one.
+    "POST /api/auth/sign-in-connection",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",
@@ -339,6 +346,10 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/integrations/providers/names",
     "GET /api/integrations/providers/system",
     "POST /api/integrations/{provider}/webhooks/{webhook_id}/ingress",
+    # A Claude Code block run's model calls, on the user's own Anthropic key and
+    # authenticated by the run's relay token; the run was admitted when it started.
+    "POST /api/anthropic-relay/v1/messages",
+    "POST /api/anthropic-relay/v1/messages/count_tokens",
     "POST /api/oauth/introspect",
     "POST /api/oauth/revoke",
     "POST /api/oauth/token",
@@ -362,6 +373,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/skills/{slug}",
     "GET /api/store/skills/{slug}/files/{path:path}",
     "GET /health",
+    "GET /health/ready",
 }
 
 # One closed route per router, as the client calls it.

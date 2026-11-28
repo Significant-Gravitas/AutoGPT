@@ -37,6 +37,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
     SchedulerUnavailableError,
 )
+from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,10 @@ SCHEDULER_UNAVAILABLE_DETAIL = (
 
 
 def add_exception_handlers(
-    app: fastapi.FastAPI, *, server_error_detail: bool = True
+    app: fastapi.FastAPI,
+    *,
+    server_error_detail: bool = True,
+    expose_missing_config_detail: bool | None = None,
 ) -> None:
     """
     Register standard exception handlers on the given FastAPI app.
@@ -58,12 +62,25 @@ def add_exception_handlers(
     Mounted sub-apps do NOT inherit exception handlers from the parent app,
     so each app instance must register its own handlers.
 
-    ``server_error_detail=False`` keeps the exception text out of 5xx bodies,
-    for an app third parties call: it can name internal services and queries.
+    ``server_error_detail=False`` keeps the exception text out of 5xx bodies:
+    it can name internal services, queries and file paths. 4xx bodies still say
+    what was wrong. A ``MissingConfigError`` (503) follows
+    ``server_error_detail`` unless ``expose_missing_config_detail`` says
+    otherwise. Its messages are written to be read (a setting a self-hoster
+    hasn't filled in, or "Your expert workspace is still being set up"), so the
+    REST app shows them; the external APIs keep them hidden.
     """
 
-    def _handle_error(status_code: int = 500, log_error: bool = True):
-        return _error_handler(status_code, log_error, server_error_detail)
+    if expose_missing_config_detail is None:
+        expose_missing_config_detail = server_error_detail
+
+    def _handle_error(
+        status_code: int = 500,
+        log_error: bool = True,
+        expose_detail: bool | None = None,
+    ):
+        detail = server_error_detail if expose_detail is None else expose_detail
+        return _error_handler(status_code, log_error, detail)
 
     for exception, handler in {
         # It's the client's problem: HTTP 4XX
@@ -87,7 +104,14 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
-        MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        # A health check's failure, which logs itself when raised.
+        UnhealthyServiceError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE, log_error=False
+        ),
+        MissingConfigError: _handle_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            expose_detail=expose_missing_config_detail,
+        ),
         SchedulerUnavailableError: _handle_scheduler_unavailable,
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),

@@ -196,37 +196,37 @@ export function AnalyticsResultsTable({ results }: Props) {
               <thead className="bg-surface-muted">
                 <tr>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Agent ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Version
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       User ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Execution ID
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Status
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Score
                     </Text>
                   </th>
                   <th className="px-4 py-3 text-left">
-                    <Text variant="body-medium" tone="secondary">
+                    <Text variant="body" weight="medium" tone="secondary">
                       Actions
                     </Text>
                   </th>
@@ -277,12 +277,14 @@ export function AnalyticsResultsTable({ results }: Props) {
                             <div className="grid grid-cols-2 gap-4 border-b border-border-base pb-3">
                               <div>
                                 <Text
-                                  variant="small-medium-tight"
+                                  variant="small"
+                                  weight="medium"
+                                  leading="4"
                                   tone="secondary"
                                 >
                                   Started At:
                                 </Text>
-                                <Text variant="body-tight" tone="body">
+                                <Text variant="body" leading="5" tone="body">
                                   {result.started_at
                                     ? new Date(
                                         result.started_at,
@@ -292,12 +294,14 @@ export function AnalyticsResultsTable({ results }: Props) {
                               </div>
                               <div>
                                 <Text
-                                  variant="small-medium-tight"
+                                  variant="small"
+                                  weight="medium"
+                                  leading="4"
                                   tone="secondary"
                                 >
                                   Ended At:
                                 </Text>
-                                <Text variant="body-tight" tone="body">
+                                <Text variant="body" leading="5" tone="body">
                                   {result.ended_at
                                     ? new Date(result.ended_at).toLocaleString()
                                     : "—"}
@@ -308,7 +312,8 @@ export function AnalyticsResultsTable({ results }: Props) {
                             {result.summary_text && (
                               <div>
                                 <Text
-                                  variant="body-medium"
+                                  variant="body"
+                                  weight="medium"
                                   tone="body"
                                   className="mb-1"
                                 >
@@ -323,7 +328,8 @@ export function AnalyticsResultsTable({ results }: Props) {
                             {result.error_message && (
                               <div>
                                 <Text
-                                  variant="body-medium"
+                                  variant="body"
+                                  weight="medium"
                                   tone="danger"
                                   className="mb-1"
                                 >

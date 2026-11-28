@@ -24,6 +24,14 @@
  * history of whoever used this browser on agpt.co. Until the session is known
  * that choice waits: the id stays this page's, unsaved, and settles (telling
  * subscribeToAnonymousIDSettled) once the auth store reports who is signed in.
+ *
+ * When PostHog's saved state shows an account identified in this browser, an
+ * earlier page merged all of those ids into it. Another visitor gets a new id
+ * instead, and this page's landing as their first, or PostHog refuses the
+ * merge at their signup and their history stays with the older account. If the
+ * session is not known yet, the stored id settles as usual and the auth store
+ * rotates it (isAnonymousIDSpentFor); events captured before that still go to
+ * the older account.
  */
 
 import { readAccountCreatedFlag } from "@/services/analytics/account-created-cookie";
@@ -73,13 +81,19 @@ let accountCreatedHere = false;
 // persistent.
 let ownDeviceID: string | null | undefined;
 let websiteID: string | null | undefined;
+// The account PostHog's saved state shows identified, read once with them.
+let savedAccount: string | null | undefined;
+// The account the settled id was merged into on an earlier page.
+let mergedIntoAccount: string | null = null;
+let sessionUserID: string | null = null;
 let pageLanding: FirstLanding | null = null;
 const settledListeners = new Set<() => void>();
 
 /** Who is signed in, once the session is known; kept by the auth store. */
-export function setAnalyticsIdentitySignedIn(signedIn: boolean): void {
-  session = signedIn ? "signed-in" : "signed-out";
-  if (signedIn && readAccountCreatedFlag()) accountCreatedHere = true;
+export function setAnalyticsIdentitySignedIn(userID: string | null): void {
+  session = userID ? "signed-in" : "signed-out";
+  sessionUserID = userID;
+  if (userID && readAccountCreatedFlag()) accountCreatedHere = true;
   if (settled || typeof window === "undefined") return;
   if (!hasConsentFor("analytics")) return;
   syncStoredIdentity();
@@ -93,6 +107,14 @@ export function setAnalyticsIdentitySignedIn(signedIn: boolean): void {
 export function isAnonymousIDSettled(): boolean {
   getAnonymousID();
   return settled;
+}
+
+/**
+ * Whether an earlier page merged the settled id into an account other than
+ * `userID` (null: nobody signed in), so it must be rotated.
+ */
+export function isAnonymousIDSpentFor(userID: string | null): boolean {
+  return settled && mergedIntoAccount !== null && mergedIntoAccount !== userID;
 }
 
 /** Calls `listener` when a consented id settles after the session is known. */
@@ -118,14 +140,23 @@ export function getAnonymousID(): string | null {
 
 // Null while the choice waits for the session.
 function resolveConsentedID(): string | null {
+  if (savedAccount === undefined) savedAccount = readSavedPostHogAccount();
+  if (savedAccount && session !== "unknown" && savedAccount !== sessionUserID) {
+    replaceFirstLanding();
+    return saveID(memoryID ?? newID());
+  }
   const stored = readStorage(ANONYMOUS_ID_KEY);
-  if (stored) return stored;
   if (ownDeviceID === undefined) ownDeviceID = readOwnPostHogDeviceID();
+  if (stored || ownDeviceID) mergedIntoAccount = savedAccount;
+  if (stored) return stored;
   const id = ownDeviceID ?? chooseWebsiteID();
   if (id === undefined) return null;
-  const chosen = id ?? memoryID ?? newID();
-  writeStorage(ANONYMOUS_ID_KEY, chosen);
-  return chosen;
+  return saveID(id ?? memoryID ?? newID());
+}
+
+function saveID(id: string): string {
+  writeStorage(ANONYMOUS_ID_KEY, id);
+  return id;
 }
 
 // The website's id, null when there is none or it may not be taken, and
@@ -190,13 +221,23 @@ function persistFirstLanding(): void {
   writeStorage(FIRST_LANDING_KEY, JSON.stringify(pageLanding));
 }
 
+// The stored landing is an earlier visitor's, and persistFirstLanding never
+// overwrites one, so this page's landing takes its place.
+function replaceFirstLanding(): void {
+  removeStorage(FIRST_LANDING_KEY);
+  persistFirstLanding();
+}
+
 function forgetStoredIdentity(): void {
-  try {
-    window.localStorage.removeItem(ANONYMOUS_ID_KEY);
-    window.localStorage.removeItem(FIRST_LANDING_KEY);
-  } catch {
-    // Storage blocked: nothing persisted to clear.
-  }
+  removeStorage(ANONYMOUS_ID_KEY);
+  removeStorage(FIRST_LANDING_KEY);
+}
+
+interface ResetArgs {
+  nextID?: string;
+  // The new id is for the visitor who loaded this page (a spent id rotated
+  // once the session is known), so this page's landing becomes its first.
+  keepLanding?: boolean;
 }
 
 /**
@@ -204,7 +245,10 @@ function forgetStoredIdentity(): void {
  * new identity is persisted immediately so old PostHog storage cannot restore
  * the last visitor.
  */
-export function resetAnonymousID(nextID?: string): void {
+export function resetAnonymousID({
+  nextID,
+  keepLanding = false,
+}: ResetArgs = {}): void {
   if (typeof window === "undefined") {
     memoryID = null;
     return;
@@ -213,18 +257,24 @@ export function resetAnonymousID(nextID?: string): void {
   settled = true;
   ownDeviceID = null;
   websiteID = null;
-  pageLanding = null;
+  mergedIntoAccount = null;
+  if (!keepLanding) pageLanding = null;
   forgetStoredIdentity();
-  if (hasConsentFor("analytics")) writeStorage(ANONYMOUS_ID_KEY, memoryID);
+  if (!hasConsentFor("analytics")) return;
+  writeStorage(ANONYMOUS_ID_KEY, memoryID);
+  persistFirstLanding();
 }
 
 export function resetAnonymousIDForTests(): void {
   memoryID = null;
   settled = false;
   session = "unknown";
+  sessionUserID = null;
   accountCreatedHere = false;
   ownDeviceID = undefined;
   websiteID = undefined;
+  savedAccount = undefined;
+  mergedIntoAccount = null;
   settledListeners.clear();
   pageLanding = null;
 }
@@ -252,6 +302,15 @@ function readSharedPostHogDeviceID(): string | null {
   return name ? parseDeviceID(readCookie(name)) : null;
 }
 
+// localStorage is this app's own. The cookie holds the same state and may
+// outlive it, so it counts only when localStorage has none: a stale cookie
+// must not mark a fresh id as merged.
+function readSavedPostHogAccount(): string | null {
+  const name = getPostHogPersistenceName();
+  if (!name) return null;
+  return parseIdentifiedAccount(readStorage(name) ?? readCookie(name));
+}
+
 function getPostHogPersistenceName(): string | null {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   return key ? `ph_${key}_posthog` : null;
@@ -262,6 +321,20 @@ function parseDeviceID(raw: string | null): string | null {
   try {
     const parsed = JSON.parse(raw) as { $device_id?: unknown };
     return typeof parsed.$device_id === "string" ? parsed.$device_id : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseIdentifiedAccount(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      distinct_id?: unknown;
+      $user_state?: unknown;
+    };
+    if (parsed.$user_state !== "identified") return null;
+    return typeof parsed.distinct_id === "string" ? parsed.distinct_id : null;
   } catch {
     return null;
   }
@@ -325,6 +398,14 @@ function writeStorage(key: string, value: string): void {
   } catch {
     // Private mode or blocked storage: the in-memory id still holds for
     // this page load.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage blocked: nothing persisted to clear.
   }
 }
 

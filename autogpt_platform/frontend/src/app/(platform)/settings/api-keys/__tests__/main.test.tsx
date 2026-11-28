@@ -91,6 +91,22 @@ describe("SettingsApiKeysPage - list rendering", () => {
     ).toBeDefined();
   });
 
+  test("says how long ago a key was last used", async () => {
+    server.use(
+      getGetV1ListUserApiKeysMockHandler([
+        makeKey({
+          id: "k1",
+          name: "Prod Key",
+          last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        }),
+      ]),
+    );
+
+    render(<SettingsApiKeysPage />);
+
+    expect(await screen.findByText("Used about 2 hours ago")).toBeDefined();
+  });
+
   test("filters REVOKED keys out of the rendered list", async () => {
     server.use(
       getGetV1ListUserApiKeysMockHandler([

@@ -41,7 +41,7 @@ export function SelectionBar({
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">
-        <Text variant="body-medium" as="span" tone="primary">
+        <Text variant="body" weight="medium" as="span" tone="primary">
           {count} selected
         </Text>
         {count < totalCount ? (
@@ -59,6 +59,7 @@ export function SelectionBar({
         <Button
           variant="outline"
           size="xs"
+          shape="sharp"
           onClick={() => setIsMoveOpen(true)}
           data-testid="artifacts-selection-move"
         >
@@ -68,6 +69,7 @@ export function SelectionBar({
         <Button
           variant="outline"
           size="xs"
+          shape="sharp"
           disabled={isDeleting}
           onClick={handleDelete}
           tone="danger"
@@ -81,7 +83,7 @@ export function SelectionBar({
         <button
           type="button"
           aria-label="Clear selection"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-pill text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong"
           onClick={onClear}
           data-testid="artifacts-selection-clear"
         >

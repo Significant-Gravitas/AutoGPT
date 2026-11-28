@@ -28,6 +28,7 @@ import { useState } from "react";
 import { MoveToFolderDialog } from "../../MoveToFolderDialog/MoveToFolderDialog";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { getBuilderHref } from "@/app/(platform)/build/helpers/builderHref";
 
 interface AgentCardMenuProps {
   agent: LibraryAgent;
@@ -167,7 +168,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
             <>
               <DropdownMenuItem asChild>
                 <Link
-                  href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                  href={getBuilderHref(agent.graph_id)}
                   target="_blank"
                   className="flex items-center gap-2"
                   data-testid="library-agent-card-open-in-builder-link"
@@ -217,8 +218,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant
-            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
+            tone="error-strong"
           >
             Delete workflow
           </DropdownMenuItem>

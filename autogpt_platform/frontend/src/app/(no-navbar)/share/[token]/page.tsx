@@ -1,8 +1,6 @@
 "use client";
 
 import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
-import { okData } from "@/app/api/helpers";
-import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,
   CardContent,
@@ -16,6 +14,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useParams } from "next/navigation";
 import { ShareActions } from "../components/ShareHeader/ShareActions";
 import { ShareHeader } from "../components/ShareHeader/ShareHeader";
+import { useSharedExecutionPage } from "./useSharedExecutionPage";
 
 // Wraps the page in the shared header + a scrollable container.
 // Header is the same component used by the chat share viewer so the
@@ -42,15 +41,10 @@ export default function SharePage() {
   const params = useParams();
   const token = params.token as string;
 
-  const {
-    data: executionData,
-    isLoading: loading,
-    error,
-  } = useGetV1GetSharedExecution(token, { query: { select: okData } });
+  const { executionData, isPending, isError, isDeadLink } =
+    useSharedExecutionPage(token);
 
-  const is404 = !loading && !executionData;
-
-  if (loading) {
+  if (isPending) {
     return (
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
@@ -65,7 +59,7 @@ export default function SharePage() {
     );
   }
 
-  if (error || is404 || !executionData) {
+  if (isError || !executionData) {
     return (
       <ExecutionShareChrome>
         <div className="flex items-center justify-center py-16">
@@ -82,22 +76,24 @@ export default function SharePage() {
                   </div>
                   <div className="space-y-2">
                     <h3 className="text-lead font-semibold">
-                      {is404 ? "Share Link Not Found" : "Unable to Load"}
+                      {isDeadLink ? "Share Link Not Found" : "Unable to Load"}
                     </h3>
                     <p className="text-body text-foreground-tertiary">
-                      {is404
+                      {isDeadLink
                         ? "This shared link is invalid or has been disabled by the owner. Please check with the person who shared this link."
                         : "There was an error loading this shared execution. Please try refreshing the page."}
                     </p>
                   </div>
-                  <div className="pt-2">
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-body text-action hover:underline"
-                    >
-                      Try again
-                    </button>
-                  </div>
+                  {!isDeadLink && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="text-body text-action hover:underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

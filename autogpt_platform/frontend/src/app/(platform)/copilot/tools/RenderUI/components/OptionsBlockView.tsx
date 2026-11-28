@@ -60,12 +60,18 @@ export function OptionsBlockView({ block, canAct }: Props) {
               />
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <Text variant="body-medium" as="span" className="break-words">
+              <Text
+                variant="body"
+                weight="medium"
+                as="span"
+                className="break-words"
+              >
                 {item.title}
               </Text>
               {item.description ? (
                 <Text
-                  variant="body-tight"
+                  variant="body"
+                  leading="5"
                   tone="secondary"
                   as="span"
                   className="break-words"

@@ -2,6 +2,7 @@
 
 import ast
 import math
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +17,7 @@ from backend.blocks.code_executor import (
 )
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
-from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
@@ -24,14 +25,17 @@ from backend.data.block_cost_config import (
     TOKEN_COST,
     TokenRate,
 )
+from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
+from backend.executor.billing import _block_has_paid_cost_entry
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     anthropic_credentials,
     e2b_credentials,
     exa_credentials,
     fal_credentials,
+    jina_credentials,
     openai_credentials,
 )
 from backend.sdk.cost_integration import register_provider_costs_for_block
@@ -348,7 +352,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
     cost, _ = block_usage_cost(
         block,
         {
-            "model": LLMModel.GPT5,
+            "model": LLMModel.GPT6_1_SOL,
             "credentials": {
                 "id": openai_credentials.id,
                 "provider": openai_credentials.provider,
@@ -356,7 +360,7 @@ def test_llm_block_pre_flight_falls_back_to_model_cost():
             },
         },
     )
-    assert cost == MODEL_COST[LLMModel.GPT5]
+    assert cost == MODEL_COST[LLMModel.GPT6_1_SOL]
 
 
 @pytest.mark.parametrize("schema_default_input", [{}, {"model": None}])
@@ -377,6 +381,96 @@ def test_llm_block_price_includes_schema_defaults(schema_default_input: dict):
     assert block_usage_cost(block, implicit, stats=stats) == block_usage_cost(
         block, explicit, stats=stats
     )
+
+
+@pytest.mark.parametrize(
+    ("day", "runs"),
+    [
+        # Still served the day before its shutdown date: its own price.
+        (date(2026, 12, 10), LLMModel.GPT5_PRO),
+        # From that day on it runs, and is priced as, its fallback.
+        (date(2026, 12, 11), LLMModel.GPT6_1_SOL),
+    ],
+    ids=["before-shutdown", "on-the-day"],
+)
+def test_a_switched_off_model_is_charged_as_the_model_it_runs(
+    day: date, runs: LLMModel, monkeypatch: pytest.MonkeyPatch
+):
+    """A block given a model the catalog has switched off runs the model's
+    catalog fallback from its shutdown date (`Block.with_retired_models_replaced`),
+    and is charged for the model it runs: gpt-5-pro, then gpt-6.1-sol."""
+    monkeypatch.setattr(llm_models, "_today", lambda: day)
+    block = AITextGeneratorBlock()
+    credentials = {
+        "id": openai_credentials.id,
+        "provider": openai_credentials.provider,
+        "type": openai_credentials.type,
+    }
+    stored = {"model": LLMModel.GPT5_PRO.value, "credentials": credentials}
+    priced_as = {"model": runs.value, "credentials": credentials}
+    stats = NodeExecutionStats(input_token_count=1_000_000, output_token_count=0)
+
+    cost, matched = block_usage_cost(block, stored, stats=stats)
+
+    assert matched["model"] == runs
+    assert cost == math.ceil(TOKEN_COST[runs].input)
+    assert block_usage_cost(block, stored) == block_usage_cost(block, priced_as)
+    assert executor_utils._with_schema_defaults(block, stored, None)["model"] == runs
+
+
+def _credentials(credentials) -> dict:
+    return {
+        "id": credentials.id,
+        "provider": credentials.provider,
+        "type": credentials.type,
+    }
+
+
+@pytest.mark.parametrize(
+    ("block", "as_it_runs", "as_sent"),
+    [
+        pytest.param(
+            AITextGeneratorBlock(),
+            {
+                "model": LLMModel.CLAUDE_4_5_OPUS.value,
+                "credentials": _credentials(anthropic_credentials),
+            },
+            {"model": "anthropic/claude-opus-4-5"},
+            id="provider-prefixed-model",
+        ),
+        pytest.param(
+            ExtractWebsiteContentBlock(),
+            {
+                "url": "https://example.com",
+                "raw_content": False,
+                "credentials": _credentials(jina_credentials),
+            },
+            {"raw_content": "false"},
+            id="flag-as-string",
+        ),
+    ],
+)
+def test_price_follows_the_value_the_run_coerces(block, as_it_runs, as_sent):
+    """Input not yet coerced to the block's types, as an Orchestrator tool
+    call's arguments reach the charge, is priced as the value the block runs."""
+    sent = {**as_it_runs, **as_sent}
+    stats = NodeExecutionStats(input_token_count=200_000, output_token_count=50_000)
+
+    assert block_usage_cost(block, sent)[0] > 0
+    assert block_usage_cost(block, sent) == block_usage_cost(block, as_it_runs)
+    assert block_usage_cost(block, sent, stats=stats) == block_usage_cost(
+        block, as_it_runs, stats=stats
+    )
+    assert _block_has_paid_cost_entry(block, sent)
+    assert sent == {**as_it_runs, **as_sent}
+
+
+def test_pricing_leaves_a_value_the_run_refuses_unpriced():
+    """A value no coercion can turn into the block's type fails the run, not
+    the pricing."""
+    refused = {"model": "no-such-model", "prompt": "hi"}
+
+    assert block_usage_cost(AITextGeneratorBlock(), refused) == (0, {})
 
 
 def test_ayrshare_price_tier_follows_the_is_video_default():
@@ -417,6 +511,136 @@ def test_every_cost_filter_match_uses_the_run_input():
         for name, called in callers.items()
         if "_with_schema_defaults" not in called
     ] == []
+
+
+def test_every_executor_reader_of_an_input_model_reads_the_model_that_runs():
+    """A function in the executor that reads an input's `model` reads the model
+    the block runs: it goes through `_with_schema_defaults` or
+    `with_retired_models_replaced`. The cost log, the dry-run usage record and
+    the stop estimate read it today, as must any reader added after them."""
+    executor_root = Path(executor_utils.__file__).parent
+    readers: dict[str, set[str | None]] = {}
+    for path in executor_root.rglob("*.py"):
+        if path.name.endswith("_test.py"):
+            continue
+        for func in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            calls = [node for node in ast.walk(func) if isinstance(node, ast.Call)]
+            if any(_reads_model(call) for call in calls):
+                readers[f"{path.relative_to(executor_root)}::{func.name}"] = {
+                    _called_name(call) for call in calls
+                }
+
+    assert {
+        "cost_tracking.py::log_system_credential_cost",
+        "manager.py::execute_node",
+        "billing.py::_with_stop_estimate",
+    } <= readers.keys()
+    assert [
+        name
+        for name, called in readers.items()
+        if not called & {"_with_schema_defaults", "with_retired_models_replaced"}
+    ] == []
+
+
+# The lookups made before any run has started, which may price or name the
+# model by today's date: the model a run starting now would run.
+BEFORE_A_RUN = {
+    "blocks/_base.py::_execute": "the swap itself: the run starts now",
+    "executor/billing.py::resolve_block_cost": "the pre-flight charge",
+    "executor/billing.py::_block_has_paid_cost_entry": "the pre-flight balance check",
+    "executor/billing.py::usage_hold": "the hold taken before a run",
+    "executor/billing.py::redispatch_reconcile_baseline": (
+        "a run parked for review, which ran no model"
+    ),
+    "executor/utils.py::charge_for_direct_block_execution": (
+        "charged just before the block starts"
+    ),
+    "copilot/tools/helpers.py::_pre_run_charge": "AutoPilot's debit before a run",
+    "copilot/gate/subject.py::block_subject": "an approval card's price",
+    "copilot/gate/subject.py::graph_cost_credits": "an approval card's price",
+}
+
+
+def test_a_lookup_after_a_run_reads_the_model_the_run_recorded():
+    """Once a run has started, its price and its model's name come from the
+    model it recorded (`NodeExecutionStats.resolved_model`), never from
+    today's date: a node still running at midnight on its model's shutdown
+    date is billed for the model it ran. So every call of
+    `block_usage_cost` (`stats=` or `pre_flight_resolved_model=`),
+    `_with_schema_defaults` and `with_retired_models_replaced` (their
+    `resolved_model`) passes that record, never a literal None or an empty
+    `NodeExecutionStats()`, except the calls in `BEFORE_A_RUN`."""
+    backend_root = Path(executor_utils.__file__).parents[1]
+    callers: set[str] = set()
+    unrecorded: list[str] = []
+    for path in backend_root.rglob("*.py"):
+        source = path.read_text()
+        if path.name.endswith("_test.py") or not any(
+            lookup in source for lookup in _MODEL_LOOKUPS
+        ):
+            continue
+        for func in ast.walk(ast.parse(source)):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            where = f"{path.relative_to(backend_root)}::{func.name}"
+            for call in (node for node in ast.walk(func) if isinstance(node, ast.Call)):
+                is_lookup, record = _record_passed(call)
+                if not is_lookup:
+                    continue
+                callers.add(where)
+                if where not in BEFORE_A_RUN and not _names_a_record(record):
+                    unrecorded.append(f"{where}:{call.lineno}")
+
+    assert BEFORE_A_RUN.keys() <= callers
+    assert unrecorded == []
+
+
+# Each lookup that takes a run's record, with the position of its
+# `resolved_model` argument (`block_usage_cost` takes it by keyword).
+_MODEL_LOOKUPS = {
+    "block_usage_cost": None,
+    "_with_schema_defaults": 2,
+    "with_retired_models_replaced": 1,
+}
+
+
+def _record_passed(call: ast.Call) -> tuple[bool, ast.expr | None]:
+    """Whether *call* is one of the model lookups, and the argument by which
+    it passes a run's record (None when it passes none)."""
+    name = _called_name(call) or ""
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+    if name == "block_usage_cost":
+        return True, keywords.get("stats") or keywords.get("pre_flight_resolved_model")
+    position = _MODEL_LOOKUPS.get(name)
+    if position is None:
+        return False, None
+    if len(call.args) > position:
+        return True, call.args[position]
+    return True, keywords.get("resolved_model")
+
+
+def _names_a_record(argument: ast.expr | None) -> bool:
+    if argument is None:
+        return False
+    if isinstance(argument, ast.Constant) and argument.value is None:
+        return False
+    return not (
+        isinstance(argument, ast.Call)
+        and _called_name(argument) == "NodeExecutionStats"
+        and all(keyword.arg != "resolved_model" for keyword in argument.keywords)
+    )
+
+
+def _reads_model(call: ast.Call) -> bool:
+    return (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "get"
+        and bool(call.args)
+        and isinstance(call.args[0], ast.Constant)
+        and call.args[0].value == "model"
+    )
 
 
 def _called_name(call: ast.Call) -> str | None:

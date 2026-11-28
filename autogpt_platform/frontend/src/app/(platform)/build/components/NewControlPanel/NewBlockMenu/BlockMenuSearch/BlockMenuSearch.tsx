@@ -10,7 +10,9 @@ export const BlockMenuSearch = () => {
       data-id="blocks-control-search-results"
     >
       <BlockMenuFilters />
-      <Text variant="body-medium">Search results</Text>
+      <Text variant="body" weight="medium">
+        Search results
+      </Text>
       <BlockMenuSearchContent />
     </div>
   );

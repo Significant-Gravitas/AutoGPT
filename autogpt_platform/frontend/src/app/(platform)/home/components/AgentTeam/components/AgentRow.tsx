@@ -30,7 +30,13 @@ export function AgentRow({ agent }: Props) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium-tight" tone="primary" className="truncate">
+          <Text
+            variant="body"
+            weight="medium"
+            leading="5"
+            tone="primary"
+            className="truncate"
+          >
             {agent.expert.name}
           </Text>
           <StatusBadge status={agent.status} />
@@ -46,7 +52,13 @@ export function AgentRow({ agent }: Props) {
                 : "Open Chat to give instructions."}
         </Text>
         {secondLine ? (
-          <Text variant="small-tight" tone="muted" tabular className="truncate">
+          <Text
+            variant="small"
+            leading="4"
+            tone="muted"
+            tabular
+            className="truncate"
+          >
             {secondLine}
           </Text>
         ) : null}
@@ -58,6 +70,7 @@ export function AgentRow({ agent }: Props) {
           href={`/copilot?expertId=${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={BubbleChatIcon}
           aria-label={`Chat with ${agent.expert.name}`}
         />
@@ -66,6 +79,7 @@ export function AgentRow({ agent }: Props) {
           href={`/team/${agent.expert.id}`}
           variant="icon"
           size="icon-sm"
+          shape="soft"
           leadingIcon={Settings01Icon}
           aria-label={`Manage ${agent.expert.name}`}
           onClick={() =>
