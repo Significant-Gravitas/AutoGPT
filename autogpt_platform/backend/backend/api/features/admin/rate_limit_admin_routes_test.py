@@ -11,6 +11,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
+from backend.util.exceptions import DatabaseError
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 
@@ -227,6 +228,11 @@ def test_reset_user_usage_redis_failure(
 ) -> None:
     """Test that Redis failure on reset returns 500."""
     mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
         f"{_MOCK_MODULE}.reset_user_usage",
         new_callable=AsyncMock,
         side_effect=Exception("Redis connection refused"),
@@ -240,38 +246,88 @@ def test_reset_user_usage_redis_failure(
     assert response.status_code == 500
 
 
-def test_get_rate_limit_email_lookup_failure(
+def test_reset_user_usage_user_not_found(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test that failing to resolve a user email degrades gracefully."""
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000, SubscriptionTier.BASIC),
-    )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_usage_status",
-        new_callable=AsyncMock,
-        return_value=_mock_usage_status(),
-    )
+    """Test that resetting usage for a non-existent user returns 404."""
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
-        side_effect=Exception("DB connection lost"),
+        return_value=None,
     )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_tier_multipliers",
+    mock_reset = mocker.patch(
+        f"{_MOCK_MODULE}.reset_user_usage",
         new_callable=AsyncMock,
-        return_value=dict(_MOCK_TIER_MULTIPLIERS),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/reset",
+        json={"user_id": target_user_id, "reset_weekly": True},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == f"User {target_user_id} not found"
+    mock_reset.assert_not_awaited()
+
+
+def test_get_rate_limit_user_not_found(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that looking up rate limit for a non-existent user_id returns 404."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=None,
     )
 
     response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["user_id"] == target_user_id
-    assert data["user_email"] is None
+    assert response.status_code == 404
+    assert response.json()["detail"] == f"User {target_user_id} not found"
+
+
+def test_get_rate_limit_email_lookup_failure(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that a database error during user lookup returns 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=DatabaseError("DB connection lost"),
+    )
+
+    response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to look up user"
+
+
+def test_reset_user_usage_email_lookup_failure(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that a database error during user lookup on reset returns 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=DatabaseError("DB connection lost"),
+    )
+    mock_reset = mocker.patch(
+        f"{_MOCK_MODULE}.reset_user_usage",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/admin/rate_limit/reset",
+        json={"user_id": target_user_id},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to look up user"
+    mock_reset.assert_not_awaited()
 
 
 def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
