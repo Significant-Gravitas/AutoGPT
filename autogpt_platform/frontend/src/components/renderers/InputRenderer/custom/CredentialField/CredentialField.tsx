@@ -8,7 +8,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { Text } from "@/components/atoms/Text/Text";
 import { FieldProps, getUiOptions } from "@rjsf/utils";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
 import { useCredentialAvailability } from "./useCredentialAvailability";
@@ -77,6 +77,13 @@ export const CredentialsField = (props: FieldProps) => {
   );
 
   const credentialSchema = schema as BlockIOCredentialsSubSchema;
+  // Loading a step is not an edit. Changing its model or transport is: the
+  // picker can resolve the credential for the new route as part of that edit.
+  const discriminator = getDiscriminatorValue(
+    hardcodedValues,
+    credentialSchema,
+  );
+  const [initialDiscriminator] = useState(discriminator);
   const selectionRequired =
     required ||
     credentialRequiredForSelection(hardcodedValues, credentialSchema);
@@ -171,7 +178,9 @@ export const CredentialsField = (props: FieldProps) => {
       )}
       <CredentialsInput
         schema={schema as BlockIOCredentialsSubSchema}
-        requireExplicitSelection={Boolean(nodeId)}
+        requireExplicitSelection={
+          Boolean(nodeId) && discriminator === initialDiscriminator
+        }
         selectedCredentials={selectedCredentials}
         onSelectCredentials={handleSelectCredentials}
         siblingInputs={hardcodedValues}

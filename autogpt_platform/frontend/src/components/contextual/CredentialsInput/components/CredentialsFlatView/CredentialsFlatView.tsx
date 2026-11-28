@@ -135,6 +135,14 @@ export function CredentialsFlatView({
   const showAddAction = !readOnly && !isManagedOnlyProvider;
   const showAyrshareConnect = isManagedOnlyProvider && !readOnly;
 
+  const offeredCredential =
+    requireExplicitSelection &&
+    !readOnly &&
+    !selectedCredential &&
+    credentials.length === 1
+      ? credentials[0]
+      : undefined;
+
   return (
     <>
       {showTitle && (
@@ -163,10 +171,19 @@ export function CredentialsFlatView({
 
       {hasCredentials ? (
         <>
-          {(credentials.length > 1 ||
-            isOptional ||
-            (requireExplicitSelection && !selectedCredential)) &&
-          !readOnly ? (
+          {offeredCredential ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              onClick={() => onSelectCredential(offeredCredential.id)}
+            >
+              Use{" "}
+              <span>
+                {getCredentialDisplayName(offeredCredential, displayName)}
+              </span>
+            </Button>
+          ) : (credentials.length > 1 || isOptional) && !readOnly ? (
             <CredentialsSelect
               credentials={credentials}
               provider={provider}

@@ -150,7 +150,16 @@ export function CredentialsInput({
         <Alert variant="warning">
           <AlertDescription>
             <Text variant="body">
-              The saved credential is unavailable for this step.
+              {selectedCredential.provider === provider &&
+              !hookData.allProviderCredentials.some(
+                (key) => key.id === selectedCredential.id,
+              )
+                ? getRemovedCredentialMessage(
+                    selectedCredential.title || displayName,
+                    undefined,
+                    displayName,
+                  )
+                : "The saved credential is unavailable for this step."}
             </Text>
             <Button
               type="button"

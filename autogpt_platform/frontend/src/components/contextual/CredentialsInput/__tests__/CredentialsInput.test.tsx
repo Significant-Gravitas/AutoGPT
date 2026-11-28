@@ -169,10 +169,12 @@ describe("credential choices on a workflow step", () => {
       rerender(picker(saved));
 
       expect(edit).not.toHaveBeenCalled();
-      const select = screen.getByRole("combobox", {
-        name: "Select Google credential",
-      });
-      fireEvent.change(select, { target: { value: key.id } });
+      if (saved) {
+        expect(screen.getByText(/Old key was removed/)).toBeDefined();
+      }
+      fireEvent.click(
+        screen.getByRole("button", { name: "Use My Google key" }),
+      );
       expect(edit.mock.calls).toEqual([[key]]);
 
       rerender(picker(key));
