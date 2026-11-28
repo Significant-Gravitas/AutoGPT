@@ -20,7 +20,9 @@ from backend.integrations.providers import ProviderName
 from backend.util import json as json_util
 from backend.util.json import (
     SafeJson,
+    _sanitize_encoded,
     describe_validation_error,
+    sanitize_string,
     validate_with_jsonschema,
 )
 
@@ -36,6 +38,58 @@ class SampleModelWithNonSerializable(BaseModel):
     name: str
     func: Any = None  # Could contain non-serializable data
     data: Optional[dict] = None
+
+
+class StringSubclass(str):
+    pass
+
+
+def test_sanitize_string_handles_clean_control_and_subclass_values():
+    clean = "plain text"
+
+    assert sanitize_string(clean) is clean
+    assert sanitize_string("null\x00bell\x07tab\t") == "nullbelltab\t"
+
+    sanitized_subclass = sanitize_string(StringSubclass("clean subclass"))
+    assert sanitized_subclass == "clean subclass"
+    assert type(sanitized_subclass) is str
+
+
+def test_sanitize_encoded_recurses_through_keys_lists_and_subclasses():
+    nested_list = [
+        "clean value",
+        StringSubclass("clean subclass"),
+        {"dirty\x00key": StringSubclass("dirty\x07value")},
+    ]
+    data = {"top\x00key": nested_list, "count": 1}
+
+    result = _sanitize_encoded(data)
+
+    assert result == {
+        "topkey": [
+            "clean value",
+            "clean subclass",
+            {"dirtykey": "dirtyvalue"},
+        ],
+        "count": 1,
+    }
+    assert result is not data
+    assert result["topkey"] is not nested_list
+    assert type(result["topkey"][1]) is str
+
+
+@pytest.mark.parametrize("depth", [3, 600])
+@pytest.mark.parametrize(
+    "wrap", [lambda value: {"k": value}, lambda value: [value]], ids=["dict", "list"]
+)
+def test_safe_json_keeps_deeply_nested_data_structured(wrap, depth: int):
+    """600 levels fit the default recursion limit, also on Python 3.11."""
+    data: Any = "leaf\x00"
+    expected: Any = "leaf"
+    for _ in range(depth):
+        data, expected = wrap(data), wrap(expected)
+
+    assert SafeJson(data).data == expected
 
 
 class TestSafeJson:
