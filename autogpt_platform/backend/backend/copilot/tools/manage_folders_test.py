@@ -6,6 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.library import model as library_model
+from backend.api.features.library.exceptions import (
+    FolderAlreadyExistsError,
+    FolderValidationError,
+)
 from backend.copilot.tools.manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -549,3 +553,49 @@ async def test_move_agents_keeps_an_external_call_in_its_organization(
         user_id=_TEST_USER_ID,
         organization_id=organization_id,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool, call, kwargs, error, shown",
+    [
+        (
+            CreateFolderTool(),
+            "create_folder",
+            {"name": "One too many"},
+            FolderValidationError("You can have at most 1,000 folders."),
+            "You can have at most 1,000 folders.",
+        ),
+        (
+            UpdateFolderTool(),
+            "update_folder",
+            {"folder_id": "folder-1", "name": "Taken"},
+            FolderAlreadyExistsError("A folder with this name already exists"),
+            "A folder with this name already exists",
+        ),
+        (
+            MoveFolderTool(),
+            "move_folder",
+            {"folder_id": "folder-1", "target_parent_id": "folder-2"},
+            FolderValidationError("Folders cannot be nested more than 32 levels"),
+            "Folders cannot be nested more than 32 levels",
+        ),
+        (
+            CreateFolderTool(),
+            "create_folder",
+            {"name": "Reports"},
+            RuntimeError('relation "LibraryFolder" does not exist'),
+            "an internal error",
+        ),
+    ],
+)
+async def test_an_external_caller_is_told_why_a_folder_change_was_refused(
+    session, tool, call, kwargs, error, shown
+):
+    session.external_caller = True
+    with patch("backend.copilot.tools.manage_folders.library_db") as mock_lib:
+        setattr(mock_lib.return_value, call, AsyncMock(side_effect=error))
+        result = await tool._execute(user_id=_TEST_USER_ID, session=session, **kwargs)
+
+    assert isinstance(result, ErrorResponse)
+    assert result.message.endswith(f": {shown}")

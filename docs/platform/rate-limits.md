@@ -110,6 +110,14 @@ Each schedule stores at most 1 MiB of inputs, measured as JSON (for a follow-up 
 - **Counted per:** account for the number of schedules; schedule for its size; account and its organization together for what they store.
 - **Self-hosting:** `MAX_SCHEDULES_PER_USER` (default `200`), `MAX_SCHEDULE_PAYLOAD_BYTES` (default `1048576`), `MAX_SCHEDULE_PAYLOAD_VALUES` (default `10000`) and `MAX_SCHEDULE_STORAGE_BYTES` (default `67108864`).
 
+### Library folders
+
+You can have up to 1,000 folders in your library, nested at most 32 levels deep. Deleted folders don't count. A new folder past either limit is refused, and so is a move that would put any folder deeper than 32 levels. Deleting a folder makes room for another.
+
+- **Counted per:** account.
+- **What you see:** `400` and "You can have at most 1,000 folders. Delete one to make another." or "Folders cannot be nested more than 32 levels deep".
+- Not configurable.
+
 ### Generated workflow images
 
 The Platform generates a picture for each workflow you add to your library, sub-workflows included, and for a marketplace listing when you ask it to. It generates up to 25 a day.
