@@ -488,10 +488,9 @@ async def list_graph_credential_requirements(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
-    requirements = await get_credential_requirements(
-        graph.credentials_input_schema, auth.user_id
+    return await get_credential_requirements(
+        graph.credentials_input_schema, auth.user_id, page
     )
-    return page.slice(requirements)
 
 
 @graphs_router.get(

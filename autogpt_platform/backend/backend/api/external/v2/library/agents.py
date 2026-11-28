@@ -304,10 +304,9 @@ async def list_agent_credential_requirements(
             detail=f"Graph for agent #{agent_id} not found",
         )
 
-    requirements = await get_credential_requirements(
-        graph.credentials_input_schema, auth.user_id
+    return await get_credential_requirements(
+        graph.credentials_input_schema, auth.user_id, page
     )
-    return page.slice(requirements)
 
 
 async def _assert_agent_in_tenant(agent_id: str, auth: TenantContext) -> None:
