@@ -41,13 +41,14 @@ from collections.abc import Callable
 # unlike os.path.splitext which uses platform-native separators.
 from posixpath import splitext
 from typing import IO, Any, Literal
+from xml.parsers import expat
 
 import sentry_sdk
 import yaml
 
 from backend.util.bounded_yaml import load_bounded_yaml
 from backend.util.csv_delimiter import guess_delimiter
-from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size
+from backend.util.zip_member import ZipMemberTooLarge, check_unpacked_size, iter_member
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,15 @@ YAML_EXPANSION_FACTOR = 8
 # The .xlsx caps, per member and per workbook, checked before pandas reads it.
 MAX_XLSX_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_XLSX_TOTAL_BYTES = 200 * 1024 * 1024
+# What one sheet may read to: rows, cells the file lists, cells in one row (Excel's
+# columns), cells in the table read from it, and characters of text.
+MAX_XLSX_SHEET_ROWS = 1_048_576
+MAX_XLSX_SHEET_CELLS_LISTED = 5_000_000
+MAX_XLSX_ROW_CELLS = 16_384
+MAX_XLSX_SHEET_CELLS = 500_000
+MAX_XLSX_SHEET_CHARACTERS = 32 * 1024 * 1024
+# How deep a sheet's XML may nest; a worksheet's elements nest under ten deep.
+MAX_XLSX_SHEET_XML_DEPTH = 64
 
 # ---------------------------------------------------------------------------
 # Extension / MIME → format label mapping
@@ -369,6 +379,7 @@ def _parse_xlsx(content: bytes) -> list[list[Any]]:
     import pandas as pd
 
     check_xlsx_unpacked_size(io.BytesIO(content), source="file_content_parser")
+    check_xlsx_sheet_size(io.BytesIO(content), source="file_content_parser")
     # Explicitly specify openpyxl engine; the default engine varies by pandas
     # version and does not support legacy .xls (which is excluded by our format map).
     df = pd.read_excel(io.BytesIO(content), engine="openpyxl")
@@ -393,20 +404,220 @@ def check_xlsx_unpacked_size(
             max_total_bytes=MAX_XLSX_TOTAL_BYTES,
         )
     except ZipMemberTooLarge as e:
-        _report_xlsx_refusal(e, source)
+        limit_name = (
+            "MAX_XLSX_MEMBER_BYTES" if e.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
+        )
+        _report_xlsx_refusal(
+            "xlsx workbook over unpack limit",
+            limit_name,
+            source,
+            unpacked_bytes=e.counted,
+            limit_bytes=e.limit,
+        )
         raise
 
 
-def _report_xlsx_refusal(error: ZipMemberTooLarge, source: str) -> None:
+def check_xlsx_sheet_size(
+    file: IO[bytes],
+    sheet_name: str | None = None,
+    *,
+    source: Literal["spreadsheet_block", "file_content_parser"],
+) -> None:
+    """Refuse a sheet past the .xlsx sheet caps, reporting each refusal to Sentry.
+
+    The workbook is opened, and the sheet picked, the way pandas does it; a
+    sheet name it does not have is left for pandas to report.
+    """
+    from openpyxl import load_workbook
+
+    if not zipfile.is_zipfile(file):
+        return
+    workbook = load_workbook(file, read_only=True, data_only=True, keep_links=False)
+    try:
+        if sheet_name and sheet_name not in [ws.title for ws in workbook.worksheets]:
+            return
+        sheet = workbook[sheet_name] if sheet_name else workbook.worksheets[0]
+        _walk_sheet_reporting(sheet, source, bound_memory=True)
+    finally:
+        workbook.close()
+
+
+def xlsx_sheet_shape(
+    sheet: Any, *, source: Literal["spreadsheet_block", "file_content_parser"]
+) -> tuple[int, int]:
+    """The number of a read-only sheet's last row with a value, and how many
+    values its widest row has, as pandas trims and pads a sheet.
+
+    Refuses a sheet past the caps on rows and listed cells, which bound how long
+    reading it takes, reporting each refusal to Sentry. Memory is the caller's to
+    bound: this keeps nothing of the sheet.
+    """
+    return _walk_sheet_reporting(sheet, source, bound_memory=False)
+
+
+def _walk_sheet_reporting(
+    sheet: Any, source: str, *, bound_memory: bool
+) -> tuple[int, int]:
+    try:
+        return _walk_sheet(sheet, bound_memory=bound_memory)
+    except XlsxSheetTooLarge as e:
+        _report_xlsx_refusal(
+            "xlsx sheet over size limit",
+            e.limit_name,
+            source,
+            counted=e.counted,
+            limit=e.limit,
+        )
+        raise
+
+
+class XlsxSheetTooLarge(ValueError):
+    """A sheet reads to more than one of the .xlsx sheet caps."""
+
+    def __init__(self, limit_name: str, counted: int, limit: int, what: str):
+        super().__init__(f"The sheet {what}, more than can be read.")
+        self.limit_name, self.counted, self.limit = limit_name, counted, limit
+
+
+def _walk_sheet(sheet: Any, *, bound_memory: bool) -> tuple[int, int]:
+    """The sheet's last row with a value and its widest row, raising
+    ``XlsxSheetTooLarge`` at the first sheet cap passed. Without ``bound_memory``
+    only the rows, row-cells and listed-cells caps apply."""
+    _scan_sheet_xml(sheet)
+    # Read every cell, as pandas does.
+    sheet.reset_dimensions()
+    listed = last_row = width = characters = 0
+    for number, row in enumerate(sheet.iter_rows(values_only=True), start=1):
+        if number > MAX_XLSX_SHEET_ROWS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_ROWS",
+                number,
+                MAX_XLSX_SHEET_ROWS,
+                f"has more than {MAX_XLSX_SHEET_ROWS:,} rows",
+            )
+        listed += len(row)
+        used = len(row)
+        while used and row[used - 1] in (None, ""):
+            used -= 1
+        if used:
+            last_row, width = number, max(width, used)
+            characters += sum(_csv_length(v) for v in row[:used] if v is not None)
+        if listed > MAX_XLSX_SHEET_CELLS_LISTED:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CELLS_LISTED",
+                listed,
+                MAX_XLSX_SHEET_CELLS_LISTED,
+                f"lists more than {MAX_XLSX_SHEET_CELLS_LISTED:,} cells",
+            )
+        if not bound_memory:
+            continue
+        if last_row * width > MAX_XLSX_SHEET_CELLS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CELLS",
+                last_row * width,
+                MAX_XLSX_SHEET_CELLS,
+                f"spans more than {MAX_XLSX_SHEET_CELLS:,} cells",
+            )
+        if characters > MAX_XLSX_SHEET_CHARACTERS:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_CHARACTERS",
+                characters,
+                MAX_XLSX_SHEET_CHARACTERS,
+                f"holds more than {MAX_XLSX_SHEET_CHARACTERS // (1024 * 1024)} MB "
+                "of text",
+            )
+    return last_row, width
+
+
+def _scan_sheet_xml(sheet: Any) -> None:
+    """Check the row-cells, listed-cells and depth caps on the sheet's XML,
+    counting its cells as openpyxl reads them, before any of its rows is read."""
+    from openpyxl.xml.constants import SHEET_MAIN_NS
+
+    archive = sheet.parent._archive
+    member = archive.getinfo(sheet._worksheet_path)
+    cells = _SheetCells(row_tag=f"{SHEET_MAIN_NS} row")
+    parser = expat.ParserCreate(namespace_separator=" ")
+    parser.StartElementHandler = cells.start
+    parser.EndElementHandler = cells.end
+    try:
+        for chunk in iter_member(archive, member, max_bytes=MAX_XLSX_MEMBER_BYTES):
+            parser.Parse(chunk, False)
+        parser.Parse(b"", True)
+    except expat.ExpatError as e:
+        raise ValueError(f"The sheet's XML can't be read: {e}") from e
+
+
+class _SheetCells:
+    """Counts cells as openpyxl does: every child of a row is a cell, at the column
+    its reference names or else the one after the cell before it."""
+
+    def __init__(self, row_tag: str):
+        self.row_tag = row_tag
+        # Per open element: [cells, column] for a row, None for anything else.
+        self.open: list[list[int] | None] = []
+        self.listed = 0
+
+    def start(self, tag: str, attributes: dict[str, str]) -> None:
+        if len(self.open) >= MAX_XLSX_SHEET_XML_DEPTH:
+            raise XlsxSheetTooLarge(
+                "MAX_XLSX_SHEET_XML_DEPTH",
+                len(self.open) + 1,
+                MAX_XLSX_SHEET_XML_DEPTH,
+                f"nests its XML more than {MAX_XLSX_SHEET_XML_DEPTH} deep",
+            )
+        row = self.open[-1] if self.open else None
+        if row is not None:
+            ref = attributes.get("r")
+            row[0] += 1
+            row[1] = _ref_column(ref) if ref else row[1] + 1
+            self.listed += 1
+            if max(row) > MAX_XLSX_ROW_CELLS:
+                raise XlsxSheetTooLarge(
+                    "MAX_XLSX_ROW_CELLS",
+                    max(row),
+                    MAX_XLSX_ROW_CELLS,
+                    f"has a row of more than {MAX_XLSX_ROW_CELLS:,} cells",
+                )
+            if self.listed > MAX_XLSX_SHEET_CELLS_LISTED:
+                raise XlsxSheetTooLarge(
+                    "MAX_XLSX_SHEET_CELLS_LISTED",
+                    self.listed,
+                    MAX_XLSX_SHEET_CELLS_LISTED,
+                    f"lists more than {MAX_XLSX_SHEET_CELLS_LISTED:,} cells",
+                )
+        self.open.append([0, 0] if tag == self.row_tag else None)
+
+    def end(self, tag: str) -> None:
+        self.open.pop()
+
+
+def _ref_column(ref: str) -> int:
+    """The column openpyxl reads from a cell reference; 0 when it can't read one."""
+    from openpyxl.utils.cell import coordinate_to_tuple
+
+    try:
+        return coordinate_to_tuple(ref)[1]
+    except ValueError:
+        return 0
+
+
+def _csv_length(value: Any) -> int:
+    # The length pandas writes it out at.
+    if isinstance(value, float) and value.is_integer():
+        return len(str(int(value)))
+    return len(str(value))
+
+
+def _report_xlsx_refusal(
+    message: str, limit_name: str, source: str, **extras: int
+) -> None:
     # Sizes and the call site only: never the file name or its content.
-    limit_name = (
-        "MAX_XLSX_MEMBER_BYTES" if error.cap == "member" else "MAX_XLSX_TOTAL_BYTES"
-    )
     sentry_sdk.capture_message(
-        "xlsx workbook over unpack limit",
+        message,
         level="warning",
         tags={"xlsx_limit": limit_name, "xlsx_source": source},
-        extras={"unpacked_bytes": error.counted, "limit_bytes": error.limit},
+        extras=extras,
     )
 
 
