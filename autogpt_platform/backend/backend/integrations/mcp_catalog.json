@@ -641,6 +641,22 @@
     }
   },
   {
+    "name": "mcp_databuddy",
+    "display_name": "Databuddy",
+    "description": "Query web and product analytics: traffic, funnels, goals, errors, Web Vitals, session replays, and why a metric moved. Manage feature flags, short links, and annotations.",
+    "mcp_server": {
+      "server_url": "https://api.databuddy.cc/v1/mcp",
+      "documentation_url": "https://www.databuddy.cc/docs/api/mcp",
+      "setup_instructions": "Sign in with your Databuddy account and choose the organization and websites to share. Alternatively, use a Databuddy API key (starts with dbdy_) as a bearer token; its scopes limit what the assistant can read and change.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "databuddy"
+    }
+  },
+  {
     "name": "mcp_datarobot",
     "display_name": "DataRobot",
     "description": "Access DataRobot's managed Global MCP tools.",

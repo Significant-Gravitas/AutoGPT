@@ -11,6 +11,7 @@ The generic `database.png` and `generic_webhook.png` icons are rendered from `Da
 | `cloudflare.png`  | [Cloudflare developer docs favicon](https://developers.cloudflare.com/favicon.png), linked from [developers.cloudflare.com](https://developers.cloudflare.com)                   |
 | `compass.png`     | [Fieldy app icon](https://www.fieldy.ai/apple-touch-icon.png); the former Compass Wearable domain redirects to Fieldy                                                            |
 | `conductor.png`   | [Conductor site icon](https://www.conductor.build/icon.png), linked from [conductor.build](https://www.conductor.build); resized to 256x256                                              |
+| `databuddy.png`   | [Databuddy logo](https://github.com/databuddy-analytics/skills/blob/main/assets/logo.png); resized to 128x128                                                                    |
 | `dataforb2b.png`  | [DataForB2B favicon](https://dataforb2b.ai/asset/favicon-192x192.png)                                                                                                            |
 | `elevenlabs.png`  | [ElevenLabs app icon](https://elevenlabs.io/apple-icon.png)                                                                                                                      |
 | `openseo.png`     | [OpenSEO app icon](https://github.com/every-app/open-seo/blob/0ffff93101043aad7600a3b6a499a0cd2887ef49/public/apple-touch-icon.png), served at [openseo.so](https://openseo.so)  |
