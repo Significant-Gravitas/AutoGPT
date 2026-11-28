@@ -102,19 +102,33 @@ class TranscribeYoutubeVideoBlock(Block):
 
     @staticmethod
     def extract_video_id(url: str) -> str:
+        url = url.strip()
         parsed_url = urlparse(url)
-        if parsed_url.netloc == "youtu.be":
-            return parsed_url.path[1:]
-        if parsed_url.netloc in ("www.youtube.com", "youtube.com"):
+        hostname = parsed_url.hostname or ""
+
+        if hostname in ("youtu.be", "www.youtu.be"):
+            parts = [seg for seg in parsed_url.path.split("/") if seg]
+            if parts:
+                return parts[0]
+            raise ValueError(f"Invalid YouTube URL: {url}")
+
+        if hostname in (
+            "www.youtube.com",
+            "youtube.com",
+            "m.youtube.com",
+            "music.youtube.com",
+            "www.youtube-nocookie.com",
+            "youtube-nocookie.com",
+        ):
             if parsed_url.path == "/watch":
                 p = parse_qs(parsed_url.query)
-                return p["v"][0]
-            if parsed_url.path[:7] == "/embed/":
-                return parsed_url.path.split("/")[2]
-            if parsed_url.path[:3] == "/v/":
-                return parsed_url.path.split("/")[2]
-            if parsed_url.path.startswith("/shorts/"):
-                return parsed_url.path.split("/")[2]
+                if "v" in p and p["v"] and p["v"][0]:
+                    return p["v"][0]
+                raise ValueError(f"Invalid YouTube URL: {url}")
+            if parsed_url.path.startswith(("/embed/", "/v/", "/shorts/", "/live/")):
+                parts = [seg for seg in parsed_url.path.split("/") if seg]
+                if len(parts) >= 2 and parts[1]:
+                    return parts[1]
         raise ValueError(f"Invalid YouTube URL: {url}")
 
     def get_transcript(
