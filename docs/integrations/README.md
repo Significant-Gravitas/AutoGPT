@@ -438,6 +438,11 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To TikTok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tiktok) | Post to TikTok using Ayrshare |
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
 | [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
+| [PostOnce Cancel Post](block-integrations/postonce/posts.md#postonce-cancel-post) | Cancel a scheduled or still-pending PostOnce post |
+| [PostOnce Create Post](block-integrations/postonce/create_post.md#postonce-create-post) | Publish or schedule one post to several social accounts with PostOnce, with optional media and per-account text |
+| [PostOnce Get Post](block-integrations/postonce/posts.md#postonce-get-post) | Get a PostOnce post's status and, for each account, its delivery state, error and published link |
+| [PostOnce Get Post Analytics](block-integrations/postonce/analytics.md#postonce-get-post-analytics) | Get views, likes, comments, shares and saves for a published PostOnce post, per platform and in total |
+| [PostOnce List Accounts](block-integrations/postonce/accounts.md#postonce-list-accounts) | List the social accounts connected to PostOnce, with the IDs Create Post needs |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
