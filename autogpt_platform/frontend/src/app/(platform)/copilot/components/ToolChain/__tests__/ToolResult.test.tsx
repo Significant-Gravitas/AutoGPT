@@ -23,12 +23,9 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", () => ({
   ),
 }));
 
-vi.mock(
-  "../../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard",
-  () => ({
-    MCPSetupCard: () => <div>mcp-setup-card</div>,
-  }),
-);
+vi.mock("../../MCPSetupCard/MCPSetupCard", () => ({
+  MCPSetupCard: () => <div>mcp-setup-card</div>,
+}));
 
 vi.mock("../../QuestionDock/QuestionDock", () => ({
   QuestionsForm: ({ dockId }: { dockId: string }) => (
@@ -419,6 +416,44 @@ describe("ToolResult", () => {
   });
 
   describe("block routing", () => {
+    it("chips each found capability by what it is", () => {
+      render(
+        <ToolResult
+          row={row(
+            {
+              capabilities: [
+                {
+                  id: "mcp:mcp.linear.app",
+                  name: "Linear",
+                  purpose: "Linear MCP server.",
+                  kind: "mcp_server",
+                },
+                {
+                  id: "block:2",
+                  name: "SendWebRequestBlock",
+                  purpose: "HTTP.",
+                  kind: "block",
+                  class: "primitive",
+                },
+                {
+                  id: "skill:triage",
+                  name: "triage-and-prioritize",
+                  purpose: "Triage a support ticket",
+                  kind: "skill",
+                },
+              ],
+            },
+            "find_capability",
+          )}
+        />,
+      );
+
+      expect(screen.getByText("integration")).toBeDefined();
+      expect(screen.getByText("building block")).toBeDefined();
+      expect(screen.getByText("skill")).toBeDefined();
+      expect(screen.queryByText("action")).toBeNull();
+    });
+
     it.each([
       { block_name: "FillTextTemplateBlock", outputs: { output: ["Hello"] } },
       { block: { name: "FillTextTemplateBlock" } },
@@ -510,6 +545,23 @@ describe("ToolResult", () => {
       expect(screen.getByText("Fetch data")).toBeDefined();
       expect(screen.getByText("Summarize")).toBeDefined();
       expect(screen.getByText("HTTP")).toBeDefined();
+    });
+
+    it("renders the plan when the decomposition also carries an error", () => {
+      render(
+        <ToolResult
+          row={row(
+            {
+              goal: "Track prices",
+              steps: [{ description: "Fetch data" }],
+              error: "partial_plan",
+            },
+            "decompose_goal",
+          )}
+        />,
+      );
+
+      expect(screen.getByText("Fetch data")).toBeDefined();
     });
 
     it("renders a valid graph status for validate_agent_graph", () => {
@@ -712,6 +764,26 @@ describe("ToolResult", () => {
       expect(screen.getByText("Webhook ready")).toBeDefined();
       expect(screen.getByText("https://hooks.example.com/h1")).toBeDefined();
       expect(screen.getByRole("button", { name: "Copy" })).toBeDefined();
+    });
+
+    it("keeps the webhook URL out of session replays", () => {
+      const url =
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress";
+      render(
+        <ToolResult
+          row={row(
+            {
+              type: "trigger_setup",
+              message: "Webhook trigger ready.",
+              manual_setup_required: true,
+              webhook_url: url,
+            },
+            "setup_agent_webhook_trigger",
+          )}
+        />,
+      );
+
+      expect(screen.getByText(url).closest(".ph-no-capture")).not.toBeNull();
     });
 
     it("renders the trigger card for manual setup without a URL", () => {
@@ -1411,20 +1483,60 @@ describe("ToolResult deferred platform tools", () => {
     expect(screen.getByText("Get Weather")).toBeDefined();
   });
 
-  it("keeps MCP capability rows on the MCP setup card", () => {
+  it.each([
+    [
+      "an mcp: id",
+      "run_capability",
+      { id: "mcp:mcp.example.com", input: { tool: "list_issues" } },
+      {},
+    ],
+    [
+      "a server URL id",
+      "run_capability",
+      { id: "https://mcp.example.com/mcp", input: { connect: true } },
+      {},
+    ],
+    [
+      "the server URL in a resumed call's output",
+      "resume_capability",
+      { review_id: "copilot-mcp-mcp.linear.app:ab12" },
+      { server_url: "https://mcp.linear.app/mcp" },
+    ],
+  ])(
+    "keeps MCP capability rows named by %s on the MCP setup card",
+    (_how, tool, input, extra) => {
+      render(
+        <ToolResult
+          row={row(
+            {
+              message: "Connect the tracker",
+              setup_info: { agent_id: "mcp", agent_name: "Tracker" },
+              ...extra,
+            },
+            tool,
+            input,
+          )}
+        />,
+      );
+
+      expect(screen.getByText("mcp-setup-card")).toBeDefined();
+    },
+  );
+
+  it("keeps a block capability's setup off the MCP setup card", () => {
     render(
       <ToolResult
         row={row(
           {
-            message: "Connect the tracker",
-            setup_info: { agent_id: "mcp", agent_name: "Tracker" },
+            message: "Connect GitHub",
+            setup_info: { agent_id: "block-1", agent_name: "GitHub" },
           },
           "run_capability",
-          { id: "mcp:mcp.example.com", input: { tool: "list_issues" } },
+          { id: "block:abc" },
         )}
       />,
     );
 
-    expect(screen.getByText("mcp-setup-card")).toBeDefined();
+    expect(screen.queryByText("mcp-setup-card")).toBeNull();
   });
 });

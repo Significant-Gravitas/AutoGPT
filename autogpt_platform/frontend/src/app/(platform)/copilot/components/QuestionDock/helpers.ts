@@ -7,7 +7,7 @@ import {
   formatAnswer,
   isAnswered,
   normalizeClarifyingQuestions,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import type { ChainActionEntry } from "../ToolChain/chainActions";
 
 export interface PendingQuestions {

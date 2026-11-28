@@ -9,7 +9,7 @@
 import type {
   MultiAnswer,
   QuestionAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 
 export interface OnboardingProgress {
   step: number;

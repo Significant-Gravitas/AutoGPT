@@ -6,7 +6,7 @@ import {
   formatAnswer,
   toAnswerList,
   type QuestionAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 
 export const EXPERT_ONBOARDING_PART_TYPE = "tool-expert_onboarding";
 

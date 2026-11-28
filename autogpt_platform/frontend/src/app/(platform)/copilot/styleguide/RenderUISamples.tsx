@@ -1,5 +1,5 @@
 import type { ToolUIPart } from "ai";
-import { RenderUI } from "../tools/RenderUI/RenderUI";
+import { RenderUI } from "../components/RenderUI/RenderUI";
 
 const BLOCKS = [
   {

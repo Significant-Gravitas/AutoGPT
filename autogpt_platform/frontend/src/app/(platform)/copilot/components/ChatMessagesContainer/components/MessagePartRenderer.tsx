@@ -5,29 +5,8 @@ import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
-import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
-import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
-import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
-import { DecomposeGoalTool } from "../../../tools/DecomposeGoal/DecomposeGoal";
-import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
-import {
-  CreateFeatureRequestTool,
-  SearchFeatureRequestsTool,
-} from "../../../tools/FeatureRequests/FeatureRequests";
-import { FindAgentsTool } from "../../../tools/FindAgents/FindAgents";
-import { FolderTool } from "../../../tools/FolderTool/FolderTool";
-import { FindBlocksTool } from "../../../tools/FindBlocks/FindBlocks";
-import { FindCapabilitiesTool } from "../../../tools/FindCapabilities/FindCapabilities";
-import { GenericTool } from "../../../tools/GenericTool/GenericTool";
-import { RunAgentTool } from "../../../tools/RunAgent/RunAgent";
-import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
-import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
-import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
-import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
-import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
-import { RenderUI } from "../../../tools/RenderUI/RenderUI";
-import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
-import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
+import { RenderUI } from "../../RenderUI/RenderUI";
+import { RENDER_UI_PART_TYPE } from "../../RenderUI/helpers";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
 import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
@@ -45,12 +24,12 @@ import {
   resolveWorkspaceUrls,
   workspaceLinkFileID,
 } from "../helpers";
-import { MistakeTool } from "../../../tools/FeedbackPrompts/MistakeTool";
+import { MistakeTool } from "../../FeedbackPrompts/MistakeTool";
 import {
   type FeedbackCardTarget,
   MISTAKE_PART_TYPE,
   WORK_CHECK_PART_TYPE,
-} from "../../../tools/FeedbackPrompts/helpers";
+} from "../../FeedbackPrompts/helpers";
 import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
@@ -287,55 +266,8 @@ export function MessagePartRenderer({
           fileUrlBuilder={fileUrlBuilder}
         />
       );
-    case "tool-ask_question":
-      return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-expert_onboarding":
       return <ExpertOnboardingCard key={key} part={part as ToolUIPart} />;
-    case "tool-find_block":
-      return <FindBlocksTool key={key} part={part as ToolUIPart} />;
-    case "tool-find_capability":
-      return <FindCapabilitiesTool key={key} part={part as ToolUIPart} />;
-    case "tool-describe_capability":
-    case "tool-run_capability":
-    case "tool-resume_capability":
-      return <RunCapabilityTool key={key} part={part as ToolUIPart} />;
-    case "tool-find_agent":
-    case "tool-find_library_agent":
-      return <FindAgentsTool key={key} part={part as ToolUIPart} />;
-    case "tool-search_docs":
-    case "tool-get_doc_page":
-      return <SearchDocsTool key={key} part={part as ToolUIPart} />;
-    case "tool-connect_integration":
-      return <ConnectIntegrationTool key={key} part={part as ToolUIPart} />;
-    case "tool-run_block":
-    case "tool-continue_run_block":
-      return <RunBlockTool key={key} part={part as ToolUIPart} />;
-    case "tool-run_mcp_tool":
-      return <RunMCPToolComponent key={key} part={part as ToolUIPart} />;
-    case "tool-run_agent":
-    case "tool-schedule_agent":
-      return <RunAgentTool key={key} part={part as ToolUIPart} />;
-    case "tool-setup_agent_webhook_trigger":
-      return <SetupTriggerTool key={key} part={part as ToolUIPart} />;
-    case "tool-decompose_goal":
-      return <DecomposeGoalTool key={key} part={part as ToolUIPart} />;
-    case "tool-create_agent":
-      return <CreateAgentTool key={key} part={part as ToolUIPart} />;
-    case "tool-edit_agent":
-      return <EditAgentTool key={key} part={part as ToolUIPart} />;
-    case "tool-view_agent_output":
-      return <ViewAgentOutputTool key={key} part={part as ToolUIPart} />;
-    case "tool-search_feature_requests":
-      return <SearchFeatureRequestsTool key={key} part={part as ToolUIPart} />;
-    case "tool-create_feature_request":
-      return <CreateFeatureRequestTool key={key} part={part as ToolUIPart} />;
-    case "tool-create_folder":
-    case "tool-list_folders":
-    case "tool-update_folder":
-    case "tool-move_folder":
-    case "tool-delete_folder":
-    case "tool-move_agents_to_folder":
-      return <FolderTool key={key} part={part as ToolUIPart} />;
     case WORK_CHECK_PART_TYPE:
       // Sits under the reply's actions, drawn by MessageRow.
       return null;
@@ -347,11 +279,6 @@ export function MessagePartRenderer({
           target={feedbackTarget}
         />
       ) : null;
-    case "tool-TodoWrite":
-      // Hidden inline — the task list surfaces through TaskProgressBar above
-      // the composer, not as a message part. That bar is gated on
-      // TASK_PROGRESS_BAR, so until it rolls out the list has no UI.
-      return null;
     case COMPACTION_PART_TYPE: {
       const toolPart = part as ToolUIPart;
       // A failed compaction, or one closed by the abort sentinel (output ""),
@@ -391,11 +318,6 @@ export function MessagePartRenderer({
       );
     }
     default:
-      // Render a generic tool indicator for SDK built-in
-      // tools (Read, Glob, Grep, etc.) or any unrecognized tool
-      if (part.type.startsWith("tool-")) {
-        return <GenericTool key={key} part={part as ToolUIPart} />;
-      }
       return null;
   }
 }

@@ -11,7 +11,7 @@ import type { ExpertGrant } from "../SetupRequirementsCard/helpers";
 import type {
   ClarifyingQuestion,
   QuestionAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 
 /** One question card's ask. The card owns the inputs; the asking component
  *  keeps the answers so it can still build its own message. */

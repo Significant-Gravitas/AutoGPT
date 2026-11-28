@@ -13,7 +13,7 @@ import {
   isAnswered,
   toAnswerText,
   toMultiAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import type { QuestionRequest } from "./helpers";
 import { QuestionAnswerField } from "./QuestionAnswerField";
 import { QuestionMultiAnswerField } from "./QuestionMultiAnswerField";

@@ -14,6 +14,7 @@ import {
   checkAllInputsComplete,
   checkCanRun,
   buildRunMessage,
+  buildTriggerSetupMessage,
 } from "../helpers";
 
 describe("coerceCredentialFields", () => {
@@ -949,5 +950,16 @@ describe("coerceExpertGrant", () => {
       expertId: "expert-a",
       credentials: [{ id: "cred-1", title: "Work", type: "oauth2" }],
     });
+  });
+});
+
+describe("buildTriggerSetupMessage", () => {
+  it("carries back the selected credential IDs as a credentials map", () => {
+    const msg = buildTriggerSetupMessage({
+      github_credentials: { id: "cred-1" },
+      skipped: undefined,
+    });
+    expect(msg).toContain('credentials={"github_credentials":"cred-1"}');
+    expect(msg).toContain("setup_agent_webhook_trigger");
   });
 });

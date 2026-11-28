@@ -2,7 +2,7 @@
 
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import type { QuestionAnswer } from "../../../tools/clarifying-questions";
+import type { QuestionAnswer } from "../../../helpers/clarifying-questions";
 import { getAnswerSummary, type ExpertOnboardingStep } from "../helpers";
 import { Text } from "@/components/atoms/Text/Text";
 

@@ -79,7 +79,7 @@ const EXEMPT_ARTWORK: Record<string, string> = {
     '[data-slot="autopilot-avatar"]',
   "src/components/atoms/Avatar/Avatar.tsx":
     '[data-slot="avatar-fallback"] > svg',
-  "src/app/(platform)/copilot/tools/RenderUI/components/ChartCanvas.tsx":
+  "src/app/(platform)/copilot/components/RenderUI/components/ChartCanvas.tsx":
     ".recharts-wrapper",
   "src/app/(platform)/team/[expertId]/components/ExpertOverview/components/ActivityChart.tsx":
     ".recharts-wrapper",

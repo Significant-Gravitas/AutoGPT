@@ -6,7 +6,6 @@ import {
 import {
   buildChainSegments,
   getChainHeading,
-  isChainPart,
   isLiftedSetupRow,
   isToolCallPending,
   markSupersededSubSessionRows,
@@ -60,7 +59,7 @@ describe("buildChainSegments", () => {
       toolPart("web_fetch"),
     ];
 
-    expect(buildChainSegments(parts)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "chain", parts: [parts[1], parts[2]], index: 1 },
       { kind: "part", part: parts[3], index: 3 },
       { kind: "chain", parts: [parts[4]], index: 4 },
@@ -74,7 +73,7 @@ describe("buildChainSegments", () => {
       toolPart("web_fetch"),
     ];
 
-    expect(buildChainSegments(parts)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "chain", parts, index: 0 },
     ]);
   });
@@ -246,6 +245,26 @@ describe("toChainRow", () => {
     });
   });
 
+  it.each(["input-available", "approval-requested", "approval-responded"])(
+    "reads a %s call as still running",
+    (state) => {
+      const row = toChainRow(
+        {
+          type: "tool-create_agent",
+          state,
+          toolCallId: "call-pending",
+          input: {},
+        } as MessagePart,
+        0,
+      );
+
+      expect(row).toMatchObject({
+        state: "running",
+        text: "Creating workflow…",
+      });
+    },
+  );
+
   it("falls back to generic categorization for non-catalog tools", () => {
     const grep = toChainRow(
       toolPart("Grep", { pattern: "TODO" }, "3 matches"),
@@ -299,6 +318,13 @@ describe("toChainRow", () => {
     [{ type: "need_login", message: "Log in first" }, "Log in first"],
     [{ type: "need_login" }, "Action required"],
     [{ type: "setup_requirements" }, "Complete setup to continue"],
+    [
+      {
+        type: "trigger_config_required",
+        message: "Ask the user which repo and events to use.",
+      },
+      "Ask the user which repo and events to use.",
+    ],
   ])("labels action-required output %j", (output, expected) => {
     const row = toChainRow(toolPart("run_block", {}, output), 0);
 
@@ -332,13 +358,13 @@ describe("isLiftedSetupRow", () => {
   });
 });
 
-describe("isChainPart", () => {
+describe("isChainableToolPart", () => {
   it("accepts reasoning and tool parts only", () => {
-    expect(isChainPart({ type: "reasoning", text: "" } as MessagePart)).toBe(
-      true,
-    );
-    expect(isChainPart(toolPart("web_search"))).toBe(true);
-    expect(isChainPart(textPart("Hello"))).toBe(false);
+    expect(
+      isChainableToolPart({ type: "reasoning", text: "" } as MessagePart),
+    ).toBe(true);
+    expect(isChainableToolPart(toolPart("web_search"))).toBe(true);
+    expect(isChainableToolPart(textPart("Hello"))).toBe(false);
   });
 
   it.each([
@@ -347,7 +373,6 @@ describe("isChainPart", () => {
     "update_expert",
     "confirm_expert_change",
   ])("keeps %s out of the chain so its card stands on its own", (toolName) => {
-    expect(isChainPart(toolPart(toolName))).toBe(false);
     expect(isChainableToolPart(toolPart(toolName))).toBe(false);
   });
 });
@@ -502,7 +527,7 @@ describe("buildChainSegments edge cases", () => {
   it("keeps trailing narration out of the chain while streaming", () => {
     const parts = [toolPart("web_search"), textPart("Wrapping up.")];
 
-    expect(buildChainSegments(parts, isChainPart)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
     ]);
@@ -511,7 +536,7 @@ describe("buildChainSegments edge cases", () => {
   it("keeps trailing narration out of a settled chain", () => {
     const parts = [toolPart("web_search"), textPart("Here you go.")];
 
-    expect(buildChainSegments(parts, isChainPart)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
     ]);
@@ -526,7 +551,7 @@ describe("buildChainSegments edge cases", () => {
       toolPart("web_fetch"),
     ];
 
-    expect(buildChainSegments(parts)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       {
         kind: "chain",
         parts: [parts[0], parts[1], parts[3], parts[4]],
@@ -542,7 +567,7 @@ describe("buildChainSegments edge cases", () => {
       textPart("Answer. ".repeat(40)),
     ];
 
-    expect(buildChainSegments(parts)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "chain", parts: [parts[0]], index: 0 },
       { kind: "part", part: parts[1], index: 1 },
       { kind: "part", part: parts[2], index: 2 },
@@ -552,7 +577,7 @@ describe("buildChainSegments edge cases", () => {
   it("emits leading text before any chain as its own part", () => {
     const parts = [textPart("Intro."), toolPart("web_search")];
 
-    expect(buildChainSegments(parts)).toEqual([
+    expect(buildChainSegments(parts, isChainableToolPart)).toEqual([
       { kind: "part", part: parts[0], index: 0 },
       { kind: "chain", parts: [parts[1]], index: 1 },
     ]);

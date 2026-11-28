@@ -3,7 +3,7 @@
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { useRef, useState } from "react";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type { ClarifyingQuestion } from "../../helpers/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
 import { isKey } from "@/lib/keyboard";
 

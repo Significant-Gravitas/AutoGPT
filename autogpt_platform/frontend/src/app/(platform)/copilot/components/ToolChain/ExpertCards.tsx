@@ -18,7 +18,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import { GenericTool } from "../../tools/GenericTool/GenericTool";
+import { GenericTool } from "../GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";

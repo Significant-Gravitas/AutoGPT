@@ -7,7 +7,7 @@ import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
 import { SetupRequirementsCard } from "../SetupRequirementsCard/SetupRequirementsCard";
-import { MCPSetupCard } from "../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard";
+import { MCPSetupCard } from "../MCPSetupCard/MCPSetupCard";
 import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 import { DesktopStreamCard } from "./DesktopStreamCard";
 import {
@@ -33,7 +33,7 @@ import {
   TriggerSetupCard,
   ValidationCard,
 } from "./InfoCards";
-import { extractClarifyingQuestions } from "../../tools/clarifying-questions";
+import { extractClarifyingQuestions } from "../../helpers/clarifying-questions";
 import {
   DocsList,
   FeatureRequestList,

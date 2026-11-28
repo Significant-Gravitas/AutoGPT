@@ -2,7 +2,7 @@ import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import {
   type ClarifyingQuestion,
   extractClarifyingQuestions,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import {
   EXPERT_ONBOARDING_PART_TYPE,
   parseExpertOnboarding,

@@ -10,7 +10,7 @@ import type {
   CompactionPhase,
   CompactionStats,
 } from "../../CompactionCard/helpers";
-import type { FeedbackCardTarget } from "../../../tools/FeedbackPrompts/helpers";
+import type { FeedbackCardTarget } from "../../FeedbackPrompts/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {

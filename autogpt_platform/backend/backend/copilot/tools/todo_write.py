@@ -33,7 +33,7 @@ class TodoWriteTool(BaseTool):
     @property
     def name(self) -> str:
         # Capitalised to match the frontend's switch on ``"TodoWrite"``
-        # (see ``copilot/tools/GenericTool/helpers.ts``).
+        # (see ``copilot/components/GenericTool/helpers.ts``).
         return "TodoWrite"
 
     @property

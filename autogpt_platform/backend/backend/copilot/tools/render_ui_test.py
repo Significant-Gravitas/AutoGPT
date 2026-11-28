@@ -27,7 +27,7 @@ from backend.copilot.tools.render_ui_models import (
 
 FIXTURE = (
     Path(__file__).parents[4]
-    / "frontend/src/app/(platform)/copilot/tools/RenderUI/__tests__"
+    / "frontend/src/app/(platform)/copilot/components/RenderUI/__tests__"
     / "renderUIOutput.json"
 )
 

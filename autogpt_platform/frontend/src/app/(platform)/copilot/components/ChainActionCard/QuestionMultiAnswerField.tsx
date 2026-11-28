@@ -4,7 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
 import { isKey } from "@/lib/keyboard";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
-import type { MultiAnswer } from "../../tools/clarifying-questions";
+import type { MultiAnswer } from "../../helpers/clarifying-questions";
 import {
   QuestionCheckboxList,
   type QuestionCheckboxListHandle,

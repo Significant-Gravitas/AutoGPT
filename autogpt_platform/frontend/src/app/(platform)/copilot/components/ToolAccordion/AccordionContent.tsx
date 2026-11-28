@@ -1,4 +1,3 @@
-import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
@@ -137,20 +136,6 @@ export function ContentMessage({
   );
 }
 
-export function ContentHint({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Text variant="small" tone="muted" className={className}>
-      {children}
-    </Text>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /*  Code / data                                                       */
 /* ------------------------------------------------------------------ */
@@ -198,54 +183,5 @@ export function ContentBadge({
     >
       {children}
     </Text>
-  );
-}
-
-export function ContentLink({
-  href,
-  children,
-  className,
-  ...rest
-}: Omit<React.ComponentProps<typeof Link>, "className"> & {
-  className?: string;
-}) {
-  return (
-    <Link
-      variant="primary"
-      isExternal
-      href={href}
-      className={cn("shrink-0 text-caption text-brand", className)}
-      {...rest}
-    >
-      {children}
-    </Link>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Lists                                                             */
-/* ------------------------------------------------------------------ */
-
-export function ContentSuggestionsList({
-  items,
-  max = 5,
-  className,
-}: {
-  items: string[];
-  max?: number;
-  className?: string;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <ul
-      className={cn(
-        "mt-2 list-disc space-y-1 pl-5 font-sans text-caption leading-4.5 text-foreground-emphasis",
-        className,
-      )}
-    >
-      {items.slice(0, max).map((s) => (
-        <li key={s}>{s}</li>
-      ))}
-    </ul>
   );
 }

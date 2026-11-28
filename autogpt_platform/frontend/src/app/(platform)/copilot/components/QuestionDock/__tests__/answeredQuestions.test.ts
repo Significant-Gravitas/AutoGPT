@@ -1,6 +1,6 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
-import type { ClarifyingQuestion } from "../../../tools/clarifying-questions";
+import type { ClarifyingQuestion } from "../../../helpers/clarifying-questions";
 import { buildAnswersMessage } from "../helpers";
 import { getAnsweredQuestions } from "../answeredQuestions";
 import { buildOnboardingAnswersMessage } from "../../ExpertOnboardingCard/helpers";

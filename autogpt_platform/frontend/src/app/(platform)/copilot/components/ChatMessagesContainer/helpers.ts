@@ -11,10 +11,10 @@ import {
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { parseTruncatedOutput } from "../ToolChain/resultHelpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
-import { RENDER_UI_PART_TYPE } from "../../tools/RenderUI/helpers";
+import { RENDER_UI_PART_TYPE } from "../RenderUI/helpers";
 import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
 import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
-import { isFeedbackCardPart } from "../../tools/FeedbackPrompts/helpers";
+import { isFeedbackCardPart } from "../FeedbackPrompts/helpers";
 
 export type MessagePart = UIMessage<
   unknown,

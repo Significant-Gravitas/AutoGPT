@@ -4,7 +4,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { Ref } from "react";
-import type { QuestionAnswer } from "../../../../tools/clarifying-questions";
+import type { QuestionAnswer } from "../../../../helpers/clarifying-questions";
 import { getOptionLetter } from "../../helpers";
 import {
   useOnboardingChoices,

@@ -3,7 +3,8 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ChainRow } from "../helpers";
+import type { MessagePart } from "../../ChatMessagesContainer/helpers";
+import { toChainRow, type ChainRow } from "../helpers";
 import { ChainRowView } from "../ChainRowView";
 
 function subSession(overrides: Record<string, unknown> = {}) {
@@ -155,4 +156,53 @@ describe("ChainRowView - live sub-session rows", () => {
       await screen.findByText('Teammate handled: "Create a chat app"'),
     ).toBeDefined();
   });
+});
+
+describe("ChainRowView - a call still streaming its input", () => {
+  it("names the search and offers nothing to open", () => {
+    const streaming = toChainRow(
+      {
+        type: "tool-find_capability",
+        state: "input-streaming",
+        toolCallId: "call-stream",
+        input: { query: "linear issue" },
+      } as MessagePart,
+      0,
+    );
+
+    render(<ChainRowView row={streaming!} isLast />);
+
+    expect(screen.getByText("Searching capabilities for…")).toBeDefined();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("ChainRowView - a failed call", () => {
+  it.each(["run_block", "find_agent", "bash_exec"])(
+    "shows a failed %s row's label, detail and icon in the error colour",
+    (tool) => {
+      const failed = toChainRow(
+        {
+          type: `tool-${tool}`,
+          toolCallId: `call-${tool}`,
+          state: "output-error",
+          input: {},
+          errorText: "Something went wrong",
+        } as MessagePart,
+        0,
+      )!;
+
+      const { container } = render(<ChainRowView row={failed} isLast />);
+
+      expect(
+        screen.getByText(failed.text).closest(".text-error"),
+      ).not.toBeNull();
+      expect(
+        screen
+          .getByText("Something went wrong")
+          .classList.contains("text-error"),
+      ).toBe(true);
+      expect(container.querySelector("svg.text-error")).not.toBeNull();
+    },
+  );
 });

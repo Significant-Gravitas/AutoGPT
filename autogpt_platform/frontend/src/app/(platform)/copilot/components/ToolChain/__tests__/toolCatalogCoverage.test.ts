@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MessagePart } from "../../ChatMessagesContainer/helpers";
-import { formatToolName } from "../../../tools/GenericTool/helpers";
+import { formatToolName } from "../../GenericTool/helpers";
 import { toChainRow } from "../helpers";
 import { COPILOT_TOOL_CATALOG } from "../toolCatalog";
 // Written by the backend from the registries the model is offered
