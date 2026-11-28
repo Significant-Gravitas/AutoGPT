@@ -2217,7 +2217,7 @@ class OrchestratorBlock(Block):
 
         # One-off mode: single LLM call and yield tool calls for external execution
         current_prompt = list(prompt)
-        max_attempts = max(1, int(input_data.retry))
+        max_attempts = max(1, min(int(input_data.retry), llm.MAX_LLM_RETRIES))
         response = None
 
         last_error = None

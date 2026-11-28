@@ -74,13 +74,13 @@ def _deadline_block(
     return block, clock, slices
 
 
-async def _run(block: llm.AIStructuredResponseGeneratorBlock) -> dict:
+async def _run(block: llm.AIStructuredResponseGeneratorBlock, retry: int = 3) -> dict:
     input_data = llm.AIStructuredResponseGeneratorBlock.Input(
         prompt="Hello",
         expected_format={"key": "value"},
         model=llm.DEFAULT_LLM_MODEL,
         credentials=_CREDENTIALS,
-        retry=3,
+        retry=retry,
     )
     return {
         name: value
@@ -142,6 +142,27 @@ async def test_structured_block_retries_use_remaining_deadline(
 
     assert outputs["response"] == {"key": "value"}
     assert slices == [budget, budget - first_attempt]
+
+
+@pytest.mark.parametrize(
+    "seconds, attempts",
+    [
+        pytest.param(1, llm.MAX_LLM_RETRIES, id="fast-failures-stop-at-the-cap"),
+        pytest.param(290, 2, id="slow-failures-stop-at-the-deadline"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_retries_stop_at_whichever_bound_comes_first(
+    monkeypatch, seconds, attempts
+):
+    """A run stops at the attempt cap or the shared deadline, whichever is first."""
+    retry = llm.MAX_LLM_RETRIES + 40
+    block, _, slices = _deadline_block(monkeypatch, [(seconds, _MISSING_KEY)] * retry)
+
+    with pytest.raises(RuntimeError):
+        await _run(block, retry=retry)
+
+    assert len(slices) == attempts
 
 
 @pytest.mark.asyncio
