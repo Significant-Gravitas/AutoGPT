@@ -886,5 +886,18 @@ async def discord_send_alert(
     )
     # The block reports a failed send in its status rather than raising.
     if status != "Message sent":
-        logger.warning(f"Discord alert to {channel_name!r} was not sent: {status}")
+        logger.error(
+            f"Discord alert to {channel_name!r} was not sent: {_unsent_reason(status)}"
+        )
     return status
+
+
+def _unsent_reason(status: str) -> str:
+    """Fixed wording, not the block's status, which code scanning treats as secret."""
+    if status.startswith("Channel not found"):
+        return "channel not found"
+    if "cannot receive messages" in status:
+        return "not a text channel"
+    if "lacks permission" in status:
+        return "the bot lacks permission"
+    return "the send failed"
