@@ -54,11 +54,27 @@ def test_large_dimensions_are_rejected():
         prepare_image(output.getvalue())
 
 
-def test_unsupported_image_format_is_rejected():
+@pytest.mark.parametrize(
+    "format,parser",
+    [
+        ("BMP", "PIL.BmpImagePlugin.BmpImageFile._open"),
+        ("TIFF", "PIL.TiffImagePlugin.TiffImageFile._open"),
+    ],
+)
+def test_unsupported_image_format_is_rejected_without_parsing(format, parser, mocker):
     output = io.BytesIO()
-    Image.new("RGB", (20, 20)).save(output, format="BMP")
-    with pytest.raises(ValueError, match="convert it to PNG"):
+    Image.new("RGB", (20, 20)).save(output, format=format)
+    parse = mocker.patch(parser)
+    with pytest.raises(ValueError, match="Image not shown.*cannot be decoded"):
         prepare_image(output.getvalue())
+    parse.assert_not_called()
+
+
+def test_only_supported_formats_are_offered_to_pillow():
+    Image.init()
+    assert {
+        Image.MIME[format] for format in tool_image.IMAGE_FORMATS
+    } == tool_image.IMAGE_MIME_TYPES
 
 
 def test_text_cap_does_not_truncate_image_bytes():

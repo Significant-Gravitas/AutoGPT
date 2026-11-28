@@ -14,6 +14,9 @@ MAX_IMAGE_BYTES = 3 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 2000
 IMAGE_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
+# The only Pillow parsers a file is handed to, whatever its name or stored MIME
+# type says. The JPEG parser also opens MPO.
+IMAGE_FORMATS = ("PNG", "JPEG", "GIF", "WEBP")
 IMAGE_READ_DESCRIPTION = (
     "Images: PNG/JPEG/GIF/WebP, up to 3 MiB and 2000px/side; first frame only. "
 )
@@ -84,7 +87,7 @@ def prepare_image(raw: bytes) -> ToolImage:
     if len(raw) > MAX_IMAGE_BYTES:
         raise ImageReadError(IMAGE_TOO_LARGE_MESSAGE)
     try:
-        with Image.open(io.BytesIO(raw)) as image:
+        with Image.open(io.BytesIO(raw), formats=IMAGE_FORMATS) as image:
             mime = (
                 "image/jpeg"
                 if image.format == "MPO"
@@ -104,7 +107,7 @@ def prepare_image(raw: bytes) -> ToolImage:
                     "Image exceeds the configured pixel limit"
                 )
             image.verify()
-        with Image.open(io.BytesIO(raw)) as image:
+        with Image.open(io.BytesIO(raw), formats=IMAGE_FORMATS) as image:
             image.load()
             if (
                 image.format in {"MPO", "GIF", "WEBP", "PNG"}
