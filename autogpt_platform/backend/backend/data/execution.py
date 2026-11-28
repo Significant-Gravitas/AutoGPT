@@ -1685,6 +1685,22 @@ async def get_node_executions(
     return res
 
 
+async def get_node_ids_by_node_exec_id(
+    graph_exec_id: str, node_exec_ids: list[str]
+) -> dict[str, str]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Maps each of `node_exec_ids` that belongs to the run to its node id,
+    reading only those rows and nothing joined to them.
+    """
+    if not node_exec_ids:
+        return {}
+    executions = await AgentNodeExecution.prisma().find_many(
+        where={"id": {"in": node_exec_ids}, "agentGraphExecutionId": graph_exec_id},
+    )
+    return {execution.id: execution.agentNodeId for execution in executions}
+
+
 async def get_latest_node_execution(
     node_id: str, graph_eid: str
 ) -> NodeExecutionResult | None:
