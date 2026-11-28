@@ -173,10 +173,10 @@ async def test_documentation_stats_ignore_embeddings_of_removed_pages(tmp_path, 
             ContentType.DOCUMENTATION, content_id, [0.1] * EMBEDDING_DIM, "text"
         )
 
-    await _first_db_call(lambda: store(content_ids[0]))
-    await store(content_ids[1])
+    handler = DocumentationHandler()
     try:
-        handler = DocumentationHandler()
+        await _first_db_call(lambda: store(content_ids[0]))
+        await store(content_ids[1])
         with patch.object(handler, "_get_docs_root", return_value=docs_root):
             stats = await handler.get_stats()
     finally:
