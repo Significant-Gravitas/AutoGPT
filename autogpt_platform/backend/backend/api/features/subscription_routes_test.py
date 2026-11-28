@@ -13,6 +13,10 @@ from prisma.enums import SubscriptionTier
 
 from backend.data.credit import PendingChangeUnknown
 from backend.data.pro_activation import UsageActivationState
+from backend.data.subscription_payment_due import (
+    UNPAID_BILL_BLOCKS_CHECKOUT,
+    SubscriptionPaymentDue,
+)
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.testing import Rendezvous
 
@@ -48,6 +52,26 @@ def client() -> fastapi.testclient.TestClient:
         yield fastapi.testclient.TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_open_renewal_bill(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """No failed renewal's bill is open unless a test says so, so the status
+    read and the Checkout guard (``_no_owed_plan``) stay off Stripe."""
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_payment_due",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_owed_plan(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.unpaid_bill_blocks_checkout",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -2652,3 +2676,216 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     release_mock.assert_not_awaited()
     modify_mock.assert_awaited_once()
     checkout_mock.assert_awaited_once()
+
+
+_OPEN_RENEWAL_BILL = SubscriptionPaymentDue(
+    amount_due=5000,
+    currency="usd",
+    payment_url="https://invoice.stripe.com/i/acct_1/test_bill",
+    plan="PRO",
+    due_since=1772539200,
+)
+
+
+def test_status_offers_a_failed_renewals_open_bill(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    """A renewal whose charge failed leaves NO_TIER with a bill to pay
+    (SECRT-2873); the paywall offers that bill, not a new plan."""
+    mock_user = Mock(subscription_tier=SubscriptionTier.NO_TIER)
+    mock_user.stripe_customer_id = "cus_1"
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _no_open_renewal_bill.return_value = _OPEN_RENEWAL_BILL
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["payment_due"] == _OPEN_RENEWAL_BILL.model_dump()
+    _no_open_renewal_bill.assert_awaited_once_with("cus_1")
+
+
+def test_status_without_the_bill_when_stripe_cannot_be_read(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    """The status is read on every page load; a Stripe error while reading
+    the open bill leaves the bill out, it doesn't fail the page."""
+    mock_user = Mock(subscription_tier=SubscriptionTier.NO_TIER)
+    mock_user.stripe_customer_id = "cus_1"
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    _no_open_renewal_bill.side_effect = stripe.APIConnectionError("Stripe is down")
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["payment_due"] is None
+    _no_open_renewal_bill.assert_awaited_once_with("cus_1")
+
+
+def test_status_of_a_paying_customer_reads_no_bill(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    _no_open_renewal_bill: AsyncMock,
+) -> None:
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(subscription_tier=SubscriptionTier.PRO),
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.json()["payment_due"] is None
+    _no_open_renewal_bill.assert_not_awaited()
+
+
+_PRICES = {
+    (SubscriptionTier.PRO, "monthly"): "price_pro",
+    (SubscriptionTier.PRO, "yearly"): "price_pro_yearly",
+    (SubscriptionTier.MAX, "monthly"): "price_max",
+    (SubscriptionTier.MAX, "yearly"): "price_max_yearly",
+}
+
+
+def _owes_a_yearly_max_renewal(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """A NO_TIER customer whose yearly MAX renewal failed: its subscription
+    is past due with the bill open. Returns the Checkout mock."""
+    from backend.data import subscription_payment_due as payment_due
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=Mock(
+            subscription_tier=SubscriptionTier.NO_TIER, stripe_customer_id="cus_1"
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
+        new_callable=AsyncMock,
+        side_effect=lambda tier, cycle: _PRICES.get((tier, cycle)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.unpaid_bill_blocks_checkout",
+        side_effect=payment_due.unpaid_bill_blocks_checkout,
+    )
+    mocker.patch.object(
+        payment_due,
+        "build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={"price_max_yearly": SubscriptionTier.MAX},
+    )
+    mocker.patch.object(
+        payment_due,
+        "replaced_by_newer_plan",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    owed = {
+        "id": "sub_max_yearly",
+        "customer": "cus_1",
+        "status": "past_due",
+        "created": 100,
+        "current_period_start": 1772539200,
+        "pending_update": None,
+        "items": {"data": [{"price": {"id": "price_max_yearly"}}]},
+        "latest_invoice": {
+            "id": "in_max_yearly",
+            "customer": "cus_1",
+            "status": "open",
+            "amount_due": 50000,
+            "currency": "usd",
+            "hosted_invoice_url": "https://invoice.stripe.com/i/acct_1/test_bill",
+        },
+    }
+
+    async def list_subscriptions(customer, status, limit, expand):
+        page = Mock(has_more=False)
+        page.data = [owed] if status == "past_due" else []
+        return page
+
+    mocker.patch("stripe.Subscription.list_async", side_effect=list_subscriptions)
+    return mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/c/pay/test",
+    )
+
+
+def _choose(client: fastapi.testclient.TestClient, tier: str, cycle: str):
+    return client.post(
+        "/credits/subscription",
+        json={
+            "tier": tier,
+            "billing_cycle": cycle,
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+
+@pytest.mark.parametrize("cycle", ["yearly", "monthly"])
+def test_checkout_for_the_owed_plan_in_either_cycle_is_refused_while_its_bill_is_open(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    cycle: str,
+) -> None:
+    """Paying the open bill restores that plan; a new Checkout for it would
+    start it a second time. In the other cycle too: paying the old bill
+    during that Checkout revives the old plan at the same tier, so the new
+    plan's activation changes no tier and cancels nothing."""
+    set_platform_payment(True)
+    checkout = _owes_a_yearly_max_renewal(mocker)
+
+    response = _choose(client, "MAX", cycle)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == UNPAID_BILL_BLOCKS_CHECKOUT
+    checkout.assert_not_awaited()
+
+
+@pytest.mark.parametrize("tier,cycle", [("PRO", "monthly"), ("PRO", "yearly")])
+def test_a_different_plan_goes_through_checkout_while_a_bill_is_open(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    set_platform_payment,
+    tier: str,
+    cycle: str,
+) -> None:
+    """The customer may leave the owed plan for another; the new plan's
+    activation then ends the old one and voids its bill."""
+    set_platform_payment(True)
+    checkout = _owes_a_yearly_max_renewal(mocker)
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.get_subscription_status",
+        new_callable=AsyncMock,
+        return_value=subscription_routes.SubscriptionStatusResponse(
+            tier="NO_TIER", monthly_cost=0, tier_costs={}, proration_credit_cents=0
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.track_checkout_started",
+        new_callable=AsyncMock,
+    )
+
+    response = _choose(client, tier, cycle)
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://checkout.stripe.com/c/pay/test"
+    checkout.assert_awaited_once()

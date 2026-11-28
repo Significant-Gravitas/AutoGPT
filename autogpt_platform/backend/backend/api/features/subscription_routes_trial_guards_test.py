@@ -36,6 +36,8 @@ _stub_lifecycle_emails = routes_test._stub_lifecycle_emails
 _stub_pending_subscription_change = routes_test._stub_pending_subscription_change
 track_checkout_started = routes_test.track_checkout_started
 _stub_subscription_status_lookups = routes_test._stub_subscription_status_lookups
+_no_open_renewal_bill = routes_test._no_open_renewal_bill
+_no_owed_plan = routes_test._no_owed_plan
 cancel_pending_trial = trial_test.cancel_pending_trial
 trial_conversion = trial_test.trial_conversion
 
