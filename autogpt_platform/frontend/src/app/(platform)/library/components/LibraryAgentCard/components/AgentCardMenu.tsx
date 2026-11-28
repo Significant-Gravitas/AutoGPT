@@ -218,8 +218,7 @@ export function AgentCardMenu({ agent }: AgentCardMenuProps) {
               e.stopPropagation();
               setShowDeleteDialog(true);
             }}
-            // oxlint-disable-next-line design-system/no-restyle -- DropdownMenuItem has no destructive variant
-            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
+            tone="error-strong"
           >
             Delete workflow
           </DropdownMenuItem>

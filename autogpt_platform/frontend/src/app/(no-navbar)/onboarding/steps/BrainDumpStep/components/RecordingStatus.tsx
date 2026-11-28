@@ -27,7 +27,12 @@ export function RecordingStatus({
     <div className="flex flex-col items-center gap-2">
       <div className="mt-2 h-6">
         <SwapFade swapKey={feedback ?? "idle"} className="flex justify-center">
-          <Text variant="body-medium" tone="muted" className="text-center">
+          <Text
+            variant="body"
+            weight="medium"
+            tone="muted"
+            className="text-center"
+          >
             {feedback ?? ""}
           </Text>
         </SwapFade>

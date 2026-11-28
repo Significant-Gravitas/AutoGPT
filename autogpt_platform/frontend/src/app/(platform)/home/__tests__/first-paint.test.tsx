@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getCurrentUser, validateSession } from "@/lib/auth/actions";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import { FIRST_RENDER_SESSION_DEADLINE_MS } from "@/lib/auth/server/getFirstRenderUser";
 import { getServerSession } from "@/lib/auth/server/getServerSession";
 import type { User } from "@/lib/auth/types";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
@@ -206,5 +207,30 @@ describe("/home first paint", () => {
     lookup.resolve({ user: USER });
 
     expect(await screen.findByTestId("chat")).toBeDefined();
+  });
+
+  test("a server session read that doesn't answer in time leaves the page to the browser's session check", async () => {
+    vi.mocked(getServerSession).mockReturnValue(new Promise(() => {}));
+    const lookup = deferred<Awaited<ReturnType<typeof getCurrentUser>>>({
+      user: null,
+    });
+    vi.mocked(getCurrentUser).mockReturnValue(lookup.promise);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const layout = PlatformLayout({ children: <HomePage /> });
+    await vi.advanceTimersByTimeAsync(FIRST_RENDER_SESSION_DEADLINE_MS);
+    const page = await layout;
+    vi.useRealTimers();
+    render(page);
+
+    await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
+    expect(screen.getByTestId("loader")).toBeDefined();
+    expect(screen.queryByTestId("chat")).toBeNull();
+
+    lookup.resolve({ user: USER });
+
+    expect(await screen.findByTestId("chat")).toBeDefined();
+    warn.mockRestore();
   });
 });

@@ -31,7 +31,9 @@ export function InsetHeaderTitle() {
         tone="emphasis"
         className="size-5 max-md:hidden"
       />
-      <Text variant="large-medium">{entry.title}</Text>
+      <Text variant="large" weight="medium">
+        {entry.title}
+      </Text>
     </div>
   );
 }

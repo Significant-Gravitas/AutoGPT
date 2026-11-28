@@ -52,6 +52,8 @@ export function SelectedTriggerView({
   } = useSelectedTriggerView({
     triggerId,
     graphId: agent.graph_id,
+    inputSchema: agent.input_schema,
+    triggerConfigSchema: agent.trigger_setup_info?.config_schema,
   });
 
   const agentInputFields = getAgentInputFields(agent);

@@ -107,7 +107,7 @@ export const CustomControls = memo(
     return (
       <div
         data-id="custom-controls"
-        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-surface px-1 py-2 shadow-lg"
+        className="absolute bottom-4 left-4 z-raised flex flex-col items-center gap-2 rounded-pill bg-surface px-1 py-2 shadow-lg"
       >
         {controls.map((control) => (
           <Tooltip key={control.id} delayDuration={0}>

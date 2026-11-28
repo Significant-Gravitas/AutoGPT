@@ -3,11 +3,11 @@
 import { SkillLearningDetail } from "@/app/api/__generated__/models/skillLearningDetail";
 import { SkillVersionSummary } from "@/app/api/__generated__/models/skillVersionSummary";
 import { Badge } from "@/components/atoms/Badge/Badge";
+import { RelativeTime } from "@/components/atoms/RelativeTime/RelativeTime";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { reuseLabel, versionLabel } from "@/services/skill-learning/helpers";
-import { formatDistanceToNow } from "date-fns";
 import { OutcomeReportRequestOutcome } from "@/app/api/__generated__/models/outcomeReportRequestOutcome";
 import { SkillPolicyRequest } from "@/app/api/__generated__/models/skillPolicyRequest";
 import { SourceRemovedNotice } from "./SourceRemovedNotice";
@@ -60,10 +60,7 @@ export function SummaryView({
         </span>
         {version ? (
           <Text variant="small" tone="muted" as="span">
-            {versionLabel(version)} ·{" "}
-            {formatDistanceToNow(new Date(version.created_at), {
-              addSuffix: true,
-            })}
+            {versionLabel(version)} · <RelativeTime date={version.created_at} />
             {isCurrent ? "" : " · not the current version"}
           </Text>
         ) : null}
@@ -86,7 +83,7 @@ export function SummaryView({
             data-slot="skill-learning-sheet-summary-evidence"
             aria-label="Evidence"
           >
-            <Text variant="small-medium" tone="primary">
+            <Text variant="small" weight="medium" tone="primary">
               Evidence
             </Text>
             <ul
@@ -119,7 +116,7 @@ export function SummaryView({
               data-slot="skill-learning-sheet-summary-limits"
               aria-label="Limits"
             >
-              <Text variant="small-medium" tone="primary">
+              <Text variant="small" weight="medium" tone="primary">
                 Limits
               </Text>
               <ul

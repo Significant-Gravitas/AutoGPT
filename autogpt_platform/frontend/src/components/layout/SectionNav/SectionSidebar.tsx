@@ -8,6 +8,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useEntranceInitial } from "@/hooks/useEntranceInitial";
 import { cn } from "@/lib/utils";
 import { SectionNavItem, type SectionNavLink } from "./SectionNavItem";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   items: (SectionNavLink & { isActive: boolean })[];
@@ -35,7 +36,7 @@ export function SectionSidebar({ items, className }: Props) {
     <motion.aside
       initial={asideInitial}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.25, ease: [0, 0, 0.2, 1] as const }}
+      transition={{ duration: duration.base, ease: ease.out }}
       className={cn(
         "hidden h-full shrink-0 overflow-y-auto border-r border-border-base bg-surface-muted px-2.5 pt-3 md:block",
         className,

@@ -9,9 +9,10 @@ const PLACEHOLDER = "Search by job or name";
 interface Props {
   value: string;
   onChangeText: (text: string) => void;
+  placeholder?: string;
 }
 
-export function MarketplaceSearchField({ value, onChangeText }: Props) {
+export function MarketplaceSearchField({ value, onChangeText, placeholder = PLACEHOLDER }: Props) {
   const styles = useStyles();
   const colors = useColors();
   return (
@@ -20,9 +21,9 @@ export function MarketplaceSearchField({ value, onChangeText }: Props) {
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder={PLACEHOLDER}
+        placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
-        accessibilityLabel={PLACEHOLDER}
+        accessibilityLabel={placeholder}
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"

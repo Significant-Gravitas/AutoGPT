@@ -16,7 +16,7 @@ function Rectangles({ className }: RectanglesProps) {
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden",
+        "pointer-events-none absolute inset-0 z-base h-full w-full overflow-hidden",
         className,
       )}
     >
@@ -31,7 +31,7 @@ function Rectangles({ className }: RectanglesProps) {
 
 export function TourBackground() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-hidden opacity-40 [perspective:1000px] [transform-style:preserve-3d]">
+    <div className="pointer-events-none absolute inset-0 z-base h-full w-full overflow-hidden opacity-40 [perspective:1000px] [transform-style:preserve-3d]">
       <Rectangles className="[transform:rotateX(45deg)] [mask-image:linear-gradient(to_top,white,transparent)]" />
       <Rectangles className="[transform:rotateX(-45deg)] [mask-image:linear-gradient(to_bottom,white,transparent)]" />
     </div>

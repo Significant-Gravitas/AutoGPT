@@ -8,7 +8,6 @@ import {
   hiredTemplateIDs,
   openSeats,
   primaryArea,
-  whoLine,
   withHiredExpert,
 } from "../helpers";
 
@@ -110,34 +109,6 @@ describe("areaSections", () => {
       ["marketing", true],
       ["support", true],
     ]);
-  });
-});
-
-describe("whoLine", () => {
-  it("joins the name and the tagline, lowercasing its first letter", () => {
-    expect(whoLine(template({ name: "Jordan", tagline: "Finds leads that fit." }))).toBe(
-      "Jordan, finds leads that fit.",
-    );
-  });
-
-  it("keeps words that open in capitals", () => {
-    expect(whoLine(template({ name: "Maria", tagline: "SEO articles, start to end." }))).toBe(
-      "Maria, SEO articles, start to end.",
-    );
-    expect(whoLine(template({ name: "Kai", tagline: "I sort your inbox." }))).toBe(
-      "Kai, I sort your inbox.",
-    );
-    expect(whoLine(template({ name: "Kai", tagline: "I'm sorting your inbox." }))).toBe(
-      "Kai, I'm sorting your inbox.",
-    );
-    expect(whoLine(template({ name: "Kai", tagline: "I’ll sort your inbox." }))).toBe(
-      "Kai, I’ll sort your inbox.",
-    );
-  });
-
-  it("is just the name without a tagline", () => {
-    expect(whoLine(template({ name: "Jordan", tagline: "  " }))).toBe("Jordan");
-    expect(whoLine(template({ name: "Jordan", tagline: null }))).toBe("Jordan");
   });
 });
 

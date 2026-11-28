@@ -4,7 +4,7 @@ import {
   SIDEBAR_COOKIE_NAME,
 } from "@/components/molecules/Sidebar/sidebar-cookie";
 import { NetworkStatusMonitor } from "@/services/network-status/NetworkStatusMonitor";
-import { getServerUser } from "@/lib/auth/server/getServerUser";
+import { getFirstRenderUser } from "@/lib/auth/server/getFirstRenderUser";
 import { cookies } from "next/headers";
 import { PushNotificationProvider } from "@/services/push-notifications/PushNotificationProvider";
 import { ReactNode } from "react";
@@ -19,7 +19,7 @@ export default async function PlatformLayout({
   children: ReactNode;
 }) {
   const sidebarCookie = (await cookies()).get(SIDEBAR_COOKIE_NAME)?.value;
-  const { user } = await getServerUser();
+  const user = await getFirstRenderUser();
   return (
     <AutoPilotBridgeProvider>
       <ServerUserSeed user={user} />

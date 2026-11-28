@@ -102,7 +102,7 @@ function shapeCard(obj: Record<string, unknown>) {
   if (key === "status" && typeof value === "string")
     return (
       <div className={`${CARD} ${HALF} flex items-center gap-2 p-2.5`}>
-        <Text variant="small-tight" as="span" tone="subtle">
+        <Text variant="small" leading="4" as="span" tone="subtle">
           Status
         </Text>
         <span className="ml-auto">

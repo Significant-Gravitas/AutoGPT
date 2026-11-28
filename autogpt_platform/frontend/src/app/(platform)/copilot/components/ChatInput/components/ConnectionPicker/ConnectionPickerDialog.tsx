@@ -53,7 +53,7 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
 
   if (isError) {
     return (
-      <Text variant="body-tight" tone="secondary">
+      <Text variant="body" leading="5" tone="secondary">
         AI connections are unavailable right now. Try again in a moment.
       </Text>
     );
@@ -61,7 +61,7 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
 
   if (offers.length === 0) {
     return (
-      <Text variant="body-tight" tone="secondary">
+      <Text variant="body" leading="5" tone="secondary">
         No AI connection is set up yet.{" "}
         <Link href="/settings/integrations" className="underline">
           Set one up

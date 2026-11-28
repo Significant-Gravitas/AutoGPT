@@ -10,16 +10,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 
-import {
-  EASE_OUT,
-  type FilterState,
-  type SortDir,
-  type SortKey,
-} from "../../helpers";
+import { type FilterState, type SortDir, type SortKey } from "../../helpers";
 import { MobileSubmissionItem } from "../MobileSubmissionItem/MobileSubmissionItem";
 import { Pagination } from "../Pagination/Pagination";
 import { SortColumnFilter } from "../SubmissionsList/columns/SortColumnFilter";
 import { StatusColumnFilter } from "../SubmissionsList/columns/StatusColumnFilter";
+import { duration, ease } from "@/components/styles/motion";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string;
@@ -80,14 +76,18 @@ export function MobileSubmissionsList({
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.28, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full max-w-full min-w-0 flex-col gap-3"
       data-testid="mobile-submissions-list"
     >
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Submissions
           </Text>
         </div>
@@ -152,7 +152,7 @@ export function MobileSubmissionsList({
           ))
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
-            <Text variant="body-medium">
+            <Text variant="body" weight="medium">
               {debouncedSearch
                 ? `No submissions match "${debouncedSearch}"`
                 : "No submissions match these filters"}
@@ -194,7 +194,7 @@ function FilterChip({
   children: React.ReactNode;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border-base bg-surface px-2 py-1 text-caption text-foreground-secondary">
+    <div className="inline-flex items-center gap-1 rounded-pill border border-border-base bg-surface px-2 py-1 text-caption text-foreground-secondary">
       <span>{label}</span>
       {children}
     </div>

@@ -30,7 +30,7 @@ export function OpenDecisionsCard({
       className="flex flex-col rounded-large border border-warning-border bg-warning-surface/40 px-4 py-4 shadow-message-table"
       data-testid="open-decisions-card"
     >
-      <Text variant="body-medium" as="span">
+      <Text variant="body" weight="medium" as="span">
         Needs your decision
       </Text>
       <Text variant="small" as="span" tone="muted">
@@ -43,7 +43,7 @@ export function OpenDecisionsCard({
             className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="min-w-0">
-              <Text variant="small-medium" as="span">
+              <Text variant="small" weight="medium" as="span">
                 <Link
                   href={skillDetailHref({
                     expertId: proposal.expert_id,

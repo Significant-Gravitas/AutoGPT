@@ -5421,7 +5421,9 @@
               }
             }
           },
-          "429": { "description": "Too many sandboxes are running" },
+          "429": {
+            "description": "Usage allowance spent, or too many sandboxes running"
+          },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -8948,7 +8950,9 @@
               }
             }
           },
-          "429": { "description": "Too many sandboxes are running" },
+          "429": {
+            "description": "Usage allowance spent, or too many sandboxes running"
+          },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -15675,7 +15679,7 @@
       "get": {
         "tags": ["platform-config"],
         "summary": "Get Platform Config",
-        "description": "This deployment's settings the browser needs, the same for every caller.",
+        "description": "Settings the browser and the mobile app need, the same for every caller.",
         "operationId": "get_platform_config",
         "responses": {
           "200": {
@@ -22247,6 +22251,10 @@
               { "$ref": "#/components/schemas/TokenRateDisplay" },
               { "type": "null" }
             ]
+          },
+          "max_cost": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Cost"
           }
         },
         "type": "object",
@@ -25105,6 +25113,11 @@
           "service_icon": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Service Icon"
+          },
+          "mcp_catalog_entry": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mcp Catalog Entry",
+            "description": "The MCP catalog entry (e.g. mcp_linear) whose server this sign-in connects; null for other credentials and uncatalogued servers"
           },
           "microsoft_identity": {
             "anyOf": [
@@ -34080,6 +34093,11 @@
             "type": "boolean",
             "title": "Payment Enabled",
             "description": "Whether the platform is paid for, so an account without a plan is paywalled (`ENABLE_PLATFORM_PAYMENT`)."
+          },
+          "mobile_min_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Mobile Min Version",
+            "description": "Oldest mobile app version still allowed in; an older app asks to be updated (`MOBILE_MIN_APP_VERSION`). Null means no minimum."
           }
         },
         "type": "object",

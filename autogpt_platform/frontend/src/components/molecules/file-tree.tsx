@@ -196,7 +196,7 @@ const TreeIndicator = forwardRef<
       ref={ref}
       data-slot="file-tree-indicator"
       className={cn(
-        "absolute left-1.5 h-full w-px rounded-md bg-foreground-subtle py-3 duration-300 ease-in-out hover:bg-foreground-secondary rtl:right-1.5",
+        "absolute left-1.5 h-full w-px rounded-md bg-fill-subtle py-3 duration-300 ease-in-out hover:bg-fill-medium rtl:right-1.5",
         className,
       )}
       {...props}

@@ -18,7 +18,8 @@ export const TextRenderer: React.FC<{
   return (
     <div className="bg-surface-muted p-3">
       <Text
-        variant="small-tight"
+        variant="small"
+        leading="4"
         tone="inherit"
         as="div"
         className="break-words"

@@ -127,13 +127,14 @@ function SettingsBillingPage() {
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5 px-4 pb-8 sm:px-6">
       <header className="space-y-1">
         <div className="flex items-center gap-1">
-          <Text variant="h3-tracking-tight" as="h1">
+          <Text variant="h3" tracking="tight" as="h1">
             Billing &amp; usage
           </Text>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
+            shape="soft"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
             tone="muted"

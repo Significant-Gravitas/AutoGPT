@@ -4,8 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { NotificationSettingsControls } from "@/components/layout/NotificationSettings/NotificationSettingsControls";
-
-import { EASE_OUT } from "../../helpers";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   index?: number;
@@ -21,13 +20,17 @@ export function BrowserNotificationsCard({ index = 0 }: Props) {
       transition={
         reduceMotion
           ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
+          : {
+              duration: duration.slow,
+              ease: ease.emphasized,
+              delay: 0.04 + index * 0.05,
+            }
       }
       className="flex w-full flex-col"
     >
       <div className="flex h-fit flex-col gap-4 rounded-large border border-border-base bg-surface px-4 py-3 shadow-message-table">
         <div className="flex flex-col gap-1">
-          <Text variant="body-medium" as="span">
+          <Text variant="body" weight="medium" as="span">
             Browser
           </Text>
           {/* Unlike the email settings above, these live in this browser's

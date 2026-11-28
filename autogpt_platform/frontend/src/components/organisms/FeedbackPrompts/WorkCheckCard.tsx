@@ -95,7 +95,7 @@ export function WorkCheckCard({
           className="ring-1 ring-border-base"
         />
         <div className="flex flex-1 flex-col gap-0.5">
-          <Text variant="body-medium" tone="primary">
+          <Text variant="body" weight="medium" tone="primary">
             {rating && rating !== "great"
               ? FOLLOW_UPS[rating]
               : `How did ${name} do?`}
@@ -107,6 +107,7 @@ export function WorkCheckCard({
         <Button
           variant="ghost"
           size="xs"
+          shape="sharp"
           className="-mt-1 -mr-1"
           onClick={close}
         >
@@ -128,7 +129,7 @@ export function WorkCheckCard({
               )}
             >
               <Icon icon={option.icon} size={28} strokeWidth={1.75} />
-              <Text variant="small-medium" tone="inherit">
+              <Text variant="small" weight="medium" tone="inherit">
                 {option.label}
               </Text>
             </motion.button>

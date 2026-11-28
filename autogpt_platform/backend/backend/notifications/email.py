@@ -33,7 +33,8 @@ from backend.data.notifications import (
     supports_list_unsubscribe,
 )
 from backend.notifications.renderer import EmailUrls, RenderedEmail, build_urls, render
-from backend.util.settings import Settings
+from backend.util.exceptions import MissingConfigError
+from backend.util.settings import AppEnvironment, BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -69,6 +70,12 @@ class EmailSender:
             self.postmark_lookups = TypedPostmarkClient(
                 server_token=settings.secrets.postmark_server_api_token,
                 timeout=SUPPRESSION_LOOKUP_TIMEOUT_SECONDS,
+            )
+        elif _is_hosted_production():
+            raise MissingConfigError(
+                "POSTMARK_SERVER_API_TOKEN is not set. Production (APP_ENV=prod, "
+                "BEHAVE_AS=cloud) sends all of its email through Postmark, so the "
+                "notification service won't start without it."
             )
         else:
             logger.warning(
@@ -231,6 +238,16 @@ class EmailSender:
             Tag=tag,
             **_tracking(tracked and settings.config.postmark_track_opens_and_clicks),
         )
+
+
+def _is_hosted_production() -> bool:
+    """BEHAVE_AS=cloud alone doesn't mean AutoGPT's own hosting: the
+    single-container image runs APP_ENV=dev, and a multi-user install of it
+    sets BEHAVE_AS=cloud, often without email."""
+    return (
+        settings.config.app_env == AppEnvironment.PRODUCTION
+        and settings.config.behave_as == BehaveAs.CLOUD
+    )
 
 
 def _suppress_preview_email(user_email: str) -> bool:

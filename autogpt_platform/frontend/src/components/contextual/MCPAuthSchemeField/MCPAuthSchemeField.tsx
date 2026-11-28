@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { Text, type TextProps } from "@/components/atoms/Text/Text";
 import type { Variant } from "@/components/atoms/Text/helpers";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 
@@ -16,6 +16,8 @@ interface Props {
   labelClassName?: string;
   /** Renders the label as a `<Text>` in this variant, in the parent's colour. */
   labelVariant?: Variant;
+  labelWeight?: TextProps["weight"];
+  labelLeading?: TextProps["leading"];
   selectClassName?: string;
 }
 
@@ -28,6 +30,8 @@ export function MCPAuthSchemeField({
   className,
   labelClassName,
   labelVariant,
+  labelWeight,
+  labelLeading,
   selectClassName,
 }: Props) {
   const id = useId();
@@ -40,6 +44,8 @@ export function MCPAuthSchemeField({
       {labelVariant ? (
         <Text
           variant={labelVariant}
+          weight={labelWeight}
+          leading={labelLeading}
           as="label"
           tone="inherit"
           htmlFor={id}

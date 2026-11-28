@@ -52,8 +52,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       onKeyDown={handleKeyDown}
       onClick={send}
       className={cn(
-        // oxlint-disable-next-line design-system/no-arbitrary-values -- the prompt bar's indigo glow, no shadow token
-        "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_32px_-4px_rgba(99,102,241,0.4)] transition-shadow outline-none focus-visible:border-border-strong focus-visible:shadow-[0_2px_8px_rgba(0,0,0,0.04),0_0_44px_-2px_rgba(99,102,241,0.55)]",
+        "flex cursor-pointer items-center gap-3 rounded-xl border border-border-base bg-surface px-5 py-3.5 shadow-beacon shadow-indigo/40 transition-shadow outline-none focus-visible:border-border-strong focus-visible:shadow-indigo/55",
         isDisabled && "cursor-default opacity-60",
       )}
     >
@@ -74,7 +73,7 @@ export function TourPromptBar({ prompt, isStreaming, onSend }: Props) {
       <span
         aria-hidden="true"
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-full text-action-foreground transition-colors",
+          "flex size-10 shrink-0 items-center justify-center rounded-pill text-action-foreground transition-colors",
           isDisabled ? "bg-surface-active" : "bg-action",
         )}
       >

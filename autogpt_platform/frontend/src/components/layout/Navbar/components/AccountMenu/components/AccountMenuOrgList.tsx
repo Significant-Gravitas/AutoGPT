@@ -73,7 +73,7 @@ export function AccountMenuOrgList() {
             </Avatar>
             <span className="flex-1 truncate text-left">{org.name}</span>
             {org.is_personal && (
-              <Text variant="small-tight" as="span" tone="subtle">
+              <Text variant="small" leading="4" as="span" tone="subtle">
                 Personal
               </Text>
             )}
@@ -101,7 +101,7 @@ export function AccountMenuOrgList() {
               >
                 <span className="flex-1 truncate text-left">{team.name}</span>
                 {team.joinPolicy === "PRIVATE" && (
-                  <Text variant="small-tight" as="span" tone="subtle">
+                  <Text variant="small" leading="4" as="span" tone="subtle">
                     Private
                   </Text>
                 )}

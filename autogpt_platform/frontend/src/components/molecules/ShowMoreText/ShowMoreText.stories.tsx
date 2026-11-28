@@ -49,9 +49,11 @@ A simplified text truncation component that shows a preview of text content with
 ### Supported Text Variants
 
 - **lead** - Large leading text
-- **large**, **large-medium**, **large-semibold** - Large body text variants
-- **body**, **body-medium** - Standard body text variants
-- **small**, **small-medium** - Small text variants
+- **large** - Large body text
+- **body** - Standard body text
+- **small** - Small text
+
+Pass **weight** (\`medium\`, \`semibold\`, ...) for a heavier face.
         `,
       },
     },
@@ -71,20 +73,16 @@ A simplified text truncation component that shows a preview of text content with
     },
     variant: {
       control: "select",
-      options: [
-        "lead",
-        "large",
-        "large-medium",
-        "large-semibold",
-        "body",
-        "body-medium",
-        "small",
-        "small-medium",
-      ],
+      options: ["lead", "large", "body", "small"],
       description: "Text variant to use for styling",
       table: {
         defaultValue: { summary: "body" },
       },
+    },
+    weight: {
+      control: "select",
+      options: [undefined, "normal", "medium", "semibold", "bold"],
+      description: "Font weight over the variant's own",
     },
     className: {
       control: "text",
@@ -152,11 +150,11 @@ export const LargeVariants: Story = {
         Large variant: This demonstrates how the ShowMoreText component works
         with the large text variant and how the toggle scales appropriately.
       </ShowMoreText>
-      <ShowMoreText variant="large-medium" previewLimit={60}>
+      <ShowMoreText variant="large" weight="medium" previewLimit={60}>
         Large medium variant: This shows the medium weight version of the large
         text variant with proper toggle sizing.
       </ShowMoreText>
-      <ShowMoreText variant="large-semibold" previewLimit={60}>
+      <ShowMoreText variant="large" weight="semibold" previewLimit={60}>
         Large semibold variant: This demonstrates the semibold version with
         heavier font weight and matching toggle.
       </ShowMoreText>
@@ -174,7 +172,7 @@ export const BodyVariants: Story = {
         Body variant: This is the default text variant used for most content. It
         provides good readability and spacing.
       </ShowMoreText>
-      <ShowMoreText variant="body-medium" previewLimit={70}>
+      <ShowMoreText variant="body" weight="medium" previewLimit={70}>
         Body medium variant: This uses medium font weight for slightly more
         emphasis while maintaining readability.
       </ShowMoreText>
@@ -193,7 +191,7 @@ export const SmallVariants: Story = {
         for secondary information, captions, or footnotes where space is
         limited.
       </ShowMoreText>
-      <ShowMoreText variant="small-medium" previewLimit={80}>
+      <ShowMoreText variant="small" weight="medium" previewLimit={80}>
         Small medium variant: This uses the small size with medium font weight
         for small text that needs slightly more emphasis.
       </ShowMoreText>
@@ -233,7 +231,8 @@ export const CustomStyling: Story = {
   args: {
     children:
       "This example demonstrates custom styling options. The preview state has a different background color, the expanded state has different padding, and the toggle button has custom styling to match your design system.",
-    variant: "body-medium",
+    variant: "body",
+    weight: "medium",
     previewLimit: 80,
     className: "max-w-md",
     toggleClassName: "text-info-foreground hover:text-info-foreground",

@@ -21,7 +21,8 @@ export function StatusIcon({ status }: Props) {
     return (
       <LoadingSpinner
         size="small"
-        className="h-3.5 w-3.5 text-brand duration-500"
+        tone="brand"
+        className="h-3.5 w-3.5 duration-500"
         aria-label="in progress"
       />
     );
