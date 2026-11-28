@@ -18,6 +18,7 @@ import prisma.types
 from prisma import Prisma
 from pydantic import BaseModel, Field
 
+from backend.data.db import transaction
 from backend.data.skill_content_approvals import (
     SkillContentApproval,
     content_approvals_json,
@@ -30,12 +31,14 @@ from backend.data.skill_revocations import (
 from backend.data.skill_revocations import (
     latest_independent_version_id as latest_independent_version_id,
 )
-from backend.data.skill_version_files import (
-    SkillVersionFile,
-    parse_version_files,
-    version_files_json,
-)
+from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_version_queries import list_version_summaries
+from backend.data.skill_version_store import (
+    manifest_json,
+    prune_version_history,
+    read_version_files,
+    store_version_files,
+)
 from backend.util.json import SafeJson
 
 ACTIVE_VERSION_STATES = frozenset({"ready"})
@@ -124,7 +127,11 @@ class SkillVersionRecord(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillVersion) -> "SkillVersionRecord":
+    def from_db(
+        cls, row: prisma.models.SkillVersion, files: list[SkillVersionFile] | None
+    ) -> "SkillVersionRecord":
+        """*files* is the package as read from the store; ``None`` for a
+        summary row or a Markdown-only version."""
         return cls(
             id=row.id,
             user_id=row.userId,
@@ -135,7 +142,7 @@ class SkillVersionRecord(BaseModel):
             version=row.version,
             content=row.content,
             content_hash=row.contentHash,
-            files=parse_version_files(row.packageFiles),
+            files=files,
             content_approvals=parse_content_approvals(row.contentApprovals),
             description=row.description,
             triggers=list(row.triggers or []),
@@ -318,21 +325,20 @@ async def create_version(
     files: list[SkillVersionFile] | None = None,
     content_approvals: list[SkillContentApproval] | None = None,
 ) -> SkillVersionRecord:
-    """Append an immutable version row (numbers are monotonic per head)."""
+    """Append an immutable version row (numbers are monotonic per head),
+    then drop the skill's versions past its retention."""
     for _ in range(3):
-        number = await next_version_number(head.id, client=None)
         try:
-            row = await prisma.models.SkillVersion.prisma().create(
-                data={
+            async with transaction() as tx:
+                data: prisma.types.SkillVersionCreateInput = {
                     "userId": user_id,
                     "expertId": head.expert_id,
                     "ownerKey": head.owner_key,
                     "skillName": head.skill_name,
                     "headId": head.id,
-                    "version": number,
+                    "version": await next_version_number(head.id, client=tx),
                     "content": content,
                     "contentHash": content_hash(content),
-                    "packageFiles": version_files_json(files),
                     "contentApprovals": content_approvals_json(content_approvals or []),
                     "description": description,
                     "triggers": list(triggers),
@@ -350,10 +356,14 @@ async def create_version(
                     "blockedPatternClass": blocked_pattern_class,
                     "blockedStep": blocked_step,
                 }
-            )
-            return SkillVersionRecord.from_db(row)
+                if files is not None:
+                    package = await store_version_files(tx, user_id, files)
+                    data["packageManifest"] = manifest_json(package)
+                row = await tx.skillversion.create(data=data)
         except prisma.errors.UniqueViolationError:
             continue
+        await prune_version_history(user_id, head.id)
+        return SkillVersionRecord.from_db(row, files)
     raise RuntimeError("could not allocate a skill version number")
 
 
@@ -370,7 +380,9 @@ async def get_version(user_id: str, version_id: str) -> SkillVersionRecord | Non
     row = await prisma.models.SkillVersion.prisma().find_first(
         where={"id": version_id, "userId": user_id}
     )
-    return SkillVersionRecord.from_db(row) if row else None
+    if row is None:
+        return None
+    return SkillVersionRecord.from_db(row, await read_version_files(row))
 
 
 async def list_versions(
@@ -382,7 +394,7 @@ async def list_versions(
         skill_name=skill_name,
         limit=limit,
     )
-    return [SkillVersionRecord.from_db(row) for row in rows]
+    return [SkillVersionRecord.from_db(row, None) for row in rows]
 
 
 async def list_recent_versions(
@@ -400,7 +412,7 @@ async def list_recent_versions(
         states=[state] if state is not None else None,
         limit=limit,
     )
-    return [SkillVersionRecord.from_db(row) for row in rows]
+    return [SkillVersionRecord.from_db(row, None) for row in rows]
 
 
 async def list_open_decisions(
@@ -419,4 +431,4 @@ async def list_versions_in_states(
         states=states,
         limit=limit,
     )
-    return [SkillVersionRecord.from_db(row) for row in rows]
+    return [SkillVersionRecord.from_db(row, None) for row in rows]

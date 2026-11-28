@@ -90,6 +90,7 @@ import backend.data.graph
 import backend.data.llm_registry
 import backend.data.org_migration
 import backend.data.redis_client
+import backend.data.skill_version_store
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -273,6 +274,13 @@ async def _run_data_migrations() -> None:
             "Otto transport",
             lambda: asyncio.wait_for(
                 backend.data.autopilot_migrate.migrate_autopilot_transport(apply=True),
+                timeout=30,
+            ),
+        ),
+        (
+            "skill version files",
+            lambda: asyncio.wait_for(
+                backend.data.skill_version_store.move_inline_package_files(),
                 timeout=30,
             ),
         ),

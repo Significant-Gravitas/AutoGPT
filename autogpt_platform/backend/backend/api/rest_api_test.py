@@ -126,6 +126,9 @@ _DATA_MIGRATIONS = {
         "backend.integrations.webhooks.utils.migrate_flat_triggered_preset_inputs"
     ),
     "Otto transport": "backend.data.autopilot_migrate.migrate_autopilot_transport",
+    "skill version files": (
+        "backend.data.skill_version_store.move_inline_package_files"
+    ),
 }
 
 
