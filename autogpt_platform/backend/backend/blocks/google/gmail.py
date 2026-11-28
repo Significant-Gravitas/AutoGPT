@@ -76,6 +76,8 @@ def parse_email_recipients(header_value: str) -> list[str]:
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # RFC 5321's limit on an address; checked before the pattern runs.
 _MAX_EMAIL_LENGTH = 254
+# RFC 5322's limit on a line, for a subject before it is folded.
+_MAX_SUBJECT_LENGTH = 998
 
 
 def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
@@ -607,7 +609,7 @@ class GmailSendBlock(GmailBase):
             description="Recipient email addresses",
         )
         subject: str = SchemaField(
-            description="Email subject",
+            description="Email subject", max_length=_MAX_SUBJECT_LENGTH
         )
         body: str = SchemaField(
             description="Email body (plain text or HTML)",
@@ -709,7 +711,7 @@ class GmailCreateDraftBlock(GmailBase):
             description="Recipient email addresses",
         )
         subject: str = SchemaField(
-            description="Email subject",
+            description="Email subject", max_length=_MAX_SUBJECT_LENGTH
         )
         body: str = SchemaField(
             description="Email body (plain text or HTML)",
@@ -1274,7 +1276,8 @@ async def _build_reply_message(
         msg["Cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
         msg["Bcc"] = serialize_email_recipients(input_data.bcc)
-    msg["Subject"] = subject
+    # The default comes from the original message, which the workflow did not write.
+    msg["Subject"] = subject[:_MAX_SUBJECT_LENGTH]
     if headers.get("message-id"):
         msg["In-Reply-To"] = headers["message-id"]
     if references:
@@ -1339,7 +1342,9 @@ class GmailReplyBlock(GmailBase):
         replyAll: bool = SchemaField(
             description="Reply to all original recipients", default=False
         )
-        subject: str = SchemaField(description="Email subject", default="")
+        subject: str = SchemaField(
+            description="Email subject", default="", max_length=_MAX_SUBJECT_LENGTH
+        )
         body: str = SchemaField(description="Email body (plain text or HTML)")
         content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
@@ -1488,7 +1493,9 @@ class GmailDraftReplyBlock(GmailBase):
         replyAll: bool = SchemaField(
             description="Reply to all original recipients", default=False
         )
-        subject: str = SchemaField(description="Email subject", default="")
+        subject: str = SchemaField(
+            description="Email subject", default="", max_length=_MAX_SUBJECT_LENGTH
+        )
         body: str = SchemaField(description="Email body (plain text or HTML)")
         content_type: Optional[Literal["auto", "plain", "html"]] = SchemaField(
             description="Content type: 'auto' (default - detects HTML), 'plain', or 'html'",
@@ -1670,6 +1677,7 @@ class GmailForwardBlock(GmailBase):
         subject: str = SchemaField(
             description="Optional custom subject (defaults to 'Fwd: [original subject]')",
             default="",
+            max_length=_MAX_SUBJECT_LENGTH,
         )
         forwardMessage: str = SchemaField(
             description="Optional message to include before the forwarded content",
@@ -1804,7 +1812,7 @@ To: {original_to}
             msg["Cc"] = serialize_email_recipients(input_data.cc)
         if input_data.bcc:
             msg["Bcc"] = serialize_email_recipients(input_data.bcc)
-        msg["Subject"] = subject
+        msg["Subject"] = subject[:_MAX_SUBJECT_LENGTH]
 
         # Add body with proper content type
         msg.attach(_make_mime_text(body, input_data.content_type))

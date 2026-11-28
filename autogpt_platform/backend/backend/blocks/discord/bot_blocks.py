@@ -20,6 +20,7 @@ from backend.blocks._base import (
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.filename import sanitize_filename
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -804,7 +805,9 @@ class SendDiscordFileBlock(Block):
 
                 # Create Discord file object
                 discord_file = discord.File(
-                    io.BytesIO(file_bytes), filename=detected_filename or "file"
+                    io.BytesIO(file_bytes),
+                    # Discord file names are kept short.
+                    filename=sanitize_filename(detected_filename or "file"),
                 )
 
                 # Type check - ensure it's a text channel that can send messages

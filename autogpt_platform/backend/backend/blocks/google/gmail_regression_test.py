@@ -4,6 +4,11 @@ The blocks' own test_input/test_mock cases mock the API calls away, so
 these drive the real code with a fake Gmail service.
 """
 
+import base64
+import email
+from email import policy
+from unittest.mock import MagicMock
+
 import httplib2
 import pytest
 from googleapiclient.errors import HttpError
@@ -11,9 +16,15 @@ from googleapiclient.errors import HttpError
 from backend.blocks.google._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.google.gmail import (
     GmailAddLabelBlock,
+    GmailCreateDraftBlock,
+    GmailDraftReplyBlock,
+    GmailForwardBlock,
     GmailGetThreadBlock,
     GmailReadBlock,
     GmailRemoveLabelBlock,
+    GmailReplyBlock,
+    GmailSendBlock,
+    _build_reply_message,
 )
 
 READONLY = "https://www.googleapis.com/auth/gmail.readonly"
@@ -277,3 +288,95 @@ async def test_system_labels_still_need_their_exact_name():
     removed = await GmailRemoveLabelBlock()._remove_label(fake, "m1", "unread")
     assert removed == {"status": "Label not found", "label_id": ""}
     assert fake.called("messages.modify") == []
+
+
+_SUBJECT_LIMIT = 998
+
+
+@pytest.mark.parametrize(
+    "block_cls",
+    [
+        GmailSendBlock,
+        GmailCreateDraftBlock,
+        GmailReplyBlock,
+        GmailDraftReplyBlock,
+        GmailForwardBlock,
+    ],
+)
+def test_a_subject_over_the_header_limit_is_refused_before_the_run(block_cls):
+    block = block_cls()
+    data = {**block.test_input, "subject": "a\n" * (_SUBJECT_LIMIT // 2)}
+    assert block.input_schema.validate_data(data) is None
+
+    data["subject"] += "a"
+
+    assert block.input_schema.validate_data(data) == (
+        f"subject: must have at most {_SUBJECT_LIMIT} characters"
+    )
+
+
+_LONG_SUBJECT = "word " * 2000
+
+
+def _sent_subject(raw: str) -> str:
+    message = email.message_from_bytes(
+        base64.urlsafe_b64decode(raw), policy=policy.default
+    )
+    return str(message["Subject"])
+
+
+@pytest.mark.asyncio
+async def test_a_reply_bounds_the_subject_it_takes_from_the_original():
+    """The original's subject was written by its sender, not the workflow."""
+    parent = _message_with_headers(
+        {"From": "ann@example.com", "Subject": _LONG_SUBJECT}
+    )
+    input_data = GmailReplyBlock.Input.model_construct(
+        threadId="t1",
+        parentMessageId="m1",
+        to=[],
+        cc=[],
+        bcc=[],
+        replyAll=False,
+        subject="",
+        body="Thanks",
+        content_type=None,
+        attachments=[],
+    )
+
+    raw, _ = await _build_reply_message(
+        _FakeGmail({"messages.get": parent}), input_data, MagicMock()
+    )
+
+    subject = _sent_subject(raw)
+    assert subject.startswith("Re: word word")
+    assert len(subject) <= _SUBJECT_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_a_forward_bounds_the_subject_it_takes_from_the_original():
+    fake = _FakeGmail(
+        {
+            "messages.get": _message_with_headers(
+                {"From": "ann@example.com", "Subject": _LONG_SUBJECT}
+            ),
+            "messages.send": {"id": "m2", "threadId": "t1"},
+        }
+    )
+    input_data = GmailForwardBlock.Input.model_construct(
+        messageId="m1",
+        to=["bob@example.com"],
+        cc=[],
+        bcc=[],
+        subject="",
+        forwardMessage="",
+        includeAttachments=False,
+        content_type=None,
+    )
+
+    await GmailForwardBlock()._forward_message(fake, input_data, MagicMock())
+
+    (sent,) = fake.called("messages.send")
+    subject = _sent_subject(sent["body"]["raw"])
+    assert subject.startswith("Fwd: word word")
+    assert len(subject) <= _SUBJECT_LIMIT
