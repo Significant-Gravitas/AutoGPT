@@ -33,6 +33,7 @@ from backend.api.features.account_deletion.service import delete_account
 from backend.data.account_deletion import mark_confirmation_sent
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.data.user import get_user_by_id
 from backend.notifications.auth import send_account_deleted_email
 from backend.util.exceptions import EmailUndeliverableError
@@ -54,7 +55,8 @@ async def pending_user_ids(*, now: datetime | None = None) -> list[str]:
     return [row.userId for row in rows]
 
 
-async def stalled_user_ids(
+@db_endpoint
+async def stalled_account_erasures(
     *, older_than_secs: int, now: datetime | None = None
 ) -> list[str]:
     """The accounts whose erasure started more than `older_than_secs` ago and

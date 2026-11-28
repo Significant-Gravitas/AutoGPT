@@ -20,6 +20,7 @@ from backend.data.account_erasure.models import (
 )
 from backend.data.account_erasure.request import pending_user_ids
 from backend.data.account_erasure.routine import erase_account
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ def _log(report: ErasureReport) -> None:
         )
 
 
+@db_endpoint
 async def start_account_erasure_sweep() -> bool:
     """Start a sweep in the background and return at once.
 

@@ -44,6 +44,7 @@ from prisma.models import SubscriptionTrial, User
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.data.posthog_lifecycle import (
     LifecycleSnapshot,
     LifecycleUser,
@@ -106,6 +107,7 @@ def schedule_posthog_lifecycle_sync(
         logger.warning("Failed to schedule a lifecycle sync", exc_info=True)
 
 
+@db_endpoint
 async def request_posthog_lifecycle_sync(user_id: str) -> None:
     """``schedule_posthog_lifecycle_sync`` for a process without Prisma, such
     as the notification service, through the database manager
@@ -335,6 +337,7 @@ def set_tier_on_sign_in(user_id: str, tier: str | None) -> None:
         logger.warning(f"Could not set the PostHog tier of {user_id}")
 
 
+@db_endpoint
 async def start_posthog_lifecycle_sweep() -> bool:
     """Start the daily sweep in the background and return at once.
 

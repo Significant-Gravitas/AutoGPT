@@ -35,6 +35,7 @@ from backend.copilot.scheduled_chats.jobs import (
 from backend.copilot.scheduled_chats.notices import ScheduledChatNotice, post_notice
 from backend.copilot.scheduled_chats.outcomes import RunFailure, RunOutcome
 from backend.copilot.scheduled_chats.streaks import Streak, StreakStep, advance
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class PausedScheduledChat(BaseModel):
     routine: bool = False
 
 
+@db_endpoint
 async def record_scheduled_run(run: ScheduledRun) -> None:
     where = _key(run.user_id, run.schedule_key)
     row = await ScheduledChatStreak.prisma().find_unique(where=where)

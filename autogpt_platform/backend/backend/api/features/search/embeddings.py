@@ -29,6 +29,7 @@ from backend.api.features.search.rate_limit import (
     take_public_search_embedding_slot,
 )
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.data.redis_client import get_redis_async
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps, loads
@@ -301,6 +302,7 @@ async def store_content_embedding(
     return True
 
 
+@db_endpoint
 async def get_content_embedding(
     content_type: ContentType, content_id: str, user_id: str | None = None
 ) -> dict[str, Any] | None:
@@ -397,6 +399,7 @@ async def ensure_content_embedding(
     )
 
 
+@db_endpoint
 async def delete_content_embedding(
     content_type: ContentType, content_id: str, user_id: str | None = None
 ) -> bool:
@@ -442,6 +445,7 @@ async def delete_content_embedding(
         return False
 
 
+@db_endpoint
 async def get_embedding_stats() -> dict[str, Any]:
     """
     Get statistics about embedding coverage for all content types.
@@ -625,6 +629,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
     }
 
 
+@db_endpoint
 async def cleanup_orphaned_embeddings() -> dict[str, Any]:
     """
     Clean up embeddings for content that no longer exists or is no longer valid.

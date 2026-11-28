@@ -18,6 +18,7 @@ from prisma.models import User
 from prisma.types import UserWhereInput
 from pydantic import BaseModel
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.exceptions import DatabaseError
 from backend.util.settings import Settings, UserNotificationsAudience
 
@@ -94,6 +95,7 @@ def product_mail_allowlist() -> list[str] | None:
     return [a.strip().lower() for a in raw.split(",") if a.strip()]
 
 
+@db_endpoint
 async def get_product_mail_standing(user_id: str) -> ProductMailStanding | None:
     try:
         user = await User.prisma().find_unique(

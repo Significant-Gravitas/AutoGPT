@@ -362,7 +362,7 @@ async def download_brain_dump_recording(
     if not available:
         # So ``has_audio`` stops offering it, even if the blob went some way
         # other than the sweep, which clears the row itself.
-        await db.clear_audio_paths([dump.audioPath])
+        await db.clear_brain_dump_audio_paths([dump.audioPath])
         raise fastapi.HTTPException(
             status_code=404, detail="Recording no longer available"
         )

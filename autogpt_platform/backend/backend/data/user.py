@@ -24,6 +24,7 @@ from backend.data.account_deletion import is_account_closed
 from backend.data.auth.ban import is_ban_active
 from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.db_accessors import user_db
+from backend.data.db_endpoints import db_endpoint
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
     Credentials,
@@ -210,6 +211,7 @@ def _legacy_signup_method(user_data: dict) -> str | None:
     return provider if isinstance(provider, str) and provider else None
 
 
+@db_endpoint
 @cache_user_lookup
 async def get_user_by_id(user_id: str) -> User:
     user = await prisma.user.find_unique(where={"id": user_id})
@@ -218,6 +220,7 @@ async def get_user_by_id(user_id: str) -> User:
     return User.from_db(user)
 
 
+@db_endpoint
 async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
     """Read the authoritative tier without using the cached full-user lookup."""
     user = await prisma.user.find_unique(where={"id": user_id})
@@ -231,6 +234,7 @@ async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
     return user.subscriptionTier or SubscriptionTier.NO_TIER
 
 
+@db_endpoint
 async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
         user = await prisma.user.find_unique(where={"id": user_id})
@@ -253,6 +257,7 @@ class AuthUserFlagFields(BaseModel):
     created_at: Optional[datetime] = None
 
 
+@db_endpoint
 async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
     """Fetch the AuthUser fields used for feature flag targeting.
 
@@ -342,6 +347,7 @@ def forget_refusal(user_id: str) -> None:
         logger.warning(f"Could not drop the cached closed state of user {user_id}")
 
 
+@db_endpoint
 async def is_auth_user_banned(user_id: str) -> bool:
     """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
     and a missing auth row are not bans."""
@@ -413,6 +419,7 @@ async def find_orphaned_auth_identities(
     return [OrphanedAuthIdentity(**row) for row in rows]
 
 
+@db_endpoint
 async def heal_orphaned_auth_identities(
     grace_secs: int = 300, limit: int = 100
 ) -> OrphanedAuthIdentityReport:
@@ -502,6 +509,7 @@ async def create_default_user() -> Optional[User]:
     return User.from_db(user)
 
 
+@db_endpoint
 async def get_user_integrations(user_id: str) -> UserIntegrations:
     user = await PrismaUser.prisma().find_unique_or_raise(
         where={"id": user_id},
@@ -516,6 +524,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrations:
         )
 
 
+@db_endpoint
 async def update_user_integrations(user_id: str, data: UserIntegrations):
     encrypted_data = JSONCryptor().encrypt(data.model_dump(exclude_none=True))
     await PrismaUser.prisma().update(
@@ -526,6 +535,7 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
     get_user_by_id.cache_delete(user_id)
 
 
+@db_endpoint
 async def get_user_credentials(user_id: str) -> list[Credentials]:
     """Read the user's credentials from the IntegrationCredential table.
 
@@ -555,6 +565,7 @@ async def get_user_credentials(user_id: str) -> list[Credentials]:
     return credentials
 
 
+@db_endpoint
 async def get_near_expiry_oauth_credentials(
     refresh_before: int,
 ) -> list[tuple[str, OAuth2Credentials]]:
@@ -599,6 +610,7 @@ async def get_near_expiry_oauth_credentials(
     return candidates
 
 
+@db_endpoint
 async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> None:
     """Full-list replace of the user's USER-scoped credential rows.
 
@@ -732,6 +744,7 @@ async def migrate_and_encrypt_user_integrations():
         )
 
 
+@db_endpoint
 async def get_active_user_ids_in_timerange(start_time: str, end_time: str) -> list[str]:
     try:
         users = await PrismaUser.prisma().find_many(
@@ -762,6 +775,7 @@ async def get_active_users_ids() -> list[str]:
     return user_ids
 
 
+@db_endpoint
 async def get_user_notification_preference(user_id: str) -> NotificationPreference:
     """The volume knob: a Briefing frequency plus two switches. Billing and
     account messages are service mail and are not gated by any of it."""
@@ -874,6 +888,7 @@ async def disable_all_user_notifications(
 _GOOGLE_PROVIDER = "google"
 
 
+@db_endpoint
 async def get_user_email_verification(user_id: str) -> bool:
     """Whether product and service mail may go to this account's address.
 
@@ -1254,6 +1269,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         raise DatabaseError(f"Failed to record a marketing opt-out: {e}") from e
 
 
+@db_endpoint
 async def is_marketing_opted_out(user_id: str) -> bool:
     """Whether nothing about the account may reach MailerLite, read from the
     database rather than the user cache, for the last check before a
@@ -1342,6 +1358,7 @@ class BriefingCandidate(BaseModel):
     alerts_enabled: bool
 
 
+@db_endpoint
 async def get_briefing_candidates(
     timezones: list[str], after_id: str | None, limit: int
 ) -> list[BriefingCandidate]:
@@ -1380,6 +1397,7 @@ async def get_briefing_candidates(
         raise DatabaseError(f"Failed to list briefing candidates: {e}") from e
 
 
+@db_endpoint
 async def get_briefing_candidate(user_id: str) -> BriefingCandidate | None:
     """One user's briefing settings, for work picked up off the queue.
 
@@ -1403,6 +1421,7 @@ async def get_briefing_candidate(user_id: str) -> BriefingCandidate | None:
         raise DatabaseError(f"Failed to load briefing candidate {user_id}: {e}") from e
 
 
+@db_endpoint
 async def set_last_briefing_at(user_id: str, sent_at: datetime) -> None:
     """Advance the cadence clock, once the briefing is safely on the queue."""
     try:
@@ -1436,6 +1455,7 @@ class BillingEmailRecipient(BaseModel):
     timezone: str | None = None
 
 
+@db_endpoint
 async def get_billing_email_recipient(
     stripe_customer_id: str,
 ) -> BillingEmailRecipient | None:
@@ -1464,6 +1484,7 @@ async def get_billing_email_recipient(
         ) from e
 
 
+@db_endpoint
 async def claim_welcome_email(user_id: str) -> bool:
     """Take the one-shot welcome claim. True only for the caller that set it.
 
@@ -1482,6 +1503,7 @@ async def claim_welcome_email(user_id: str) -> bool:
         ) from e
 
 
+@db_endpoint
 async def release_welcome_email(user_id: str) -> None:
     """Give the claim back when the send fails.
 
@@ -1560,6 +1582,7 @@ def _sign_preference_choice(user_id: str, choice: str) -> str:
     ).decode("utf-8")
 
 
+@db_endpoint
 async def get_user_default_chat_route(
     user_id: str,
 ) -> tuple[Optional[str], Optional[str]]:

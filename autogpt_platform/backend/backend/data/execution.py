@@ -48,6 +48,7 @@ from pydantic.fields import Field
 
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
+from backend.data.db_endpoints import db_endpoint
 from backend.data.expert_run_output import reconstruct_run_outputs
 from backend.data.sharing.execution_shares import (
     live_execution_share,
@@ -640,6 +641,7 @@ class NodeExecutionResult(BaseModel):
 # --------------------- Model functions --------------------- #
 
 
+@db_endpoint
 async def get_graph_executions(
     graph_exec_id: Optional[str] = None,
     execution_ids: Optional[list[str]] = None,
@@ -738,6 +740,7 @@ async def get_graph_executions(
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
 
+@db_endpoint
 async def get_graph_executions_count(
     user_id: Optional[str] = None,
     graph_id: Optional[str] = None,
@@ -893,6 +896,7 @@ async def get_graph_executions_paginated(
     )
 
 
+@db_endpoint
 async def get_graph_execution_meta(
     user_id: str,
     execution_id: str,
@@ -935,6 +939,7 @@ async def get_graph_execution(
 ) -> GraphExecution | GraphExecutionWithNodes | None: ...
 
 
+@db_endpoint
 async def get_graph_execution(
     user_id: str,
     execution_id: str,
@@ -967,6 +972,7 @@ async def get_graph_execution(
     )
 
 
+@db_endpoint
 async def get_child_graph_executions(
     parent_exec_id: str,
 ) -> list[GraphExecutionMeta]:
@@ -986,6 +992,7 @@ async def get_child_graph_executions(
     return [GraphExecutionMeta.from_db(child) for child in children]
 
 
+@db_endpoint
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
@@ -1130,6 +1137,7 @@ LIMIT 1
 """
 
 
+@db_endpoint
 async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
@@ -1203,6 +1211,7 @@ async def upsert_execution_input(
         )
 
 
+@db_endpoint
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
@@ -1220,6 +1229,7 @@ async def upsert_execution_output(
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
+@db_endpoint
 async def get_execution_outputs_by_node_exec_id(
     node_exec_id: str,
 ) -> CompletedBlockOutput:
@@ -1250,6 +1260,7 @@ STARTABLE_GRAPH_EXECUTION_STATUSES = (
 )
 
 
+@db_endpoint
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
@@ -1291,6 +1302,7 @@ TERMINAL_GRAPH_EXECUTION_STATUSES = (
 )
 
 
+@db_endpoint
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus | None = None,
@@ -1402,6 +1414,7 @@ async def update_graph_execution_stats(
     return GraphExecution.from_db(graph_exec)
 
 
+@db_endpoint
 async def update_node_execution_status_batch(
     node_exec_ids: list[str],
     status: ExecutionStatus,
@@ -1429,6 +1442,7 @@ async def update_node_execution_status_batch(
     )
 
 
+@db_endpoint
 async def update_node_execution_status(
     node_exec_id: str,
     status: ExecutionStatus,
@@ -1478,6 +1492,7 @@ async def update_node_execution_status(
 MODERATION_WRITES_IN_FLIGHT = 10
 
 
+@db_endpoint
 async def mark_node_executions_moderated(
     graph_exec_id: str,
     stats_patches: dict[str, dict[str, Any]],
@@ -1610,6 +1625,7 @@ async def delete_graph_execution(
         )
 
 
+@db_endpoint
 async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(
@@ -1651,6 +1667,7 @@ def _build_node_execution_where_clause(
     return where_clause
 
 
+@db_endpoint
 async def get_node_executions(
     graph_exec_id: str | None = None,
     node_id: str | None = None,
@@ -1685,6 +1702,7 @@ async def get_node_executions(
     return res
 
 
+@db_endpoint
 async def get_latest_node_execution(
     node_id: str, graph_eid: str
 ) -> NodeExecutionResult | None:
@@ -1959,6 +1977,7 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
 # --------------------- KV Data Functions --------------------- #
 
 
+@db_endpoint
 async def get_execution_kv_data(user_id: str, key: str) -> Any | None:
     """
     Get key-value data for a user and key.
@@ -1980,6 +1999,7 @@ async def get_execution_kv_data(user_id: str, key: str) -> Any | None:
     )
 
 
+@db_endpoint
 async def set_execution_kv_data(
     user_id: str, node_exec_id: str, key: str, data: Any
 ) -> Any | None:
@@ -2010,6 +2030,7 @@ async def set_execution_kv_data(
     return type_utils.convert(resp.data, type[Any]) if resp and resp.data else None
 
 
+@db_endpoint
 async def get_block_error_stats(
     start_time: datetime, end_time: datetime
 ) -> list[BlockErrorStats]:
@@ -2228,6 +2249,7 @@ async def get_shared_execution_file(
     return record.executionId if record else None
 
 
+@db_endpoint
 async def get_frequently_executed_graphs(
     days_back: int = 30,
     min_executions: int = 10,

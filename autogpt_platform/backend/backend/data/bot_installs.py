@@ -19,6 +19,7 @@ from typing import Optional
 from prisma.models import BotInstall
 from pydantic import BaseModel
 
+from backend.data.db_endpoints import db_endpoint
 from backend.platform_linking.models import Platform
 from backend.util.encryption import JSONCryptor
 
@@ -44,6 +45,7 @@ def _key(platform: Platform, team_id: str) -> dict:
     }
 
 
+@db_endpoint
 async def upsert_bot_install(
     *,
     platform: Platform,
@@ -75,6 +77,7 @@ async def upsert_bot_install(
     )
 
 
+@db_endpoint
 async def get_bot_install(
     platform: Platform, team_id: str
 ) -> Optional[BotInstallCredentials]:
@@ -98,6 +101,7 @@ async def get_bot_install(
     )
 
 
+@db_endpoint
 async def is_install_revoked(platform: Platform, team_id: str) -> bool:
     """Whether this workspace explicitly uninstalled the app / revoked its
     token. Distinguishes "revoked" from "never installed" — a revoked
@@ -106,6 +110,7 @@ async def is_install_revoked(platform: Platform, team_id: str) -> bool:
     return row is not None and row.revokedAt is not None
 
 
+@db_endpoint
 async def revoke_bot_install(platform: Platform, team_id: str) -> None:
     """Mark a workspace's install revoked (app_uninstalled / tokens_revoked)."""
     await BotInstall.prisma().update_many(

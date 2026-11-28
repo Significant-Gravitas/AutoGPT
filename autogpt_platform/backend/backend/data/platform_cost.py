@@ -9,6 +9,7 @@ from prisma.types import PlatformCostLogCreateInput, PlatformCostLogWhereInput
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 
@@ -58,6 +59,7 @@ class PlatformCostEntry(BaseModel):
     expert_id: str | None = None
 
 
+@db_endpoint
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
     await PrismaLog.prisma().create(
         data=PlatformCostLogCreateInput(

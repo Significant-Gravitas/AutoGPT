@@ -114,6 +114,7 @@ from backend.copilot.tools.skills import (
 )
 from backend.data.db import prisma as db_client
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.expert_attribution import (
     resolve_attributable_expert as resolve_attributable_expert_row,
 )
@@ -323,6 +324,7 @@ def _to_model(
     )
 
 
+@db_endpoint
 async def set_expert_learning_paused(
     user_id: str, expert_id: str, paused: bool
 ) -> Expert | None:
@@ -387,6 +389,7 @@ async def _latest_runs(
     return {row.expertId: row for row in rows if row.expertId is not None}
 
 
+@db_endpoint
 async def list_templates(
     search_query: str | None = None,
     category: str | None = None,
@@ -398,6 +401,7 @@ async def list_templates(
     return [_to_model(row) for row in rows]
 
 
+@db_endpoint
 async def get_template(template_id: str) -> Expert | None:
     """One live roster template, read by id rather than found in the roster."""
     row = await prisma.models.Expert.prisma().find_first(
@@ -426,6 +430,7 @@ def _template_where(
     return where
 
 
+@db_endpoint
 async def with_bundled_skills(
     templates: list[Expert], user_id: str | None
 ) -> list[ExpertTemplate]:
@@ -492,6 +497,7 @@ async def _weekly_spends(expert_ids: list[str]) -> dict[str, int]:
     return dict(await asyncio.gather(*(read(expert_id) for expert_id in expert_ids)))
 
 
+@db_endpoint
 async def list_experts(user_id: str, *, with_metrics: bool = True) -> list[Expert]:
     """List the user's hired roster, with workflow names always included.
 
@@ -547,6 +553,7 @@ def _credential_fields(providers: list[str]) -> dict[str, object]:
     }
 
 
+@db_endpoint
 async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     """Return the lifetime roster without hydrating team-page details.
 
@@ -576,6 +583,7 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
     )
 
 
+@db_endpoint
 async def owns_active_expert(user_id: str, expert_id: str) -> bool:
     """True iff *user_id* owns *expert_id* and that expert is still hireable.
 
@@ -596,6 +604,7 @@ async def owns_active_expert(user_id: str, expert_id: str) -> bool:
     )
 
 
+@db_endpoint
 async def active_expert_ids(user_id: str, expert_ids: set[str]) -> set[str]:
     """Which of *expert_ids* are live hires of *user_id*, in one query.
 
@@ -627,6 +636,7 @@ async def owns_private_active_expert(user_id: str, expert_id: str) -> bool:
     return await _owned_active_expert(user_id, expert_id) is not None
 
 
+@db_endpoint
 async def get_expert(
     user_id: str,
     expert_id: str,
@@ -951,6 +961,7 @@ def _to_expert_run(
     )
 
 
+@db_endpoint
 async def expert_row_exists(user_id: str, expert_id: str) -> bool:
     """Lenient existence check for a hired expert row owned by *user_id*.
 
@@ -970,6 +981,7 @@ async def expert_row_exists(user_id: str, expert_id: str) -> bool:
     return count > 0
 
 
+@db_endpoint
 async def expert_setup_status(user_id: str, expert_id: str) -> ExpertSetupStatus:
     """Where the owner's expert is in its hire setup; "ready" if not found."""
     row = await prisma.models.Expert.prisma().find_first(
@@ -978,6 +990,7 @@ async def expert_setup_status(user_id: str, expert_id: str) -> ExpertSetupStatus
     return _setup_status(row) if row is not None else "ready"
 
 
+@db_endpoint
 async def resolve_private_expert_tenancy(
     user_id: str, expert_id: str
 ) -> tuple[str, str | None]:
@@ -992,6 +1005,7 @@ async def resolve_private_expert_tenancy(
     return await _private_expert_owner_scope(user_id, expert_id)
 
 
+@db_endpoint
 async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
     """The owner's active PRIVATE expert and the scope its work belongs to.
 
@@ -1088,6 +1102,7 @@ async def _private_expert_owner_scope(
     return organization_id, team_id
 
 
+@db_endpoint
 async def hire_expert(
     user_id: str,
     template_id: str,
@@ -1487,6 +1502,7 @@ async def _ensure_active_expert_capacity(tx: prisma.Prisma, user_id: str) -> Non
         raise ExpertLimitExceededError(ACTIVE_EXPERT_LIMIT)
 
 
+@db_endpoint
 async def count_active_experts(user_id: str) -> int:
     """Active hired experts. Lock-free, for preview-time capacity checks only;
     the creation transaction re-enforces the cap."""
@@ -1495,6 +1511,7 @@ async def count_active_experts(user_id: str) -> int:
     )
 
 
+@db_endpoint
 async def count_raised_experts(user_id: str) -> int:
     """Lifetime raised experts, archived included. Same preview-only caveat."""
     return await prisma.models.Expert.prisma().count(
@@ -1506,6 +1523,7 @@ async def count_raised_experts(user_id: str) -> int:
     )
 
 
+@db_endpoint
 async def create_raised_expert(
     user_id: str,
     name: str,
@@ -1805,12 +1823,14 @@ async def _detach_expert_skill(user_id: str, expert_id: str, name: str) -> None:
         return
 
 
+@db_endpoint
 async def add_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Record a skill the expert now owns; idempotent, and a display name and
     its slug count as one name."""
     await add_expert_skill_names(user_id, expert_id, [name])
 
 
+@db_endpoint
 async def add_expert_skill_names(
     user_id: str, expert_id: str, names: list[str]
 ) -> None:
@@ -1836,6 +1856,7 @@ def _with_names(current: list[str], names: list[str]) -> list[str]:
     return merged
 
 
+@db_endpoint
 async def remove_expert_skill_name(user_id: str, expert_id: str, name: str) -> None:
     """Forget a skill the expert no longer owns, in any spelling of its name."""
     await _rewrite_skill_names(
@@ -1886,6 +1907,7 @@ async def _owned_active_expert(
     )
 
 
+@db_endpoint
 async def update_soul(user_id: str, expert_id: str, soul: ExpertSoulUpdate) -> Expert:
     before = await prisma.models.Expert.prisma().find_first(
         where={
@@ -1971,6 +1993,7 @@ def autopilot_mode_of(row: prisma.models.Expert) -> AutopilotMode | None:
     return cast(AutopilotMode, mode) if mode in AUTOPILOT_MODES else None
 
 
+@db_endpoint
 async def get_autopilot_mode(user_id: str, expert_id: str) -> AutopilotMode | None:
     """The approval mode *expert_id*'s new web chats start on.
 
@@ -2025,6 +2048,7 @@ async def update_autopilot_mode(
     return expert
 
 
+@db_endpoint
 async def update_soul_if_current(
     user_id: str,
     expert_id: str,
@@ -2097,6 +2121,7 @@ def _soul_field_update_data(
     return data
 
 
+@db_endpoint
 async def update_soul_fields(
     user_id: str,
     expert_id: str,
@@ -2137,6 +2162,7 @@ async def update_soul_fields(
     return expert
 
 
+@db_endpoint
 async def update_soul_fields_if_current(
     user_id: str,
     expert_id: str,
@@ -2307,6 +2333,7 @@ async def _install_bundled_skills(
     return failed
 
 
+@db_endpoint
 async def install_workflow(
     user_id: str,
     expert_id: str,
@@ -2432,6 +2459,7 @@ async def _install_marketplace_workflow(
     return _to_workflow_ref(row)
 
 
+@db_endpoint
 async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> list[str]:
     """Detach a workflow from a hired expert and stop its triggers.
 
@@ -2471,6 +2499,7 @@ async def remove_workflow(user_id: str, expert_id: str, workflow_id: str) -> lis
     return stopped
 
 
+@db_endpoint
 async def get_workflow_label(
     user_id: str, workflow_id: str
 ) -> ExpertWorkflowLabel | None:
@@ -2542,6 +2571,7 @@ async def resolve_expert_for_graph(user_id: str, graph_id: str) -> str | None:
     return expert_ids.pop()
 
 
+@db_endpoint
 async def resolve_attributable_expert(
     user_id: str, expert_id: str | None
 ) -> str | None:

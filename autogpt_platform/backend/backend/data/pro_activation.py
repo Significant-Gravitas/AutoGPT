@@ -4,6 +4,7 @@ from prisma.enums import SubscriptionTier
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 
 
 class UsageActivationState(BaseModel):
@@ -14,6 +15,7 @@ class UsageActivationState(BaseModel):
     ready: bool
 
 
+@db_endpoint
 async def get_usage_activation_state(user_id: str) -> UsageActivationState:
     rows = await query_raw_with_schema(
         """SELECT u."id" AS user_id, a."id" AS generation,

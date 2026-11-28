@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, AsyncGenerator
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util import json
 
 if TYPE_CHECKING:
@@ -99,6 +100,7 @@ async def initialize_blocks() -> None:
         logger.error("Could not load optimized descriptions", exc_info=True)
 
 
+@db_endpoint
 async def get_blocks_needing_optimization() -> list[dict[str, str]]:
     """Return blocks that have a description but no optimized description yet."""
     blocks = await AgentBlock.prisma().find_many(
@@ -112,6 +114,7 @@ async def get_blocks_needing_optimization() -> list[dict[str, str]]:
     ]
 
 
+@db_endpoint
 async def update_block_optimized_description(
     block_id: str, optimized_description: str
 ) -> None:

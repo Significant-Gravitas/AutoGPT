@@ -34,6 +34,7 @@ from backend.api.features.search.embeddings import (
     embedding_to_vector_string,
 )
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.util.sql import escape_like
 
 ContentTypeValue = Literal[
@@ -191,6 +192,7 @@ DEFAULT_MIN_SCORE = 0.15  # For unified search (more permissive)
 DEFAULT_STORE_AGENT_MIN_SCORE = 0.20  # For store agent search (original threshold)
 
 
+@db_endpoint
 async def unified_hybrid_search(
     query: str,
     content_types: list[ContentType] | None = None,

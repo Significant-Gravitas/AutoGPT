@@ -24,6 +24,7 @@ from prisma.models import AlertCondition
 from prisma.types import AlertConditionWhereInput
 from pydantic import BaseModel
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.logging import TruncatedLogger
@@ -73,6 +74,7 @@ class AlertConditionDTO(BaseModel):
         )
 
 
+@db_endpoint
 async def raise_alert_condition(
     user_id: str,
     cause: AlertCause,
@@ -138,6 +140,7 @@ async def raise_alert_condition(
         ) from e
 
 
+@db_endpoint
 async def resolve_alert_condition(user_id: str, cause_key: str) -> bool:
     """Mark a condition fixed. Returns whether a live row was cleared.
 
@@ -175,6 +178,7 @@ class MaturedAlertPage(BaseModel):
     exhausted: bool
 
 
+@db_endpoint
 async def get_users_with_matured_alerts(
     matured_before: datetime, after_user_id: str | None = None, limit: int = 1000
 ) -> MaturedAlertPage:
@@ -218,6 +222,7 @@ async def get_users_with_matured_alerts(
 MAX_CONDITIONS_PER_EMAIL = 50
 
 
+@db_endpoint
 async def get_pending_alert_conditions(user_id: str) -> list[AlertConditionDTO]:
     try:
         rows = await AlertCondition.prisma().find_many(
@@ -232,6 +237,7 @@ async def get_pending_alert_conditions(user_id: str) -> list[AlertConditionDTO]:
         ) from e
 
 
+@db_endpoint
 async def count_alerts_sent_since(user_id: str, since: datetime) -> int:
     """How many Alert *emails* this user has already had since `since`.
 
@@ -252,6 +258,7 @@ async def count_alerts_sent_since(user_id: str, since: datetime) -> int:
         ) from e
 
 
+@db_endpoint
 async def mark_alert_conditions_sent(condition_ids: list[str]) -> None:
     if not condition_ids:
         return
@@ -267,6 +274,7 @@ async def mark_alert_conditions_sent(condition_ids: list[str]) -> None:
         raise DatabaseError(f"Failed to mark alert conditions sent: {e}") from e
 
 
+@db_endpoint
 async def mark_alert_conditions_deferred(condition_ids: list[str]) -> None:
     """Overflow past the daily cap folds into the Briefing rather than being
     dropped — nothing actionable is ever silently lost."""
@@ -281,6 +289,7 @@ async def mark_alert_conditions_deferred(condition_ids: list[str]) -> None:
         raise DatabaseError(f"Failed to defer alert conditions: {e}") from e
 
 
+@db_endpoint
 async def get_briefing_alert_conditions(user_id: str) -> list[AlertConditionDTO]:
     """Everything the next Briefing's attention block must absorb: conditions
     capped or deduped during the period, plus any still unresolved, minus the
@@ -302,6 +311,7 @@ async def get_briefing_alert_conditions(user_id: str) -> list[AlertConditionDTO]
         ) from e
 
 
+@db_endpoint
 async def mark_alert_conditions_briefed(condition_ids: list[str]) -> None:
     if not condition_ids:
         return

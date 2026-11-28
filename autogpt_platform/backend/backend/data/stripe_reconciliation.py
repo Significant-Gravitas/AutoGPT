@@ -27,6 +27,7 @@ from backend.data.credit import (
     set_subscription_tier,
     sync_subscription_from_stripe,
 )
+from backend.data.db_endpoints import db_endpoint
 from backend.data.stripe_client import stripe_call
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ class ReconciliationSummary(BaseModel):
     discrepancies: list[TierDiscrepancy] = []
 
 
+@db_endpoint
 async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     """Reconcile every reconcilable user against live Stripe subscriptions."""
     customer_to_tier = await _build_customer_tier_map()

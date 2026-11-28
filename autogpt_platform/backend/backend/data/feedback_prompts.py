@@ -14,6 +14,7 @@ from prisma.models import AgentGraphExecution, ChatSession, FeedbackPrompt, User
 from prisma.types import FeedbackPromptUpdateManyMutationInput
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.util.json import sanitize_string
 
 FeedbackPromptKind = Literal[
@@ -78,6 +79,7 @@ SCORES_BY_KIND: dict[FeedbackPromptKind, frozenset[int]] = {
 }
 
 
+@db_endpoint
 async def claim_feedback_prompt(
     *,
     user_id: str,
@@ -147,6 +149,7 @@ async def get_feedback_prompt(*, user_id: str, prompt_id: str) -> FeedbackPrompt
     )
 
 
+@db_endpoint
 async def count_feedback_prompts(*, user_id: str, kind: FeedbackPromptKind) -> int:
     return await FeedbackPrompt.prisma().count(where={"userId": user_id, "kind": kind})
 

@@ -46,6 +46,7 @@ from backend.copilot.sharing.models import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.execution import attach_nodes_to_executions
 from backend.data.expert_run_output import moderation_cleared_io, output_values
 from backend.data.includes import (
@@ -183,6 +184,7 @@ async def enable_chat_session_share(
     return share_token
 
 
+@db_endpoint
 async def link_new_execution_to_chat_share(
     session_id: str,
     execution_id: str,

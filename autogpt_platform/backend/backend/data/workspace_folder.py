@@ -21,6 +21,7 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
 from backend.data.workspace_scope import resolve_expert_workspace_scope
 from backend.util.exceptions import NotFoundError
@@ -121,6 +122,7 @@ async def _get_folder_record(
     return folder
 
 
+@db_endpoint
 async def list_workspace_folders(workspace_id: str) -> list[WorkspaceFolder]:
     """Every non-deleted folder in a workspace, flat.
 

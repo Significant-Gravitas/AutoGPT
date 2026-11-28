@@ -29,6 +29,7 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
 from backend.data.model import (
     AutoTopUpConfig,
@@ -3028,6 +3029,7 @@ def _is_stripe_reconcilable(user: AppUser) -> bool:
     )
 
 
+@db_endpoint
 async def reconcile_stripe_tier_for_user(user_id: str) -> bool:
     """Make Stripe the source of truth for a single reconcilable user's tier.
 
@@ -3246,6 +3248,7 @@ async def replaced_by_newer_plan(customer_id: str, subscription: dict) -> bool:
     return False
 
 
+@db_endpoint
 async def sync_subscription_from_stripe(
     stripe_subscription: dict, *, track_lifecycle: bool = True
 ) -> None:
@@ -4075,6 +4078,7 @@ SPEND_WINDOW_DAYS = 7
 MIN_SPEND_TRANSACTIONS = 3
 
 
+@db_endpoint
 async def get_recent_daily_spend(user_id: str, days: int = SPEND_WINDOW_DAYS) -> float:
     """Mean daily spend in credit-cents over the last `days`, or 0.0.
 

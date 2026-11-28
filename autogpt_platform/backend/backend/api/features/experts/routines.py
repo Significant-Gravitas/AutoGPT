@@ -46,6 +46,7 @@ from backend.api.features.experts.routine_jobs import (
 )
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.copilot.scheduled_chats.forget import forget_routine
+from backend.data.db_endpoints import db_endpoint
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
 from backend.util.cron import validate_cron
@@ -109,6 +110,7 @@ def _credential_pins(raw: object) -> CredentialPins:
     return pins
 
 
+@db_endpoint
 async def get_routine(routine_id: str) -> ExpertRoutine | None:
     """Load one routine by id, for the fire path.
 
@@ -160,6 +162,7 @@ async def install_routines(
     return failed
 
 
+@db_endpoint
 async def list_routines(
     user_id: str, expert_id: str | None = None
 ) -> list[ExpertRoutine]:
@@ -172,6 +175,7 @@ async def list_routines(
     return [to_model(row) for row in rows]
 
 
+@db_endpoint
 async def enable_routine(
     user_id: str,
     expert_id: str | None,
@@ -350,6 +354,7 @@ def _session_mode(value: str) -> prisma.enums.ExpertRoutineSession:
         return prisma.enums.ExpertRoutineSession.THREAD
 
 
+@db_endpoint
 async def create_routine(
     user_id: str,
     expert_id: str | None,
@@ -413,6 +418,7 @@ async def create_routine(
     return to_model(created)
 
 
+@db_endpoint
 async def disable_routine(
     user_id: str, expert_id: str | None, routine_id: str
 ) -> ExpertRoutine:

@@ -20,6 +20,7 @@ from backend.api.features.experts.errors import ExpertScheduleCleanupError
 from backend.api.features.experts.models import ExpertDetachPreview
 from backend.copilot import db as chat_db
 from backend.copilot.dream.registry import sync_expert_scope
+from backend.data.db_endpoints import db_endpoint
 from backend.data.expert_spend import get_weekly_spend, reset_weekly_spend
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -509,6 +510,7 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     return True
 
 
+@db_endpoint
 async def enforce_expert_run_budget(user_id: str, expert_id: str) -> None:
     """Run-start gate for expert-attributed executions: schedules, triggers,
     and agent runs launched from an expert's chat (``run_agent`` passes the

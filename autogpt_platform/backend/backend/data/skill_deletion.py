@@ -18,6 +18,7 @@ from prisma import Prisma
 from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_content_approvals import content_approvals_json
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication_settlement import settle_publication_in
@@ -57,6 +58,7 @@ class _HeadChanged(Exception):
     """Internal: rolls the deletion back when the head moved."""
 
 
+@db_endpoint
 async def record_skill_deletion(
     user_id: str,
     *,

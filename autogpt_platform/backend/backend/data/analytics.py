@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class AccuracyTrendsResponse(BaseModel):
     )
 
 
+@db_endpoint
 async def get_accuracy_trends_and_alerts(
     graph_id: str,
     days_back: int = 30,
@@ -230,6 +232,7 @@ class MarketplaceGraphData(BaseModel):
     execution_count: int
 
 
+@db_endpoint
 async def get_marketplace_graphs_for_monitoring(
     days_back: int = 30,
     min_executions: int = 10,

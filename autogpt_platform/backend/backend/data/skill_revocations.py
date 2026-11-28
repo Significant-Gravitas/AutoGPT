@@ -5,6 +5,7 @@ import json
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_learning import require_owned_source
 
 
@@ -16,6 +17,7 @@ class RevokedVersion(BaseModel):
     skill_name: str
 
 
+@db_endpoint
 async def invalidate_source_versions(
     user_id: str, source_id: str, reason: str
 ) -> list[RevokedVersion]:
@@ -42,6 +44,7 @@ async def invalidate_source_versions(
     )
 
 
+@db_endpoint
 async def latest_independent_version_id(user_id: str, head_id: str) -> str | None:
     rows = await query_raw_with_schema(
         """SELECT "id" FROM {schema_prefix}"SkillVersion"

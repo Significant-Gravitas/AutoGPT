@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import prisma.models
 import prisma.types
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.clients import get_scheduler_client
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ async def resume_routines_after_revive(user_id: str, expert_id: str) -> None:
         )
 
 
+@db_endpoint
 async def record_routine_thread(routine_id: str, session_id: str) -> None:
     """Remember the thread a THREAD routine minted on its first fire.
 
@@ -99,6 +101,7 @@ async def record_routine_thread(routine_id: str, session_id: str) -> None:
     )
 
 
+@db_endpoint
 async def record_routine_fired(routine_id: str) -> None:
     """Mark a one-shot spent, once its turn has been dispatched.
 
@@ -112,6 +115,7 @@ async def record_routine_fired(routine_id: str) -> None:
     )
 
 
+@db_endpoint
 async def mark_routine_unscheduled(routine_id: str, schedule_id: str) -> None:
     """Drop a job the fire path removed, and switch the routine off if it was
     the last one.

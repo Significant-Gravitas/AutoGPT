@@ -18,6 +18,7 @@ from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -100,6 +101,7 @@ class WorkspaceFile(pydantic.BaseModel):
         )
 
 
+@db_endpoint
 async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
@@ -143,6 +145,7 @@ async def get_workspace(user_id: str) -> Optional[Workspace]:
     return Workspace.from_db(workspace) if workspace else None
 
 
+@db_endpoint
 async def create_workspace_file(
     workspace_id: str,
     file_id: str,
@@ -308,6 +311,7 @@ def format_bytes(n: int) -> str:
     return f"{n / GB:.1f} GB"
 
 
+@db_endpoint
 async def get_workspace_file(
     file_id: str,
     workspace_id: str,
@@ -348,6 +352,7 @@ async def get_workspace_file_by_id(
     return WorkspaceFile.from_db(file) if file else None
 
 
+@db_endpoint
 async def get_workspace_file_by_path(
     workspace_id: str,
     path: str,
@@ -391,6 +396,7 @@ async def list_internal_file_ids(user_id: str, file_ids: list[str]) -> set[str]:
     return {row.id for row in rows}
 
 
+@db_endpoint
 async def list_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
@@ -552,6 +558,7 @@ def _scope_branches(
     return branches
 
 
+@db_endpoint
 async def count_workspace_files(
     workspace_id: str,
     path_prefix: Optional[str] = None,
@@ -644,6 +651,7 @@ async def rename_workspace_file(
     return WorkspaceFile.from_db(updated)
 
 
+@db_endpoint
 async def soft_delete_workspace_file(
     file_id: str,
     workspace_id: str,
@@ -769,6 +777,7 @@ def build_files_block(
     return "\n\n[Attached files]\n" + "\n".join(lines) + "\n" + "\n".join(hints)
 
 
+@db_endpoint
 async def get_workspace_total_size(workspace_id: str) -> int:
     """
     Get the total size of all files in a workspace.

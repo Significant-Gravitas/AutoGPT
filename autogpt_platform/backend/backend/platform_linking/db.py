@@ -16,6 +16,7 @@ from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 from backend.copilot.db import get_chat_session_metadata
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.workspace import get_workspace, get_workspace_file
 from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
@@ -64,6 +65,7 @@ def _link_base_url() -> str:
 # by AppService's result validator.
 
 
+@db_endpoint
 async def find_server_link_owner(
     platform: str, platform_server_id: str, *, open_only: bool = False
 ) -> str | None:
@@ -75,6 +77,7 @@ async def find_server_link_owner(
     return await _owner(link.userId if link else None, open_only)
 
 
+@db_endpoint
 async def find_user_link_owner(
     platform: str, platform_user_id: str, *, open_only: bool = False
 ) -> str | None:
@@ -96,6 +99,7 @@ async def _owner(user_id: str | None, open_only: bool) -> str | None:
     return None if await is_account_closed(user_id) else user_id
 
 
+@db_endpoint
 async def resolve_server_link(
     platform: str, platform_server_id: str
 ) -> ResolveResponse:
@@ -103,6 +107,7 @@ async def resolve_server_link(
     return ResolveResponse(linked=owner is not None)
 
 
+@db_endpoint
 async def resolve_user_link(
     platform: str, platform_user_id: str, include_account: bool = False
 ) -> ResolveResponse:
@@ -137,6 +142,7 @@ def mask_email(email: str | None) -> str | None:
 # ── Token creation ────────────────────────────────────────────────────
 
 
+@db_endpoint
 async def create_server_link_token(
     request: CreateLinkTokenRequest,
 ) -> LinkTokenResponse:
@@ -192,6 +198,7 @@ async def create_server_link_token(
     )
 
 
+@db_endpoint
 async def create_user_link_token(
     request: CreateUserLinkTokenRequest,
 ) -> LinkTokenResponse:
@@ -242,6 +249,7 @@ async def create_user_link_token(
 # ── Token status / info ───────────────────────────────────────────────
 
 
+@db_endpoint
 async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
@@ -271,6 +279,7 @@ async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
     return LinkTokenStatusResponse(status="pending")
 
 
+@db_endpoint
 async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
@@ -304,6 +313,7 @@ def _enforce_verified_identity(
         raise NotAuthorizedError("This link was created for a different platform user.")
 
 
+@db_endpoint
 async def confirm_server_link(
     token: str, user_id: str, verified_platform_user_id: str | None = None
 ) -> ConfirmLinkResponse:
@@ -382,6 +392,7 @@ async def confirm_server_link(
     )
 
 
+@db_endpoint
 async def confirm_user_link(
     token: str, user_id: str, verified_platform_user_id: str | None = None
 ) -> ConfirmUserLinkResponse:
@@ -442,6 +453,7 @@ async def confirm_user_link(
 # ── Listing ───────────────────────────────────────────────────────────
 
 
+@db_endpoint
 async def list_server_links(user_id: str) -> list[PlatformLinkInfo]:
     links = await PlatformLink.prisma().find_many(
         where={"userId": user_id},
@@ -460,6 +472,7 @@ async def list_server_links(user_id: str) -> list[PlatformLinkInfo]:
     ]
 
 
+@db_endpoint
 async def list_user_links(user_id: str) -> list[PlatformUserLinkInfo]:
     links = await PlatformUserLink.prisma().find_many(
         where={"userId": user_id},
@@ -480,6 +493,7 @@ async def list_user_links(user_id: str) -> list[PlatformUserLinkInfo]:
 # ── Backfill ──────────────────────────────────────────────────────────
 
 
+@db_endpoint
 async def refresh_server_link_name(
     platform: str, platform_server_id: str, server_name: str
 ) -> None:
@@ -524,6 +538,7 @@ async def refresh_server_link_name(
 # ── Deletion ──────────────────────────────────────────────────────────
 
 
+@db_endpoint
 async def delete_server_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     link = await PlatformLink.prisma().find_unique(where={"id": link_id})
     if not link:
@@ -541,6 +556,7 @@ async def delete_server_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     return DeleteLinkResponse(success=True)
 
 
+@db_endpoint
 async def delete_user_link(link_id: str, user_id: str) -> DeleteLinkResponse:
     link = await PlatformUserLink.prisma().find_unique(where={"id": link_id})
     if not link:
@@ -559,6 +575,7 @@ async def delete_user_link(link_id: str, user_id: str) -> DeleteLinkResponse:
 LINK_TOKEN_RETENTION_HOURS = 24
 
 
+@db_endpoint
 async def fetch_workspace_artifact(
     session_id: str, file_id: str, max_bytes: int
 ) -> WorkspaceArtifact | None:
@@ -642,6 +659,7 @@ async def fetch_workspace_artifact(
     )
 
 
+@db_endpoint
 async def cleanup_expired_platform_link_tokens() -> int:
     """Delete PlatformLinkToken rows expired beyond the retention window."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=LINK_TOKEN_RETENTION_HOURS)

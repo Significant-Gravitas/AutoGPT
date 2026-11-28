@@ -8,6 +8,7 @@ from prisma.types import SubscriptionTrialWhereInput
 from pydantic import BaseModel, TypeAdapter
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.subscription_trial_capacity import (
     TRIAL_FULL,
     TrialCapacityReached,
@@ -85,11 +86,13 @@ class TrialState(BaseModel):
         )
 
 
+@db_endpoint
 async def get_subscription_trial(user_id: str) -> TrialState | None:
     row = await SubscriptionTrial.prisma().find_unique(where={"userId": user_id})
     return TrialState.from_db(row) if row else None
 
 
+@db_endpoint
 async def list_trials_ending_unrenewed(
     after: datetime, until: datetime
 ) -> list[TrialState]:
@@ -176,6 +179,7 @@ async def reserve_subscription_trial(
     return TrialState.from_db(row)
 
 
+@db_endpoint
 async def record_subscription_trial_cost(
     user_id: str, cost_microdollars: int, trial_id: str | None = None
 ) -> None:

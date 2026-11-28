@@ -27,6 +27,7 @@ from prisma.enums import MemoryScopeScheduleState, ResourceVisibility
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.exceptions import NotAuthorizedError
 
 ScopeRunKind = Literal["nightly", "community"]
@@ -72,6 +73,7 @@ class LiveExpertScope(BaseModel):
     paused: bool
 
 
+@db_endpoint
 async def get_scope_schedule(
     user_id: str, scope_key: str
 ) -> MemoryScopeSchedule | None:
@@ -82,6 +84,7 @@ async def get_scope_schedule(
     return MemoryScopeSchedule.from_db(row) if row else None
 
 
+@db_endpoint
 async def claim_scope_schedule(
     user_id: str,
     scope_key: str,
@@ -123,6 +126,7 @@ async def _claim_winner(
     return row if row is not None else await table.create(data=data)
 
 
+@db_endpoint
 async def record_scope_jobs(
     user_id: str,
     scope_key: str,
@@ -157,6 +161,7 @@ async def record_scope_jobs(
     return updated > 0
 
 
+@db_endpoint
 async def set_scope_state(
     user_id: str,
     scope_key: str,
@@ -188,6 +193,7 @@ async def set_scope_state(
     return updated > 0
 
 
+@db_endpoint
 async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
     """Drop ``job_id`` from the scope's row once the job itself is gone, so
     the next ``ensure_scope_scheduled`` registers it again."""
@@ -203,6 +209,7 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
     return nightly + learning > 0
 
 
+@db_endpoint
 async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> bool:
     """Stamp the time the scope's nightly job last ran cleanly, or the
     community sweep last took it."""
@@ -216,6 +223,7 @@ async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> 
     return updated > 0
 
 
+@db_endpoint
 async def list_user_scope_schedules(user_id: str) -> list[MemoryScopeSchedule]:
     """Every scope row the user owns: the account's and each expert's."""
     rows = await prisma.models.MemoryScopeSchedule.prisma().find_many(
@@ -224,6 +232,7 @@ async def list_user_scope_schedules(user_id: str) -> list[MemoryScopeSchedule]:
     return [MemoryScopeSchedule.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_scope_schedules(
     *, after: str | None = None, limit: int = 500
 ) -> list[MemoryScopeSchedule]:
@@ -255,6 +264,7 @@ async def list_active_scope_schedules(
     return [MemoryScopeSchedule.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_due_community_scopes(
     *, due_before: datetime, limit: int
 ) -> list[MemoryScopeSchedule]:
@@ -330,6 +340,7 @@ async def list_learning_account_ids(
     return [row["userId"] for row in rows]
 
 
+@db_endpoint
 async def existing_user_ids(user_ids: list[str]) -> set[str]:
     """The subset of ``user_ids`` that still have a User row: the backfill's
     check of the owners it found, and the reconcile's and the cron gate's of

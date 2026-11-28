@@ -43,9 +43,9 @@ _PURE = {"backend.api.features.library.db.collect_tree_ids"}
 
 _ADVICE = (
     "This package runs without a Prisma connection. Call it through "
-    "backend.data.db_accessors, adding the function to DatabaseManager and "
-    "DatabaseManagerAsyncClient in backend/data/db_manager.py if it is not "
-    "there yet."
+    "backend.data.db_accessors. If the database manager does not serve the "
+    "function yet, mark it @db_endpoint and add it to DatabaseManagerAsyncClient "
+    "in backend/data/db_manager.py."
 )
 
 
@@ -223,8 +223,8 @@ def test_worker_packages_do_not_query_the_database_directly():
             "calls backend.data.user.get_user_by_id",
         ),
         (
-            "from backend.data.db_manager import _spend_credits\n",
-            "imports backend.data.db_manager._spend_credits",
+            "from backend.data.db_manager import spend_credits\n",
+            "imports backend.data.db_manager.spend_credits",
         ),
     ],
 )

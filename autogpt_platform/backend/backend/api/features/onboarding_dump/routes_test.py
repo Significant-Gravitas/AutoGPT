@@ -305,7 +305,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
-    mocker.patch(f"{module}.clear_audio_paths", new=store.clear_audio_paths)
+    mocker.patch(f"{module}.clear_brain_dump_audio_paths", new=store.clear_audio_paths)
     mocker.patch(f"{module}.ensure_dump", new=store.ensure_dump)
     mocker.patch(
         f"{module}.replace_suggested_prompts", new=store.replace_suggested_prompts

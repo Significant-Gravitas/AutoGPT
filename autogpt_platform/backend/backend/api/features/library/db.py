@@ -25,6 +25,7 @@ from backend.api.features.store.store_listing_versions import (
     installable_store_version_where,
 )
 from backend.data.db import get_database_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.execution import get_graph_execution
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.data.graph import GraphSettings
@@ -105,6 +106,7 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
+@db_endpoint
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
@@ -358,6 +360,7 @@ async def list_favorite_library_agents(
     )
 
 
+@db_endpoint
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
     """
     Get a specific agent from the user's library.
@@ -468,6 +471,7 @@ async def get_library_agent_organizations(
     return {row.id: row.organizationId for row in rows}
 
 
+@db_endpoint
 async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str | None:
     """Id-only lookup for building deep links (e.g. the expert run post) —
     no relation includes, no schedule info, unlike the full getter below."""
@@ -477,6 +481,7 @@ async def get_library_agent_id_by_graph_id(user_id: str, graph_id: str) -> str |
     return agent.id if agent else None
 
 
+@db_endpoint
 async def get_library_agent_refs_by_graph_ids(
     user_id: str, graph_ids: list[str], *, include_deleted: bool = False
 ) -> list[library_model.LibraryAgentRef]:
@@ -519,6 +524,7 @@ async def get_library_agent_refs_by_graph_ids(
     return list(newest_by_graph.values())
 
 
+@db_endpoint
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
@@ -590,6 +596,7 @@ async def add_generated_agent_image(
     )
 
 
+@db_endpoint
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
@@ -858,6 +865,7 @@ async def update_agent_version_in_library(
     return library_agent
 
 
+@db_endpoint
 async def create_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
@@ -912,6 +920,7 @@ async def create_graph_in_library(
     return created_graph, library_agents[0]
 
 
+@db_endpoint
 async def update_graph_in_library(
     graph: graph_db.Graph,
     user_id: str,
@@ -1084,6 +1093,7 @@ async def _assert_target_version(
         )
 
 
+@db_endpoint
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
@@ -1409,6 +1419,7 @@ async def is_store_listing_version_available_for_install(
     return bool(rows)
 
 
+@db_endpoint
 async def add_store_agent_to_library(
     store_listing_version_id: str,
     user_id: str,
@@ -1537,6 +1548,7 @@ async def add_store_agent_to_library_as_admin(
 ##############################################
 
 
+@db_endpoint
 async def list_folders(
     user_id: str,
     parent_id: Optional[str] = None,
@@ -1574,6 +1586,7 @@ async def list_folders(
     ]
 
 
+@db_endpoint
 async def get_folder_tree(
     user_id: str,
     organization_id: Optional[str] = None,
@@ -1655,6 +1668,7 @@ async def _fetch_user_folders(
     )
 
 
+@db_endpoint
 async def get_folder(
     folder_id: str,
     user_id: str,
@@ -1691,6 +1705,7 @@ async def get_folder(
     )
 
 
+@db_endpoint
 async def create_folder(
     user_id: str,
     name: str,
@@ -1788,6 +1803,7 @@ async def create_folder_with_unique_name(
     raise RuntimeError("Unreachable")
 
 
+@db_endpoint
 async def update_folder(
     folder_id: str,
     user_id: str,
@@ -1850,6 +1866,7 @@ async def update_folder(
     )
 
 
+@db_endpoint
 async def move_folder(
     folder_id: str,
     user_id: str,
@@ -1947,6 +1964,7 @@ async def _is_descendant_of(
     return False
 
 
+@db_endpoint
 async def delete_folder(
     folder_id: str,
     user_id: str,
@@ -2086,6 +2104,7 @@ async def move_agent_to_folder(
     return await get_library_agent(library_agent_id, user_id)
 
 
+@db_endpoint
 async def bulk_move_agents_to_folder(
     agent_ids: list[str],
     folder_id: Optional[str],
@@ -2203,6 +2222,7 @@ def collect_tree_ids(
     return ids
 
 
+@db_endpoint
 async def get_root_agent_summaries(
     user_id: str,
     organization_id: Optional[str] = None,
@@ -2228,6 +2248,7 @@ _FOLDER_AGENTS_PAGE_SIZE = 250
 _FOLDER_AGENTS_MAX_PAGES = 8
 
 
+@db_endpoint
 async def get_folder_agents_map(
     user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
@@ -2277,6 +2298,7 @@ async def get_folder_agents_map(
 ##############################################
 
 
+@db_endpoint
 async def list_presets(
     user_id: str,
     page: int,
@@ -2359,6 +2381,7 @@ async def list_presets(
     )
 
 
+@db_endpoint
 async def get_preset(
     user_id: str, preset_id: str
 ) -> library_model.LibraryAgentPreset | None:
@@ -2403,6 +2426,7 @@ async def _resolve_private_expert_tenancy_or_not_found(
         ) from e
 
 
+@db_endpoint
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
@@ -3133,6 +3157,7 @@ def _trigger_agent_where(
     }
 
 
+@db_endpoint
 async def list_trigger_agents(
     user_id: str,
     library_agent_id: str,

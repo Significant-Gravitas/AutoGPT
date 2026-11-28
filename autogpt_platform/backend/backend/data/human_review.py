@@ -32,6 +32,7 @@ from backend.copilot.constants import (
     parse_node_id_from_exec_id,
     step_card_id,
 )
+from backend.data.db_endpoints import db_endpoint
 from backend.data.execution import get_graph_execution_meta
 from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
@@ -76,6 +77,7 @@ def get_auto_approve_key(scope_id: str, node_id: str) -> str:
     return f"auto_approve_{scope_id}_{node_id}"
 
 
+@db_endpoint
 async def check_approval(
     node_exec_id: str,
     node_id: str,
@@ -203,6 +205,7 @@ async def create_auto_approval_record(
     )
 
 
+@db_endpoint
 async def get_or_create_human_review(
     user_id: str,
     node_exec_id: str,
@@ -292,6 +295,7 @@ async def get_or_create_human_review(
         )
 
 
+@db_endpoint
 async def record_gate_approval(
     user_id: str,
     node_exec_id: str,
@@ -422,6 +426,7 @@ async def get_pending_review_by_node_exec_id(
     return PendingHumanReviewModel.from_db(review, node_id=node_id)
 
 
+@db_endpoint
 async def get_reviews_by_node_exec_ids(
     node_exec_ids: list[str], user_id: str
 ) -> dict[str, PendingHumanReviewModel]:
@@ -476,6 +481,7 @@ async def get_reviews_by_node_exec_ids(
     return result
 
 
+@db_endpoint
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     """
     Check if a graph execution has any pending reviews.
@@ -568,6 +574,7 @@ async def get_reviews(
     )
 
 
+@db_endpoint
 async def get_pending_reviews_for_user(
     user_id: str, page: int = 1, page_size: int = 25
 ) -> list[PendingHumanReviewModel]:
@@ -582,6 +589,7 @@ async def get_pending_reviews_for_user(
     return reviews
 
 
+@db_endpoint
 async def get_pending_reviews_for_execution(
     graph_exec_id: str, user_id: str
 ) -> list[PendingHumanReviewModel]:
@@ -598,6 +606,7 @@ async def get_pending_reviews_for_execution(
     return reviews
 
 
+@db_endpoint
 async def get_pending_reviews_for_chat_session(
     chat_session_id: str, user_id: str
 ) -> list[PendingHumanReviewModel]:
@@ -778,6 +787,7 @@ def _names_its_node(node_exec_id: str) -> bool:
     return is_copilot_synthetic_id(node_exec_id) or SPEND_REVIEW_MARKER in node_exec_id
 
 
+@db_endpoint
 async def process_all_reviews_for_execution(
     user_id: str,
     review_decisions: dict[str, tuple[ReviewStatus, SafeJsonData | None, str | None]],
@@ -905,6 +915,7 @@ async def process_all_reviews_for_execution(
     return result
 
 
+@db_endpoint
 async def update_review_processed_status(node_exec_id: str, processed: bool) -> None:
     """Update the processed status of a review."""
     await PendingHumanReview.prisma().update(
@@ -912,6 +923,7 @@ async def update_review_processed_status(node_exec_id: str, processed: bool) -> 
     )
 
 
+@db_endpoint
 async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str) -> int:
     """
     Cancel all pending reviews for a graph execution (e.g., when execution is stopped).
@@ -971,6 +983,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
     return result
 
 
+@db_endpoint
 async def reopen_review(node_exec_id: str, user_id: str) -> int:
     """Put an answered review back to waiting, for an answer that never took effect."""
     return await PendingHumanReview.prisma().update_many(
@@ -984,6 +997,7 @@ async def reopen_review(node_exec_id: str, user_id: str) -> int:
     )
 
 
+@db_endpoint
 async def claim_approved_review(node_exec_id: str, user_id: str) -> bool:
     """Take an approved review for one run of its action, before it runs.
 
@@ -1002,6 +1016,7 @@ async def claim_approved_review(node_exec_id: str, user_id: str) -> bool:
     return claimed == 1
 
 
+@db_endpoint
 async def release_review_claim(node_exec_id: str, user_id: str) -> int:
     """Give a claimed approval back when its action did not run, for a retry."""
     return await PendingHumanReview.prisma().update_many(
@@ -1015,6 +1030,7 @@ async def release_review_claim(node_exec_id: str, user_id: str) -> int:
     )
 
 
+@db_endpoint
 async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
@@ -1034,6 +1050,7 @@ async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     )
 
 
+@db_endpoint
 async def delete_review_as_read(
     node_exec_id: str, user_id: str, status: ReviewStatus, created_at: datetime
 ) -> int:

@@ -16,6 +16,7 @@ import prisma.types
 from pydantic import BaseModel
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_learning import (
     LearningAccessError,
     LearningSourceRecord,
@@ -214,6 +215,7 @@ async def upsert_review_in(
     return row or existing
 
 
+@db_endpoint
 async def upsert_review(
     user_id: str,
     *,
@@ -264,6 +266,7 @@ async def upsert_review(
     return LearningReviewRecord.from_db(row)
 
 
+@db_endpoint
 async def get_review_for_revision(
     user_id: str, source_id: str, source_revision: str, policy_version: int
 ) -> LearningReviewRecord | None:
@@ -279,6 +282,7 @@ async def get_review_for_revision(
     return LearningReviewRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def get_review(user_id: str, review_id: str) -> LearningReviewRecord | None:
     row = await prisma.models.SkillLearningReview.prisma().find_first(
         where={"id": review_id, "userId": user_id}
@@ -286,6 +290,7 @@ async def get_review(user_id: str, review_id: str) -> LearningReviewRecord | Non
     return LearningReviewRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def list_reviews(
     user_id: str,
     *,
@@ -313,6 +318,7 @@ class LearningRunSummary(BaseModel):
     cost_microdollars_30d: int
 
 
+@db_endpoint
 async def summarize_learning(user_id: str) -> LearningRunSummary:
     """Operator-facing status: backlog, freshness, retries, and recent cost."""
     pending = await list_pending_sources(user_id, limit=500)
@@ -334,6 +340,7 @@ async def summarize_learning(user_id: str) -> LearningRunSummary:
     )
 
 
+@db_endpoint
 async def reserve_model_review(
     user_id: str,
     *,
@@ -411,6 +418,7 @@ async def reserve_model_review(
     return LearningReviewRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def checkpoint_review_usage(
     user_id: str,
     review_id: str,
@@ -439,6 +447,7 @@ async def checkpoint_review_usage(
     return updated > 0
 
 
+@db_endpoint
 async def set_review_replay(
     user_id: str,
     review_id: str,

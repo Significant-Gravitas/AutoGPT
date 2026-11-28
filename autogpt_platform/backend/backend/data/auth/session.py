@@ -3,8 +3,10 @@ from datetime import UTC, datetime
 from prisma.models import AuthSession
 
 from backend.data.auth.ban import is_ban_active
+from backend.data.db_endpoints import db_endpoint
 
 
+@db_endpoint
 async def is_auth_session_active(session_id: str, user_id: str) -> bool:
     now = datetime.now(UTC)
     session = await AuthSession.prisma().find_first(

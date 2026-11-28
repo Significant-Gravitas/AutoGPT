@@ -33,6 +33,7 @@ from backend.data.db import (
     execute_raw_with_schema,
     query_raw_with_schema,
 )
+from backend.data.db_endpoints import db_endpoint
 from backend.data.dream_pass_models import (
     CLOSED_STATUSES,
     DREAM_TEXT_FIELDS,
@@ -135,6 +136,7 @@ SELECT "id" FROM target WHERE reached
 ERASE_STATEMENT_TIMEOUT_MS = 9_000
 
 
+@db_endpoint
 async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
     data: DreamPassCreateInput = {
         "id": draft.id,
@@ -157,6 +159,7 @@ async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
     return DreamPassRecord.from_db(row)
 
 
+@db_endpoint
 async def update_dream_pass(pass_id: str, update: DreamPassUpdate) -> bool:
     """Apply one transition to the pass's row, in a single statement.
 
@@ -173,11 +176,13 @@ async def update_dream_pass(pass_id: str, update: DreamPassUpdate) -> bool:
     return written > 0
 
 
+@db_endpoint
 async def get_dream_pass(pass_id: str) -> DreamPassRecord | None:
     row = await prisma.models.DreamPass.prisma().find_unique(where={"id": pass_id})
     return DreamPassRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def get_dream_pass_for_user(pass_id: str, user_id: str) -> DreamPassRecord | None:
     """The pass's row when *user_id* owns it. ``None`` for another user's pass,
     the same as for a missing one, so a caller cannot probe for pass ids."""
@@ -187,6 +192,7 @@ async def get_dream_pass_for_user(pass_id: str, user_id: str) -> DreamPassRecord
     return DreamPassRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def list_open_dream_passes(
     scope_key: str, limit: int | None = None
 ) -> list[DreamPassRecord]:
@@ -200,6 +206,7 @@ async def list_open_dream_passes(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_dream_passes(
     user_id: str, limit: int = 20, open_only: bool = False
 ) -> list[DreamPassRecord]:
@@ -214,6 +221,7 @@ async def list_dream_passes(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_expired_dream_passes(
     expired_before: datetime,
     limit: int = 100,
@@ -242,6 +250,7 @@ async def list_expired_dream_passes(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_dream_pass_cleanups(
     due_before: datetime,
     limit: int = 100,
@@ -290,6 +299,7 @@ async def list_dream_pass_cleanups(
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def erase_dream_passes(
     user_id: str, scope_key: str, *, reached: list[str], named: list[str]
 ) -> list[str]:
@@ -320,6 +330,7 @@ async def erase_dream_passes(
     return [row["id"] for row in rows]
 
 
+@db_endpoint
 async def delete_old_dream_passes(created_before: datetime, limit: int = 1000) -> int:
     """Delete at most *limit* closed passes, of every user, created before
     *created_before*, and say how many went. An open pass is never deleted,

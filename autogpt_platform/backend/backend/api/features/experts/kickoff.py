@@ -30,6 +30,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 SERVER_KICKOFF_SURFACES: tuple[HireSurface | None, ...] = (None, "copilot")
 
 
+@db_endpoint
 async def start_expert_kickoff(
     user_id: str,
     expert_id: str,

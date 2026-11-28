@@ -22,6 +22,7 @@ from backend.data.credit import (
 )
 from backend.data.credit_history import get_credit_history
 from backend.data.db import prisma
+from backend.data.db_endpoints import db_endpoint
 from backend.data.model import RefundRequest, TransactionHistory
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.stripe_client import stripe_call
@@ -50,6 +51,7 @@ async def _personal_org_owner(org_id: str) -> str | None:
     return member.userId if member else None
 
 
+@db_endpoint
 async def get_personal_org_owner(org_id: str) -> str | None:
     """Public accessor for the cached personal-org owner lookup."""
     return await _personal_org_owner(org_id)

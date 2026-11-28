@@ -22,6 +22,7 @@ from backend.copilot.constants import (
     SPEND_REVIEW_MARKER,
 )
 from backend.data import human_review
+from backend.data.db_endpoints import db_endpoint
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.data.expert_spend import SpendWindow, get_spend, window_start
 from backend.util.settings import Settings
@@ -74,6 +75,7 @@ def spend_review_id(expert_id: str, graph_exec_id: str) -> str:
     return f"{SPEND_REVIEW_MARKER}{expert_id}:{graph_exec_id}"
 
 
+@db_endpoint
 async def spend_approval_required(
     user_id: str, expert_id: str
 ) -> SpendApprovalNeeded | None:
@@ -125,6 +127,7 @@ async def _approved_in_window(
     return row is not None
 
 
+@db_endpoint
 async def park_execution_for_spend_approval(
     user_id: str,
     graph_exec_id: str,
@@ -166,6 +169,7 @@ async def park_execution_for_spend_approval(
     await _post_thread_message(user_id, needed)
 
 
+@db_endpoint
 async def parked_spend_decision(
     user_id: str, expert_id: str, graph_exec_id: str
 ) -> ReviewStatus | None:
@@ -176,6 +180,7 @@ async def parked_spend_decision(
     return review.status if review else None
 
 
+@db_endpoint
 async def open_chat_spend_review(
     user_id: str,
     session_id: str,

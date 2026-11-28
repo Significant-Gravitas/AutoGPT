@@ -22,6 +22,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import AccountDeletionRequest
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 
 # How long the owner has to change their mind before the data is erased.
 GRACE_PERIOD = timedelta(days=14)
@@ -43,6 +44,7 @@ async def get_deletion_request(user_id: str) -> AccountDeletionRequest | None:
     return await AccountDeletionRequest.prisma().find_unique(where={"userId": user_id})
 
 
+@db_endpoint
 async def is_account_closed(user_id: str) -> bool:
     return await get_deletion_request(user_id) is not None
 

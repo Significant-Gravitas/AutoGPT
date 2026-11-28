@@ -15,6 +15,7 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
 )
 from backend.data.db_accessors import credit_db, user_db
+from backend.data.db_endpoints import db_endpoint
 from backend.data.model import User
 from backend.data.notifications import (
     NotificationEventModel,
@@ -146,6 +147,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     return True
 
 
+@db_endpoint
 async def send_trial_last_calls() -> int:
     """Queue the last-call notice for each trial set not to renew whose end
     is inside the last-call window. Runs hourly; each notice is claimed once

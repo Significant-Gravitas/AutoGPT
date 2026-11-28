@@ -5,6 +5,7 @@ import prisma.errors
 import prisma.models
 from pydantic import BaseModel
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.json import SafeJson
 
 # Serialized BriefingContent (see backend/copilot/briefing/models.py). Left
@@ -41,6 +42,7 @@ def _as_db_date(briefing_date: date) -> datetime:
     return datetime.combine(briefing_date, time.min, tzinfo=timezone.utc)
 
 
+@db_endpoint
 async def create_briefing(
     user_id: str, briefing_date: date, content: BriefingContentJson
 ) -> BriefingRecord:
@@ -62,6 +64,7 @@ async def create_briefing(
     return BriefingRecord.from_db(row)
 
 
+@db_endpoint
 async def get_briefing_for_date(
     user_id: str, briefing_date: date
 ) -> BriefingRecord | None:
@@ -71,6 +74,7 @@ async def get_briefing_for_date(
     return BriefingRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def update_briefing_content(
     user_id: str, briefing_id: str, content: BriefingContentJson
 ) -> None:
@@ -86,6 +90,7 @@ async def update_briefing_content(
     )
 
 
+@db_endpoint
 async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
     await prisma.models.UserBriefing.prisma().update_many(
         where={"id": briefing_id, "userId": user_id},
@@ -93,6 +98,7 @@ async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
     )
 
 
+@db_endpoint
 async def get_latest_briefings(
     user_id: str, limit: int = _LATEST_BRIEFING_SCAN_LIMIT
 ) -> list[BriefingRecord]:
