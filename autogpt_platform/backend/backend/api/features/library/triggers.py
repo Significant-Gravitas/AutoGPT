@@ -11,6 +11,7 @@ from typing import Any
 
 from backend.api.features.experts import experts_db
 from backend.api.features.orgs.db import resolve_member_tenancy
+from backend.data.db_endpoints import db_endpoint
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -54,6 +55,7 @@ async def _resolve_private_expert_tenancy(
         raise MissingConfigError(_EXPERT_WORKSPACE_UNAVAILABLE) from e
 
 
+@db_endpoint
 async def setup_triggered_preset(
     *,
     user_id: str,
@@ -197,6 +199,7 @@ async def setup_triggered_preset(
         raise
 
 
+@db_endpoint
 async def update_triggered_preset(
     *,
     user_id: str,
@@ -342,6 +345,7 @@ async def update_triggered_preset(
     return updated
 
 
+@db_endpoint
 async def delete_preset_with_webhook_cleanup(*, user_id: str, preset_id: str) -> None:
     """Delete a preset and prune its webhook if it becomes dangling.
 

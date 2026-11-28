@@ -23,6 +23,7 @@ from backend.data.access_blocks import (
     get_email_domain,
 )
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,7 @@ async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIPR
     )
 
 
+@db_endpoint
 async def delete_expired_ip_events(retention_days: int) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     deleted = await AuthIPEvent.prisma().delete_many(

@@ -21,6 +21,7 @@ from backend.api.features.search.embeddings import (
     read_content_embedding,
     store_content_embedding,
 )
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,7 @@ async def delete_embedding(version_id: str) -> bool:
     return await delete_content_embedding(ContentType.STORE_AGENT, version_id)
 
 
+@db_endpoint
 async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
     """
     Generate embeddings for approved listings that don't have them.

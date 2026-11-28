@@ -11,6 +11,7 @@ from prisma.types import OrgMemberWhereInput
 
 from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.org_credit import forget_personal_org_owner
 from backend.data.org_migration import (
     _sanitize_slug,
@@ -152,6 +153,7 @@ async def _bootstrap_personal_org(user_id: str) -> str | None:
             pass
 
 
+@db_endpoint
 async def get_user_default_team(
     user_id: str,
 ) -> tuple[str | None, str | None]:
@@ -181,6 +183,7 @@ async def get_user_default_team(
     return org_id, ws_id
 
 
+@db_endpoint
 async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]:
     """Best-effort default org/team for tenanting newly created rows.
 
@@ -201,6 +204,7 @@ async def resolve_default_tenancy(user_id: str) -> tuple[str | None, str | None]
         return None, None
 
 
+@db_endpoint
 async def resolve_member_tenancy(
     user_id: str, organization_id: str | None, team_id: str | None
 ) -> tuple[str | None, str | None]:
@@ -230,6 +234,7 @@ async def resolve_member_tenancy(
     return await resolve_default_tenancy(user_id)
 
 
+@db_endpoint
 async def is_active_member(
     user_id: str, organization_id: str, team_id: str | None
 ) -> bool:

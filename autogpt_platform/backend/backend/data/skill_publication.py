@@ -18,6 +18,7 @@ import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_content_approvals import (
     SkillContentApproval,
     content_approvals_json,
@@ -252,6 +253,7 @@ async def _require_no_terminal_review(
         raise _CommitConflict("review ownership changed before publication")
 
 
+@db_endpoint
 async def commit_version_safe(
     user_id: str,
     *,
@@ -275,11 +277,13 @@ async def commit_version_safe(
         return CommitResult(committed=False, reason=str(conflict))
 
 
+@db_endpoint
 async def list_pending_publications(user_id: str) -> list[SkillVersionRecord]:
     """Versions whose pointer swap landed but whose workspace write did not."""
     return await list_versions_in_states(user_id, [PENDING_WRITE_STATE])
 
 
+@db_endpoint
 async def complete_publication(
     user_id: str, *, version_id: str, review_id: str | None, reason: str = ""
 ) -> None:
@@ -294,6 +298,7 @@ async def complete_publication(
     )
 
 
+@db_endpoint
 async def abandon_publication(
     user_id: str,
     *,
@@ -314,6 +319,7 @@ async def abandon_publication(
     )
 
 
+@db_endpoint
 async def get_pending_publication_for_skill(
     user_id: str, owner_key: str, skill_name: str
 ) -> SkillVersionRecord | None:

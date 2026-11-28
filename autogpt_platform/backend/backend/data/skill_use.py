@@ -13,6 +13,7 @@ import prisma.errors
 import prisma.models
 from pydantic import BaseModel, Field
 
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_learning import owner_key_for
 
 
@@ -62,6 +63,7 @@ class SkillSuppressionRecord(BaseModel):
         )
 
 
+@db_endpoint
 async def add_suppression(
     user_id: str,
     *,
@@ -98,6 +100,7 @@ async def add_suppression(
         return existing
 
 
+@db_endpoint
 async def find_suppression(
     user_id: str, owner_key: str, skill_name: str, behavior_fingerprint: str
 ) -> SkillSuppressionRecord | None:
@@ -112,6 +115,7 @@ async def find_suppression(
     return SkillSuppressionRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def list_suppressions(
     user_id: str, owner_key: str, skill_name: str
 ) -> list[SkillSuppressionRecord]:
@@ -121,6 +125,7 @@ async def list_suppressions(
     return [SkillSuppressionRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def record_use_event(
     user_id: str,
     *,
@@ -148,6 +153,7 @@ async def record_use_event(
     return SkillUseEventRecord.from_db(row)
 
 
+@db_endpoint
 async def list_use_events(
     user_id: str, owner_key: str, skill_name: str, *, limit: int = 200
 ) -> list[SkillUseEventRecord]:

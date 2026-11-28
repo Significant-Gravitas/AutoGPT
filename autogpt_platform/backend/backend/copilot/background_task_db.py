@@ -23,9 +23,11 @@ from backend.copilot.model import (
 )
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.data import db
+from backend.data.db_endpoints import db_endpoint
 from backend.util.json import SafeJson
 
 
+@db_endpoint
 async def get_background_task(task_id: str, user_id: str) -> BackgroundTask | None:
     rows = await db.query_raw_with_schema(
         'SELECT * FROM {schema_prefix}"ChatBackgroundTask" WHERE id=$1 AND "userId"=$2',
@@ -45,6 +47,7 @@ class _TaskState(BaseModel):
     followup_state: str
 
 
+@db_endpoint
 async def get_session_background_state(
     session_id: str, user_id: str
 ) -> BackgroundSessionState:
@@ -71,6 +74,7 @@ async def get_session_background_state(
     )
 
 
+@db_endpoint
 async def create_background_task(
     task: BackgroundTask, prompt: str, metadata: dict[str, Any]
 ) -> None:
@@ -106,6 +110,7 @@ async def create_background_task(
         await _enqueue(tx, task.child_session_id, task.child_turn_id, prompt, metadata)
 
 
+@db_endpoint
 async def claim_background_turn(
     task_id: str,
     user_id: str,
@@ -138,6 +143,7 @@ async def claim_background_turn(
     return updated == 1
 
 
+@db_endpoint
 async def finish_background_turn(
     user_id: str,
     session_id: str,
@@ -201,6 +207,7 @@ def _outcome_of(error: str | None) -> BackgroundOutcome:
     return "cancelled" if error == CANCELLED_MESSAGE else "failed"
 
 
+@db_endpoint
 async def has_open_handoffs(user_id: str, session_id: str) -> bool:
     """Whether the chat has background work of its own still out: a handoff
     whose wake has not run yet."""
@@ -265,6 +272,7 @@ async def _answer_sequence(child_turn_id: str, turn_held: bool) -> int | None:
     return int(rows[0]["sequence"]) if rows else None
 
 
+@db_endpoint
 async def complete_background_task(
     task_id: str,
     user_id: str,
@@ -285,6 +293,7 @@ async def complete_background_task(
     )
 
 
+@db_endpoint
 async def list_background_tasks() -> list[BackgroundTask]:
     return await db.query_raw_with_schema(
         """WITH due AS (
@@ -297,6 +306,7 @@ async def list_background_tasks() -> list[BackgroundTask]:
     )
 
 
+@db_endpoint
 async def enqueue_background_followup(
     task_id: str,
     user_id: str,
@@ -357,10 +367,12 @@ async def enqueue_background_followup(
         return "queued"
 
 
+@db_endpoint
 async def suppress_background_followup(task_id: str, user_id: str) -> None:
     await _close(db.prisma, task_id, user_id)
 
 
+@db_endpoint
 async def release_deleted_background_turn(
     task_id: str, user_id: str, session_id: str, turn_id: str
 ) -> bool:
@@ -381,6 +393,7 @@ async def release_deleted_background_turn(
     )
 
 
+@db_endpoint
 async def release_abandoned_background_turn(
     task: BackgroundTask, session_id: str, turn_id: str, before: datetime
 ) -> bool:
@@ -406,6 +419,7 @@ async def release_abandoned_background_turn(
     )
 
 
+@db_endpoint
 async def background_child_result(
     session_id: str, user_id: str
 ) -> BackgroundChildResult | None:
@@ -494,6 +508,7 @@ def _tool_calls_of(raw: Any) -> list[dict[str, Any]]:
     return [call for call in (calls or []) if isinstance(call, dict)]
 
 
+@db_endpoint
 async def cancel_queued_background_followup(user_id: str, session_id: str) -> bool:
     async with db.transaction() as tx:
         parent = await _lock_session(tx, session_id)
@@ -519,6 +534,7 @@ async def cancel_queued_background_followup(user_id: str, session_id: str) -> bo
     return True
 
 
+@db_endpoint
 async def cancel_background_tasks(
     user_id: str,
     session_id: str,
@@ -529,6 +545,7 @@ async def cancel_background_tasks(
     )
 
 
+@db_endpoint
 async def cancel_orphaned_background_tasks(
     user_id: str, session_id: str, expected_updated_at: datetime
 ) -> list[BackgroundTask] | None:

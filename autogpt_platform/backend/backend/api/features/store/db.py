@@ -12,6 +12,7 @@ from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.graph import (
     GraphModel,
     GraphModelWithoutNodes,
@@ -63,6 +64,7 @@ class StoreAgentsSortOptions(Enum):
     UPDATED_AT = "updated_at"
 
 
+@db_endpoint
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
@@ -323,6 +325,7 @@ async def log_search_term(search_query: str):
         logger.error(f"Error logging search term: {e}")
 
 
+@db_endpoint
 async def get_store_agent_details(
     username: str, agent_name: str, include_changelog: bool = False
 ) -> store_model.StoreAgentDetails:
@@ -386,6 +389,7 @@ async def get_available_graph(
 ) -> GraphModelWithoutNodes: ...
 
 
+@db_endpoint
 async def get_available_graph(
     store_listing_version_id: str,
     hide_nodes: bool = True,
@@ -430,6 +434,7 @@ async def get_available_graph(
         raise DatabaseError("Failed to fetch workflow") from e
 
 
+@db_endpoint
 async def get_store_agent_by_version_id(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:
@@ -1518,6 +1523,7 @@ async def get_my_agents(
         raise DatabaseError("Failed to fetch my workflows") from e
 
 
+@db_endpoint
 async def get_agent(store_listing_version_id: str) -> GraphModel:
     """Get the graph behind a store listing version, for public download.
 

@@ -21,6 +21,7 @@ import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.util.json import SafeJson
 
 PERSONAL_OWNER_KEY = "personal"
@@ -142,6 +143,7 @@ def _unique_where(
     }
 
 
+@db_endpoint
 async def upsert_source_revision(
     user_id: str,
     *,
@@ -228,6 +230,7 @@ async def upsert_source_revision(
         return LearningSourceRecord.from_db(row or existing)
 
 
+@db_endpoint
 async def get_source(user_id: str, source_id: str) -> LearningSourceRecord | None:
     row = await prisma.models.SkillLearningSource.prisma().find_first(
         where={"id": source_id, "userId": user_id}
@@ -235,6 +238,7 @@ async def get_source(user_id: str, source_id: str) -> LearningSourceRecord | Non
     return LearningSourceRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def get_source_by_ref(
     user_id: str, source_kind: str, source_ref: str
 ) -> LearningSourceRecord | None:
@@ -250,6 +254,7 @@ _PENDING_PREDICATE = (
 )
 
 
+@db_endpoint
 async def list_pending_owner_keys(user_id: str) -> list[str]:
     """Owners (personal + experts) that have at least one pending source."""
     rows = await query_raw_with_schema(
@@ -260,6 +265,7 @@ async def list_pending_owner_keys(user_id: str) -> list[str]:
     return sorted(str(row["ownerKey"]) for row in rows)
 
 
+@db_endpoint
 async def list_pending_sources(
     user_id: str, *, limit: int = 100, owner_key: str | None = None
 ) -> list[LearningSourceRecord]:
@@ -297,6 +303,7 @@ async def list_pending_sources(
     return [by_id[i] for i in ids if i in by_id]
 
 
+@db_endpoint
 async def set_source_eligibility(
     user_id: str,
     source_id: str,
@@ -330,6 +337,7 @@ async def set_source_eligibility(
     return await get_source(user_id, source_id)
 
 
+@db_endpoint
 async def set_source_approval(
     user_id: str,
     source_id: str,
@@ -357,6 +365,7 @@ async def set_source_approval(
     return await get_source(user_id, source_id)
 
 
+@db_endpoint
 async def mark_source_attempted(user_id: str, source_id: str, revision: str) -> bool:
     """Yield selection priority without consuming or changing the source revision."""
     updated = await execute_raw_with_schema(
@@ -370,6 +379,7 @@ async def mark_source_attempted(user_id: str, source_id: str, revision: str) -> 
     return updated > 0
 
 
+@db_endpoint
 async def advance_source_cursor(user_id: str, source_id: str, revision: str) -> bool:
     """Mark ``revision`` as durably dispositioned. Never moves backwards.
 
@@ -388,6 +398,7 @@ async def advance_source_cursor(user_id: str, source_id: str, revision: str) -> 
     return updated > 0
 
 
+@db_endpoint
 async def require_owned_source(user_id: str, source_id: str) -> LearningSourceRecord:
     source = await get_source(user_id, source_id)
     if source is None:

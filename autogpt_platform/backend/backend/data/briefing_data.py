@@ -16,6 +16,7 @@ from prisma.models import AgentPreset, UserBalance
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.util.exceptions import DatabaseError
 from backend.util.logging import TruncatedLogger
 
@@ -43,6 +44,7 @@ class ScoredRun(BaseModel):
     activity_status: str | None
 
 
+@db_endpoint
 async def get_agent_period_stats(
     user_id: str, start: datetime, end: datetime
 ) -> list[AgentPeriodStats]:
@@ -90,6 +92,7 @@ async def get_agent_period_stats(
         ) from e
 
 
+@db_endpoint
 async def get_top_scored_runs(
     user_id: str, start: datetime, end: datetime, limit: int
 ) -> list[ScoredRun]:
@@ -141,6 +144,7 @@ async def get_top_scored_runs(
         ) from e
 
 
+@db_endpoint
 async def count_active_agents(user_id: str) -> int:
     """Every agent the user has switched on, counted once across its versions.
 
@@ -164,6 +168,7 @@ async def count_active_agents(user_id: str) -> int:
         ) from e
 
 
+@db_endpoint
 async def count_scheduled_agents(user_id: str) -> int:
     """Agents configured to run on their own — the ones that would silently
     stop if the credits ran out."""
@@ -177,6 +182,7 @@ async def count_scheduled_agents(user_id: str) -> int:
         ) from e
 
 
+@db_endpoint
 async def get_briefing_credit_balance(user_id: str) -> float:
     """Balance in credits (the stored figure is cents)."""
     try:

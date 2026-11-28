@@ -12,6 +12,8 @@ from prisma import Json
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from prisma.models import OnboardingBrainDump
 
+from backend.data.db_endpoints import db_endpoint
+
 
 async def get_dump(user_id: str) -> OnboardingBrainDump | None:
     return await OnboardingBrainDump.prisma().find_unique(where={"userId": user_id})
@@ -301,7 +303,8 @@ async def replace_plan(
 _CLEAR_AUDIO_BATCH = 1000
 
 
-async def clear_audio_paths(audio_paths: list[str]) -> int:
+@db_endpoint
+async def clear_brain_dump_audio_paths(audio_paths: list[str]) -> int:
     """Forget recordings that are about to be deleted from storage.
 
     Only ``audioPath`` goes: the transcript is kept while the account

@@ -261,7 +261,7 @@ async def test_clear_audio_paths_nulls_only_the_audio_in_batches(
         f"gcs://bucket/uploads/users/u{i}/x/brain-dump-r.webm" for i in range(1001)
     ]
 
-    cleared = await db.clear_audio_paths(paths)
+    cleared = await db.clear_brain_dump_audio_paths(paths)
 
     assert cleared == 2
     batches = [call.kwargs for call in update_many.await_args_list]
@@ -280,5 +280,5 @@ async def test_clear_audio_paths_with_nothing_to_clear_skips_the_query(
         MagicMock(return_value=MagicMock(update_many=update_many)),
     )
 
-    assert await db.clear_audio_paths([]) == 0
+    assert await db.clear_brain_dump_audio_paths([]) == 0
     update_many.assert_not_awaited()

@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 import prisma.models
 from pydantic import BaseModel, Field
 
+from backend.data.db_endpoints import db_endpoint
 from backend.util.json import SafeJson
 
 ActivityEventCategory = Literal["FILE", "INTEGRATION", "RUN", "SCHEDULE"]
@@ -70,6 +71,7 @@ class ActivityEvent(ActivityEventDraft):
         )
 
 
+@db_endpoint
 async def create_activity_event(
     user_id: str, draft: ActivityEventDraft
 ) -> ActivityEvent:

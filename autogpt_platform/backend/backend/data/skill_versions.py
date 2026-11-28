@@ -18,6 +18,7 @@ import prisma.types
 from prisma import Prisma
 from pydantic import BaseModel, Field
 
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_content_approvals import (
     SkillContentApproval,
     content_approvals_json,
@@ -161,6 +162,7 @@ class SkillVersionRecord(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@db_endpoint
 async def get_head(
     user_id: str, owner_key: str, skill_name: str
 ) -> SkillHeadRecord | None:
@@ -176,6 +178,7 @@ async def get_head(
     return SkillHeadRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def ensure_head(
     user_id: str, expert_id: str | None, skill_name: str
 ) -> SkillHeadRecord:
@@ -200,6 +203,7 @@ async def ensure_head(
         return head
 
 
+@db_endpoint
 async def list_heads(
     user_id: str, owner_key: str | None = None
 ) -> list[SkillHeadRecord]:
@@ -210,6 +214,7 @@ async def list_heads(
     return [SkillHeadRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_use_paused_skill_names(user_id: str, owner_key: str) -> list[str]:
     rows = await prisma.models.SkillHead.prisma().find_many(
         where={"userId": user_id, "ownerKey": owner_key, "NOT": [{"usePausedAt": None}]}
@@ -217,6 +222,7 @@ async def list_use_paused_skill_names(user_id: str, owner_key: str) -> list[str]
     return [row.skillName for row in rows]
 
 
+@db_endpoint
 async def update_head_policy(
     user_id: str,
     owner_key: str,
@@ -245,6 +251,7 @@ async def update_head_policy(
     return SkillHeadRecord.from_db(row) if row else head
 
 
+@db_endpoint
 async def pause_use_if_current(user_id: str, head_id: str, version_id: str) -> bool:
     """Stop using the skill only while the head still names *version_id*.
 
@@ -257,6 +264,7 @@ async def pause_use_if_current(user_id: str, head_id: str, version_id: str) -> b
     return paused > 0
 
 
+@db_endpoint
 async def publish_version_if_current(
     user_id: str,
     head_id: str,
@@ -295,6 +303,7 @@ async def next_version_number(head_id: str, *, client: Prisma | None) -> int:
     return (latest.version if latest else 0) + 1
 
 
+@db_endpoint
 async def create_version(
     user_id: str,
     *,
@@ -357,6 +366,7 @@ async def create_version(
     raise RuntimeError("could not allocate a skill version number")
 
 
+@db_endpoint
 async def set_version_state(
     user_id: str, version_id: str, state: str, reason: str = ""
 ) -> None:
@@ -366,6 +376,7 @@ async def set_version_state(
     )
 
 
+@db_endpoint
 async def get_version(user_id: str, version_id: str) -> SkillVersionRecord | None:
     row = await prisma.models.SkillVersion.prisma().find_first(
         where={"id": version_id, "userId": user_id}
@@ -373,6 +384,7 @@ async def get_version(user_id: str, version_id: str) -> SkillVersionRecord | Non
     return SkillVersionRecord.from_db(row) if row else None
 
 
+@db_endpoint
 async def list_versions(
     user_id: str, owner_key: str, skill_name: str, *, limit: int = 50
 ) -> list[SkillVersionRecord]:
@@ -385,6 +397,7 @@ async def list_versions(
     return [SkillVersionRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_recent_versions(
     user_id: str,
     *,
@@ -403,6 +416,7 @@ async def list_recent_versions(
     return [SkillVersionRecord.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def list_open_decisions(
     user_id: str, owner_key: str | None = None
 ) -> list[SkillVersionRecord]:
@@ -411,6 +425,7 @@ async def list_open_decisions(
     )
 
 
+@db_endpoint
 async def list_versions_in_states(
     user_id: str, states: list[str], *, limit: int = 500
 ) -> list[SkillVersionRecord]:

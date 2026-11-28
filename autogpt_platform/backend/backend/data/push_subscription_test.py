@@ -375,7 +375,7 @@ class TestDeletePushSubscription:
 class TestIncrementFailCount:
     @pytest.mark.asyncio
     async def test_includes_user_id_in_where(self, mock_prisma):
-        await push_subscription.increment_fail_count(
+        await push_subscription.increment_push_fail_count(
             "user-1",
             "https://fcm.googleapis.com/fcm/send/sub/1",
         )
@@ -389,7 +389,7 @@ class TestIncrementFailCount:
 
     @pytest.mark.asyncio
     async def test_increments_fail_count_by_one(self, mock_prisma):
-        await push_subscription.increment_fail_count(
+        await push_subscription.increment_push_fail_count(
             "user-1",
             "https://fcm.googleapis.com/fcm/send/sub/1",
         )
@@ -399,7 +399,7 @@ class TestIncrementFailCount:
 
     @pytest.mark.asyncio
     async def test_sets_last_failed_at_to_utc_now(self, mock_prisma):
-        await push_subscription.increment_fail_count(
+        await push_subscription.increment_push_fail_count(
             "user-1",
             "https://fcm.googleapis.com/fcm/send/sub/1",
         )
@@ -415,7 +415,7 @@ class TestCleanupFailedSubscriptions:
     async def test_deletes_subscriptions_exceeding_threshold(self, mock_prisma):
         mock_prisma.delete_many.return_value = 3
 
-        result = await push_subscription.cleanup_failed_subscriptions(
+        result = await push_subscription.cleanup_failed_push_subscriptions(
             max_failures=5,
         )
 
@@ -428,7 +428,7 @@ class TestCleanupFailedSubscriptions:
     async def test_uses_default_max_failures(self, mock_prisma):
         mock_prisma.delete_many.return_value = 0
 
-        await push_subscription.cleanup_failed_subscriptions()
+        await push_subscription.cleanup_failed_push_subscriptions()
 
         call_kwargs = mock_prisma.delete_many.call_args.kwargs
         assert call_kwargs["where"]["failCount"]["gte"] == 5
@@ -437,7 +437,7 @@ class TestCleanupFailedSubscriptions:
     async def test_returns_zero_when_none_deleted(self, mock_prisma):
         mock_prisma.delete_many.return_value = 0
 
-        result = await push_subscription.cleanup_failed_subscriptions()
+        result = await push_subscription.cleanup_failed_push_subscriptions()
 
         assert result == 0
 
@@ -445,7 +445,7 @@ class TestCleanupFailedSubscriptions:
     async def test_returns_zero_when_result_is_none(self, mock_prisma):
         mock_prisma.delete_many.return_value = None
 
-        result = await push_subscription.cleanup_failed_subscriptions()
+        result = await push_subscription.cleanup_failed_push_subscriptions()
 
         assert result == 0
 
@@ -524,7 +524,7 @@ class TestValidatePushEndpoint:
     async def test_custom_max_failures_threshold(self, mock_prisma):
         mock_prisma.delete_many.return_value = 1
 
-        result = await push_subscription.cleanup_failed_subscriptions(
+        result = await push_subscription.cleanup_failed_push_subscriptions(
             max_failures=10,
         )
 

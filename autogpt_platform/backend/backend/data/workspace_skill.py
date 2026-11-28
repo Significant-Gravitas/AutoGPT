@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from backend.data import db
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.skill_capacity import (
     MAX_SKILLS_PER_EXPERT,
     SKILL_ORIGIN_LABELS,
@@ -92,6 +93,7 @@ def publication_refusal(
     return None
 
 
+@db_endpoint
 async def publish_workspace_skill_file(
     write: WorkspaceSkillWrite,
 ) -> WorkspaceSkillPublication:
@@ -162,6 +164,7 @@ async def publish_workspace_skill_file(
         )
 
 
+@db_endpoint
 async def skill_root_has_room(workspace_id: str, path: str, origin: str) -> bool:
     """Whether a root at ``path`` would fit the owner's budget for ``origin``:
     the capacity decision :func:`publish_workspace_skill_file` makes, read

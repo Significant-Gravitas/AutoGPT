@@ -28,6 +28,7 @@ from backend.copilot.tools.skills import (
     store_user_skills,
 )
 from backend.data.db import query_raw_with_schema
+from backend.data.db_endpoints import db_endpoint
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination
@@ -49,6 +50,7 @@ ACTIVE_VERSIONS_CACHE_KEY = "copilot:skills_active_versions:v1"
 ACTIVE_VERSIONS_CACHE_TTL_S = 60
 
 
+@db_endpoint
 async def get_active_versions(
     slugs: list[str],
 ) -> dict[str, skill_model.ActiveSkillVersion]:
@@ -211,6 +213,7 @@ async def invalidate_active_versions_cache() -> None:
         logger.warning("Could not drop the active skill versions cache", exc_info=True)
 
 
+@db_endpoint
 async def get_version_packages(
     version_ids: list[str],
 ) -> dict[str, skill_model.SkillVersionPackage]:
@@ -247,6 +250,7 @@ async def get_version_packages(
     return packages
 
 
+@db_endpoint
 async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | None:
     """The id of the listing's version whose package hashes to
     *package_sha256*, any version, not only the active one.

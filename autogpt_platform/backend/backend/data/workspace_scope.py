@@ -17,6 +17,8 @@ from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import Expert as PrismaExpert
 from pydantic import BaseModel, Field
 
+from backend.data.db_endpoints import db_endpoint
+
 SESSIONS_ROOT = "/sessions/"
 EXPERTS_ROOT = "/experts/"
 SKILLS_ROOT = "/skills/"
@@ -120,6 +122,7 @@ class WorkspaceScope(BaseModel):
         return any(path.startswith(prefix) for prefix in prefixes)
 
 
+@db_endpoint
 async def resolve_expert_workspace_scope(
     user_id: str, expert_id: str
 ) -> WorkspaceScope:

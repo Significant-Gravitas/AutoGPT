@@ -23,6 +23,7 @@ from prisma.types import (
 from pydantic import BaseModel
 
 from backend.data import db
+from backend.data.db_endpoints import db_endpoint
 from backend.data.expert_attribution import resolve_attributable_expert
 from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
@@ -90,6 +91,7 @@ async def get_chat_session_expert_ids(
     return {row.id: row.expertId for row in rows}
 
 
+@db_endpoint
 async def get_chat_session_metadata(session_id: str) -> ChatSessionInfo | None:
     """Get chat session metadata (without messages) for ownership validation."""
     session = await PrismaChatSession.prisma().find_unique(
@@ -124,6 +126,7 @@ async def chat_message_has_assistant_reply(
     return assistant_reply is not None
 
 
+@db_endpoint
 async def get_chat_messages_by_ids(
     session_id: str, message_ids: list[str]
 ) -> list[ChatMessage]:
@@ -165,6 +168,7 @@ def _own_org_scope(organization_id: str | None) -> list[ChatSessionWhereInput]:
     ]
 
 
+@db_endpoint
 async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
@@ -350,6 +354,7 @@ async def _expand_for_visibility(
     return results, has_more
 
 
+@db_endpoint
 async def create_chat_session(
     session_id: str,
     user_id: str,
@@ -442,6 +447,7 @@ def _persisted_metadata(metadata: ChatSessionMetadata | None) -> ChatSessionMeta
     return resolved
 
 
+@db_endpoint
 async def update_chat_session(
     session_id: str,
     credentials: dict[str, Any] | None = None,
@@ -509,6 +515,7 @@ def _save_fields_input(
     return data
 
 
+@db_endpoint
 async def update_chat_session_title(
     session_id: str,
     user_id: str,
@@ -538,6 +545,7 @@ async def update_chat_session_title(
     return result > 0
 
 
+@db_endpoint
 async def update_chat_session_pinned(
     session_id: str,
     user_id: str,
@@ -561,6 +569,7 @@ async def update_chat_session_pinned(
     return result > 0
 
 
+@db_endpoint
 async def update_chat_session_llm_route(
     session_id: str,
     user_id: str,
@@ -595,6 +604,7 @@ async def update_chat_session_llm_route(
     return result > 0
 
 
+@db_endpoint
 async def update_chat_session_autopilot_mode(
     session_id: str, user_id: str, mode: str
 ) -> bool:
@@ -612,6 +622,7 @@ async def update_chat_session_autopilot_mode(
     return result > 0
 
 
+@db_endpoint
 async def add_chat_message(
     session_id: str,
     role: str,
@@ -675,6 +686,7 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
+@db_endpoint
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -851,6 +863,7 @@ _EXCLUDE_DREAM_SESSIONS_SQL = exclude_dream_sessions_sql()
 EXCLUDE_ARCHIVED_SESSIONS_SQL = '"archivedAt" IS NULL'
 
 
+@db_endpoint
 async def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
@@ -914,6 +927,7 @@ async def get_user_chat_sessions(
     return [ChatSessionInfo.from_db(s) for s in sessions]
 
 
+@db_endpoint
 async def get_user_session_count(
     user_id: str,
     organization_id: str | None = None,
@@ -942,6 +956,7 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
+@db_endpoint
 async def get_user_chat_session_groups(
     user_id: str,
     min_per_group: int,
@@ -1124,6 +1139,7 @@ async def user_has_any_session(user_id: str) -> bool:
 PENDING_QUESTION_LIMIT = 10
 
 
+@db_endpoint
 async def set_session_pending_question(
     session_id: str, user_id: str, text: str, asked_at: datetime
 ) -> None:
@@ -1146,6 +1162,7 @@ async def set_session_pending_question(
     )
 
 
+@db_endpoint
 async def clear_session_pending_question(session_id: str, user_id: str) -> None:
     """Drop the pending question — the user answered, so it needs nobody."""
     await db.execute_raw_with_schema(
@@ -1178,6 +1195,7 @@ _SESSION_INFO_COLUMNS = (
 )
 
 
+@db_endpoint
 async def get_sessions_with_pending_question(
     user_id: str,
     limit: int = PENDING_QUESTION_LIMIT,
@@ -1250,6 +1268,7 @@ async def get_session_titles(
     return {row.id: row.title for row in rows}
 
 
+@db_endpoint
 async def delete_chat_session(
     session_id: str,
     user_id: str | None = None,
@@ -1322,6 +1341,7 @@ async def delete_chat_session(
         return False
 
 
+@db_endpoint
 async def get_next_sequence(session_id: str) -> int:
     """Get the next sequence number for a new message in this session.
 
@@ -1338,6 +1358,7 @@ async def get_next_sequence(session_id: str) -> int:
     return 0 if not results else results[0]["sequence"] + 1
 
 
+@db_endpoint
 async def update_tool_message_content(
     session_id: str,
     tool_call_id: str,
@@ -1380,6 +1401,7 @@ async def update_tool_message_content(
         return False
 
 
+@db_endpoint
 async def update_message_content_by_sequence(
     session_id: str,
     sequence: int,
@@ -1515,6 +1537,7 @@ WHERE m."sessionId" IN (SELECT "id" FROM hit)
 """
 
 
+@db_endpoint
 async def add_dream_narrative(
     session_id: str, pass_id: str, content: str, erased: str
 ) -> bool:
@@ -1541,6 +1564,7 @@ async def add_dream_narrative(
     return written > 0
 
 
+@db_endpoint
 async def blank_dream_narratives(
     user_id: str,
     expert_id: str | None,
@@ -1572,6 +1596,7 @@ async def blank_dream_narratives(
         )
 
 
+@db_endpoint
 async def update_chat_message_stamps(
     session_id: str,
     sequence: int,
@@ -1616,6 +1641,7 @@ async def update_chat_message_stamps(
     return True
 
 
+@db_endpoint
 async def update_chat_message_tool_calls(
     session_id: str,
     sequence: int,
@@ -1648,6 +1674,7 @@ async def update_chat_message_tool_calls(
     return True
 
 
+@db_endpoint
 async def set_turn_duration(session_id: str, duration_ms: int) -> None:
     """Set durationMs on the last assistant message in a session.
 
@@ -1685,6 +1712,7 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
 # code-only change at call sites.
 
 
+@db_endpoint
 async def count_chat_sessions_by_status(*, user_id: str, status: str) -> int:
     """Count user's ChatSession rows whose ``chatStatus`` matches."""
     return await PrismaChatSession.prisma().count(
@@ -1692,6 +1720,7 @@ async def count_chat_sessions_by_status(*, user_id: str, status: str) -> int:
     )
 
 
+@db_endpoint
 async def list_chat_sessions_by_status(
     *, user_id: str, status: str
 ) -> list[ChatSessionInfo]:
@@ -1709,6 +1738,7 @@ async def list_chat_sessions_by_status(
     return [ChatSessionInfo.from_db(r) for r in rows]
 
 
+@db_endpoint
 async def list_recent_chat_sessions(
     *,
     user_id: str,
@@ -1749,6 +1779,7 @@ async def list_recent_chat_sessions(
     return [ChatSessionInfo.from_db(r) for r in rows]
 
 
+@db_endpoint
 async def get_latest_user_message_in_session(
     session_id: str,
 ) -> ChatMessage | None:
@@ -1763,6 +1794,7 @@ async def get_latest_user_message_in_session(
     return ChatMessage.from_db(row) if row else None
 
 
+@db_endpoint
 async def get_chat_session_status(session_id: str) -> str | None:
     """Return ``ChatSession.chatStatus`` for ``session_id``, or ``None``
     if the row doesn't exist.  Used by in-flight gates that need to
@@ -1772,6 +1804,7 @@ async def get_chat_session_status(session_id: str) -> str | None:
     return row.chatStatus if row else None
 
 
+@db_endpoint
 async def admit_chat_session_turn(
     *, session_id: str, user_id: str, expect_status: str, capacity: int
 ) -> Literal["admitted", "full", "busy"]:
@@ -1846,6 +1879,7 @@ SELECT
 """
 
 
+@db_endpoint
 async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) -> bool:
     """Persist the dispatched turn's identity independently of Redis stream TTLs.
 
@@ -1867,6 +1901,7 @@ async def record_chat_session_turn(session_id: str, user_id: str, turn_id: str) 
     )
 
 
+@db_endpoint
 async def update_chat_session_status(
     *,
     session_id: str,
@@ -1915,6 +1950,7 @@ async def _default_route_metadata(
     return ChatSessionMetadata(**fields)
 
 
+@db_endpoint
 async def append_expert_run_message(
     user_id: str,
     expert_id: str,
@@ -1984,6 +2020,7 @@ async def append_expert_run_message(
     return session_id
 
 
+@db_endpoint
 async def append_session_message(
     session_id: str,
     user_id: str,
@@ -2035,6 +2072,7 @@ async def append_session_message(
     return True
 
 
+@db_endpoint
 async def append_plain_session_message(
     user_id: str,
     content: str,

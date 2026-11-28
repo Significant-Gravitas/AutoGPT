@@ -16,6 +16,7 @@ from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
 from backend.data.credit import get_user_credit_model
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
@@ -464,6 +465,7 @@ async def _get_user_timezone(user_id: str) -> str:
     return get_user_timezone_or_utc(user.timezone if user else None)
 
 
+@db_endpoint
 async def increment_onboarding_runs(user_id: str):
     """
     Increment a user's run counters and trigger any onboarding milestones.

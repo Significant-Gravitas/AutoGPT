@@ -15,11 +15,13 @@ from datetime import datetime, timezone
 
 from prisma.models import BotEvent, BotGuild
 
+from backend.data.db_endpoints import db_endpoint
 from backend.platform_linking.models import BotEventInput, BotGuildInput, Platform
 
 logger = logging.getLogger(__name__)
 
 
+@db_endpoint
 async def record_bot_event(event: BotEventInput) -> None:
     await BotEvent.prisma().create(
         data={
@@ -35,6 +37,7 @@ async def record_bot_event(event: BotEventInput) -> None:
     )
 
 
+@db_endpoint
 async def record_guild_joined(guild: BotGuildInput) -> None:
     await BotGuild.prisma().upsert(
         where={
@@ -58,6 +61,7 @@ async def record_guild_joined(guild: BotGuildInput) -> None:
     )
 
 
+@db_endpoint
 async def mark_guild_left(platform: Platform, server_id: str) -> None:
     await BotGuild.prisma().update_many(
         where={
@@ -69,6 +73,7 @@ async def mark_guild_left(platform: Platform, server_id: str) -> None:
     )
 
 
+@db_endpoint
 async def sync_guild_presence(platform: Platform, guilds: list[BotGuildInput]) -> None:
     """Full presence reconcile (on connect): upsert every server the bot is in
     now and mark any previously-joined server it is no longer in as left."""

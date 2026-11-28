@@ -35,3 +35,23 @@ async def test_an_endpoint_a_module_declares_answers_and_refuses_over_the_rpc(
             ),
             timeout=20,
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_less_plain_endpoints_answer_over_the_rpc(
+    server: SpinTestServer, setup_test_user: str
+):
+    """An adapter the manager module declares for itself, a function behind a
+    caching decorator, and one renamed to its route: each is served."""
+    client = get_database_manager_async_client()
+    await client.health_check_async()
+
+    balance = await asyncio.wait_for(client.get_credits(setup_test_user), timeout=20)
+    user = await asyncio.wait_for(client.get_user_by_id(setup_test_user), timeout=20)
+    await asyncio.wait_for(
+        client.increment_push_fail_count(setup_test_user, "https://push.invalid/none"),
+        timeout=20,
+    )
+
+    assert isinstance(balance, int)
+    assert user.id == setup_test_user

@@ -8,6 +8,7 @@ from prisma.models import PushSubscription
 from pydantic import BaseModel
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.util.request import parse_url, validate_url_host
 
 logger = logging.getLogger(__name__)
@@ -156,18 +157,21 @@ async def _subscribe(
         )
 
 
+@db_endpoint
 async def get_user_push_subscriptions(user_id: str) -> list[PushSubscriptionDTO]:
     rows = await PushSubscription.prisma().find_many(where={"userId": user_id})
     return [PushSubscriptionDTO.from_db(row) for row in rows]
 
 
+@db_endpoint
 async def delete_push_subscription(user_id: str, endpoint: str) -> None:
     await PushSubscription.prisma().delete_many(
         where={"userId": user_id, "endpoint": endpoint}
     )
 
 
-async def increment_fail_count(user_id: str, endpoint: str) -> None:
+@db_endpoint
+async def increment_push_fail_count(user_id: str, endpoint: str) -> None:
     await PushSubscription.prisma().update_many(
         where={"userId": user_id, "endpoint": endpoint},
         data={
@@ -177,7 +181,8 @@ async def increment_fail_count(user_id: str, endpoint: str) -> None:
     )
 
 
-async def cleanup_failed_subscriptions(
+@db_endpoint
+async def cleanup_failed_push_subscriptions(
     max_failures: int = MAX_PUSH_FAILURES,
 ) -> int:
     """Delete subscriptions that have exceeded the failure threshold."""

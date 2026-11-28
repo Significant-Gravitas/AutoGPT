@@ -20,6 +20,7 @@ import prisma.models
 
 from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
+from backend.data.db_endpoints import db_endpoint
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.service_identity import (
@@ -222,6 +223,7 @@ def _to_refs(
     return refs
 
 
+@db_endpoint
 async def list_expert_credentials(
     user_id: str, expert_id: str
 ) -> list[ExpertCredentialRef]:
@@ -231,6 +233,7 @@ async def list_expert_credentials(
     return _to_refs(grants, credentials)
 
 
+@db_endpoint
 async def grant_expert_credentials(
     user_id: str, expert_id: str, credential_ids: list[str]
 ) -> list[ExpertCredentialRef]:
@@ -271,6 +274,7 @@ async def grant_expert_credentials(
     return _to_refs(await _grants(expert_id), credentials)
 
 
+@db_endpoint
 async def revoke_expert_credential(
     user_id: str, expert_id: str, credential_id: str
 ) -> list[ExpertCredentialRef]:
@@ -287,6 +291,7 @@ async def revoke_expert_credential(
     return _to_refs(await _grants(expert_id), await _user_credentials(user_id))
 
 
+@db_endpoint
 async def settle_credential_seed(user_id: str, expert_id: str) -> None:
     """Freeze the allow-list before the expert changes its own workflows.
 
@@ -300,6 +305,7 @@ async def settle_credential_seed(user_id: str, expert_id: str) -> None:
     await _stamp_seeded(expert.id)
 
 
+@db_endpoint
 async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[str]:
     """The credential ids *expert_id* may use. Enforcement's source of truth.
 
@@ -311,6 +317,7 @@ async def expert_allowed_credential_ids(user_id: str, expert_id: str) -> list[st
     return [grant.credentialId for grant in await _grants(expert_id)]
 
 
+@db_endpoint
 async def seeded_expert_credential_ids(
     user_id: str, expert_id: str
 ) -> list[str] | None:

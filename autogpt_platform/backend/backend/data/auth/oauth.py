@@ -32,6 +32,7 @@ from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
 from backend.data.db import transaction
+from backend.data.db_endpoints import db_endpoint
 from backend.data.user import is_user_banned
 
 from .base import APIAuthorizationInfo
@@ -1088,6 +1089,7 @@ async def update_oauth_application(
 # ============================================================================
 
 
+@db_endpoint
 async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     """
     Delete expired OAuth tokens from the database.

@@ -7,6 +7,7 @@ from typing import Any, Optional, cast
 import pydantic
 from prisma.models import CoPilotUnderstanding
 
+from backend.data.db_endpoints import db_endpoint
 from backend.data.redis_client import get_redis_async
 from backend.util.json import SafeJson
 
@@ -253,6 +254,7 @@ async def _fill_cache(user_id: str, understanding: BusinessUnderstanding) -> Non
         logger.warning(f"Failed to set understanding in cache: {e}")
 
 
+@db_endpoint
 async def get_business_understanding(
     user_id: str,
 ) -> Optional[BusinessUnderstanding]:
@@ -344,6 +346,7 @@ def merge_business_understanding_data(
     return existing_data
 
 
+@db_endpoint
 async def upsert_business_understanding(
     user_id: str,
     input_data: BusinessUnderstandingInput,

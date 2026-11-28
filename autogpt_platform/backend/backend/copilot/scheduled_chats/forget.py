@@ -12,6 +12,7 @@ from prisma.models import ExpertRoutine, ScheduledChatStreak
 from prisma.types import ExpertRoutineWhereInput
 
 from backend.data.alerts import resolve_alert_condition
+from backend.data.db_endpoints import db_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ def owned_routines(user_id: str) -> ExpertRoutineWhereInput:
     return {"OR": [{"userId": user_id}, {"Expert": {"is": {"ownerUserId": user_id}}}]}
 
 
+@db_endpoint
 async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
     """Drop the streak of a follow-up its owner deleted. Kept, a paused one
     would stay listed as paused and under Needs you, with a Resume that says
