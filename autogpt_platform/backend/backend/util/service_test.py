@@ -1745,6 +1745,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "ScheduleLimitError",
     "SchedulerUnavailableError",
     "SharedCredentialsRefusedError",
+    "SubGraphsTooLargeError",
     "UserBannedError",
     "UserPaywalledError",
     "WebhookRegistrationError",
