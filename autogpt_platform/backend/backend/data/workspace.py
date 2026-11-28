@@ -27,6 +27,11 @@ from backend.data.workspace_scope import (
 from backend.util.json import SafeJson
 from backend.util.platform_payment import is_platform_payment_enabled
 from backend.util.sql import escape_like
+from backend.util.text_limits import (
+    MAX_FILE_NAME_LENGTH,
+    MAX_FILE_PATH_LENGTH,
+    MAX_MIME_TYPE_LENGTH,
+)
 
 if TYPE_CHECKING:
     # Imported for typing only: workspace_folder imports this module.
@@ -277,6 +282,27 @@ async def _live_size(tx: Prisma, workspace_id: str, replacing: Collection[str]) 
         else []
     )
     return max(0, int(rows[0]["used"]) - sum(f.sizeBytes for f in replaced))
+
+
+class FileAttributeTooLongError(ValueError):
+    """A workspace file's name, path or MIME type is longer than a row keeps."""
+
+
+def require_storable_file_attributes(
+    name: str, path: str, mime_type: str | None
+) -> None:
+    """Refuse a file whose name, virtual path or MIME type is over its limit,
+    before anything is stored."""
+    for label, value, limit in (
+        ("File name", name, MAX_FILE_NAME_LENGTH),
+        ("File path", path, MAX_FILE_PATH_LENGTH),
+        ("MIME type", mime_type or "", MAX_MIME_TYPE_LENGTH),
+    ):
+        if len(value) > limit:
+            raise FileAttributeTooLongError(
+                f"{label} is too long: {len(value)} characters, "
+                f"the limit is {limit}"
+            )
 
 
 def storage_limit_exceeded(used_bytes: int, limit_bytes: int) -> ValueError:
@@ -626,6 +652,9 @@ async def rename_workspace_file(
     file = await get_workspace_file(file_id, workspace_id)
     if file is None:
         return None
+    require_storable_file_attributes(
+        name, posixpath.join(posixpath.dirname(file.path), name), None
+    )
     folder = skill_owner_folder(
         posixpath.join(posixpath.dirname(file.path), "SKILL.md")
     )
@@ -770,31 +799,23 @@ def build_files_block(
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:
-    """
-    Get the total size of all files in a workspace.
-
-    Queries Prisma directly (skipping Pydantic model conversion) and only
-    fetches the ``sizeBytes`` column to minimise data transfer.
-
-    Args:
-        workspace_id: The workspace ID
-
-    Returns:
-        Total size in bytes
-    """
-    files = await UserWorkspaceFile.prisma().find_many(
-        where={"workspaceId": workspace_id, "isDeleted": False},
-    )
-    return sum(f.sizeBytes for f in files)
+    """Total size in bytes of the workspace's live files."""
+    total, _ = await get_workspace_size_breakdown(workspace_id)
+    return total
 
 
 async def get_workspace_size_breakdown(workspace_id: str) -> tuple[int, int]:
     """The workspace's total size and the part of it held by files the user's
     lists leave out (``isInternal``: skill packages and Otto's working
-    files), from one scan. Internal files use the quota like any other."""
-    files = await UserWorkspaceFile.prisma().find_many(
+    files), summed by the database. Internal files use the quota like any other."""
+    rows = await UserWorkspaceFile.prisma().group_by(
+        by=["isInternal"],
         where={"workspaceId": workspace_id, "isDeleted": False},
+        sum={"sizeBytes": True},
     )
-    total = sum(f.sizeBytes for f in files)
-    internal = sum(f.sizeBytes for f in files if f.isInternal)
-    return total, internal
+    sizes = {
+        bool(row["isInternal"]): int((row.get("_sum") or {}).get("sizeBytes") or 0)
+        for row in rows
+    }
+    internal = sizes.get(True, 0)
+    return sizes.get(False, 0) + internal, internal

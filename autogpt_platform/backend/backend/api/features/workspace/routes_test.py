@@ -26,7 +26,7 @@ from backend.copilot.tools.skills import (
 )
 from backend.copilot.tools.skills_test import _cached_skills, _FakeWorkspaceManager
 from backend.data.skill_capacity import SkillLimitError
-from backend.data.workspace import Workspace, WorkspaceFile
+from backend.data.workspace import FileAttributeTooLongError, Workspace, WorkspaceFile
 from backend.data.workspace_scope import WorkspaceScope
 from backend.util.workspace_storage import LocalWorkspaceStorage
 from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
@@ -664,6 +664,25 @@ def test_upload_write_file_too_large_returns_413(mocker):
     response = _upload()
     assert response.status_code == 413
     assert "File too large" in response.text
+
+
+def test_upload_of_an_over_long_name_returns_400(mocker):
+    mocker.patch(
+        "backend.api.features.workspace.service.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=FileAttributeTooLongError("File name is too long")
+    )
+    mocker.patch(
+        "backend.api.features.workspace.service.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 400
+    assert "File name is too long" in response.text
 
 
 def test_upload_write_file_conflict_returns_409(mocker):
