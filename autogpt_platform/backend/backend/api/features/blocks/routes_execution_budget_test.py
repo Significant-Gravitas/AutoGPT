@@ -162,8 +162,11 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
             client.post("/blocks/computes/execute", json={"beats": str(beats)})
         )
         await _started(beats, run)
-        health = await client.get("/health")
-        response = await asyncio.wait_for(run, timeout=30)
+        try:
+            health = await client.get("/health")
+            response = await asyncio.wait_for(run, timeout=30)
+        finally:
+            await _stopped(run)
         stopped_at = beats.stat().st_size
         await asyncio.sleep(0.5)
         again = await client.post("/blocks/reports-its-process/execute", json={})
@@ -301,5 +304,10 @@ async def _started(beats: Path, run: asyncio.Task) -> None:
                     raise AssertionError("The run ended before its block started")
                 await asyncio.sleep(0.02)
     except BaseException:
-        run.cancel()
+        await _stopped(run)
         raise
+
+
+async def _stopped(run: asyncio.Task) -> None:
+    run.cancel()
+    await asyncio.gather(run, return_exceptions=True)

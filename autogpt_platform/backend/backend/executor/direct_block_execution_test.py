@@ -391,5 +391,10 @@ async def _started(beats: Path, run: asyncio.Task) -> None:
                     raise AssertionError("The run ended before its block started")
                 await asyncio.sleep(0.02)
     except BaseException:
-        run.cancel()
+        await _stopped(run)
         raise
+
+
+async def _stopped(run: asyncio.Task) -> None:
+    run.cancel()
+    await asyncio.gather(run, return_exceptions=True)
