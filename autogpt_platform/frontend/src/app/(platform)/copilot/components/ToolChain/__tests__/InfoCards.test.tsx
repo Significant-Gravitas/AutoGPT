@@ -5,6 +5,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { Toaster } from "@/components/molecules/Toast/toaster";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { render as renderWithProviders } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CopilotChatActionsContext } from "../../CopilotChatActionsProvider/useCopilotChatActions";
 import {
@@ -212,6 +215,99 @@ describe("SuggestedGoalCard", () => {
     expect(onSend).toHaveBeenCalledWith(
       "Please create a workflow with this goal: Build a scraper",
     );
+  });
+
+  it("shows a send failure and lets the user retry the same goal", async () => {
+    const onSend = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValue(undefined);
+    render(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    const button = screen.getByRole("button", { name: "Use this goal" });
+    fireEvent.click(button);
+
+    expect(await screen.findByText("Couldn't send message")).toBeDefined();
+    expect(
+      screen.getByText(/check the chat before trying again/i),
+    ).toBeDefined();
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(button);
+
+    const message =
+      "Please create a workflow with this goal: Summarize weekly sales";
+    expect(onSend.mock.calls).toEqual([[message], [message]]);
+  });
+
+  it("ignores clicks while a send is pending and allows a retry after it fails", async () => {
+    let rejectSend: (error: Error) => void = () => {};
+    const onSend = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectSend = reject;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    render(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    const button = screen.getByRole("button", { name: "Use this goal" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    rejectSend(new Error("Network error"));
+    expect(await screen.findByText("Couldn't send message")).toBeDefined();
+
+    fireEvent.click(button);
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows paywall recovery copy when sending requires an active plan", async () => {
+    const onSend = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError("Payment required", 402, {}));
+    // The paywall toast reads whether this install bills through React Query,
+    // so it needs the app's providers.
+    renderWithProviders(
+      <CopilotChatActionsContext.Provider
+        value={{ onSend, chatSurface: "copilot" }}
+      >
+        <SuggestedGoalCard
+          output={{ suggested_goal: "Summarize weekly sales" }}
+        />
+        <Toaster />
+      </CopilotChatActionsContext.Provider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Use this goal" }));
+
+    expect(
+      await screen.findByText("Sending needs an active plan"),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/the suggested goal is still on the card/i),
+    ).toBeDefined();
   });
 
   it("renders nothing without a goal", () => {

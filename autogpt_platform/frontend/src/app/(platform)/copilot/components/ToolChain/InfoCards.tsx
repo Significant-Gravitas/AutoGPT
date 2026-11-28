@@ -9,7 +9,8 @@ import {
   MessageQuestionIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useContext } from "react";
+import { useContext, useRef } from "react";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { CardProviderIcon } from "./BlockCards";
 import { CARD, HALF, StatusCard } from "./ResultCards";
@@ -236,10 +237,48 @@ export function SkillCard({ output }: OutputProps) {
   );
 }
 
+// Module level on purpose: React Compiler cannot compile a `finally` clause
+// inside a component, and the project tests allow no new bailouts.
+async function sendGoalOnce(
+  sending: { current: boolean },
+  send: () => void | Promise<void>,
+  onError: (error: unknown) => void,
+) {
+  if (sending.current) return;
+  sending.current = true;
+  try {
+    await send();
+  } catch (error) {
+    onError(error);
+  } finally {
+    sending.current = false;
+  }
+}
+
 export function SuggestedGoalCard({ output }: OutputProps) {
   const actions = useContext(CopilotChatActionsContext);
+  // A second click while the first send is pending would send the goal again.
+  // The ref is set before the await, so that click sees it in time.
+  const sendingRef = useRef(false);
   const goal = str(output, "suggested_goal");
   if (!goal) return null;
+
+  function handleUseGoal() {
+    if (!actions) return;
+    return sendGoalOnce(
+      sendingRef,
+      () => actions.onSend(`Please create a workflow with this goal: ${goal}`),
+      (error) =>
+        // `onSend` may have already updated the chat before rejecting, so ask
+        // the user to check the chat before sending the same goal again.
+        toastSendFailure({
+          title: "Couldn't send message",
+          error,
+          recovery: "check the chat before trying again",
+          paywallRecovery: "the suggested goal is still on the card",
+        }),
+    );
+  }
 
   return (
     <div className={`${CARD} ${HALF} flex flex-col gap-2 p-3`}>
@@ -255,9 +294,7 @@ export function SuggestedGoalCard({ output }: OutputProps) {
         <button
           type="button"
           className="w-fit rounded-lg bg-action-hover px-2.5 py-1.5 text-caption font-medium text-action-foreground transition-colors hover:bg-action"
-          onClick={() =>
-            actions.onSend(`Please create a workflow with this goal: ${goal}`)
-          }
+          onClick={handleUseGoal}
         >
           Use this goal
         </button>
