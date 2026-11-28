@@ -286,6 +286,9 @@ class VoiceRelay(AppProcess):
                 ws="websockets-sansio",
                 ws_max_size=WS_MAX_MESSAGE_BYTES,
                 ws_per_message_deflate=False,
+                # The relay sits behind the load balancer the WebSocket API
+                # does, which must be the side that closes an idle connection.
+                timeout_keep_alive=config.server_keep_alive_timeout_seconds,
                 log_config=None,
             ),
             relay=relay,
