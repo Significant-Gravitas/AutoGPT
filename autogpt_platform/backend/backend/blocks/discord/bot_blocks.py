@@ -340,9 +340,13 @@ class SendDiscordMessageBlock(Block):
         await client.start(token)
         return result
 
-    def chunk_message(self, message: str, limit: int = 2000) -> list:
-        """Splits a message into chunks not exceeding the Discord limit."""
-        return [message[i : i + limit] for i in range(0, len(message), limit)]
+    def chunk_message(self, message: str, limit: int = 2000) -> list[str]:
+        """Splits a message into non-whitespace chunks not exceeding the Discord limit."""
+        return [
+            chunk
+            for i in range(0, len(message), limit)
+            if (chunk := message[i : i + limit]).strip()
+        ]
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
