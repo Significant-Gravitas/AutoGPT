@@ -27,6 +27,26 @@ describe("jsonRenderer", () => {
     expect(screen.getByText("false")).toBeDefined();
   });
 
+  it.each([
+    ['{"name": "Otto"}', true],
+    ["[1, 2]", true],
+    ["1e5", false],
+    ["1.50", false],
+    ["true", false],
+    ["null", false],
+    ['"Otto"', false],
+    ["not JSON", false],
+  ])("takes the text %s as JSON: %s", (text, isJSON) => {
+    expect(jsonRenderer.canRender(text)).toBe(isJSON);
+  });
+
+  it("takes a value its metadata calls JSON, and any object", () => {
+    expect(jsonRenderer.canRender("1e5", { type: "json" })).toBe(true);
+    expect(jsonRenderer.canRender({ count: 1 })).toBe(true);
+    expect(jsonRenderer.canRender([1])).toBe(true);
+    expect(jsonRenderer.canRender(42)).toBe(false);
+  });
+
   it("colours strings orange and quiet values in the tertiary role", () => {
     renderJSON({
       name: "Otto",

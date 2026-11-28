@@ -43,9 +43,9 @@ export function PasswordCredentialsModal({
         ? getServerFieldSchema(credentials.provider)
         : z.string().trim(),
     scheme: z.string(),
-    username: z.string().min(1, "Username is required"),
+    username: z.string().trim().min(1, "Username is required"),
     password: z.string().min(1, "Password is required"),
-    title: z.string().min(1, "Name is required"),
+    title: z.string().trim().min(1, "Name is required"),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({

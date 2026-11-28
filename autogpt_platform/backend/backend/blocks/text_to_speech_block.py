@@ -10,6 +10,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -33,6 +34,10 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.type,
 }
+
+
+# Unreal Speech: $16 per 1M characters.
+_USD_PER_CHARACTER = 0.000016
 
 
 class UnrealTextToSpeechBlock(Block):
@@ -99,6 +104,9 @@ class UnrealTextToSpeechBlock(Block):
         response = await Requests().post(url, headers=headers, json=data)
         return response.json()
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        return _text_cost(input_data.get("text") or "")
+
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
@@ -107,13 +115,11 @@ class UnrealTextToSpeechBlock(Block):
             input_data.text,
             input_data.voice_id,
         )
-        # Unreal Speech: $16 / 1M chars = $0.000016/char. Emit USD so the
-        # COST_USD resolver (150 cr/$ via BLOCK_COSTS) bills proportionally
-        # instead of the old flat 5 cr.
-        self.merge_stats(
-            NodeExecutionStats(
-                provider_cost=len(input_data.text) * 0.000016,
-                provider_cost_type="cost_usd",
-            )
-        )
+        self.merge_stats(_text_cost(input_data.text))
         yield "mp3_url", api_response["OutputUri"]
+
+
+def _text_cost(text: str) -> NodeExecutionStats:
+    return NodeExecutionStats(
+        provider_cost=len(text) * _USD_PER_CHARACTER, provider_cost_type="cost_usd"
+    )

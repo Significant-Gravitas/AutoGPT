@@ -18,10 +18,12 @@ from backend.blocks.code_executor_helpers import (
     ProgrammingLanguage,
     build_variable_injection,
 )
+from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -31,6 +33,7 @@ from backend.util.e2b_network import (
     create_sandbox,
     hold_sandbox,
     kill_sandbox,
+    proxy_trust_envs,
     release_sandbox,
     uses_platform_e2b_key,
 )
@@ -232,10 +235,15 @@ class BaseE2BExecutorMixin:
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
+            # The kernel predates any login shell: it is given the proxy CA's
+            # paths itself.  The caller's own values win.
             execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
-                envs=envs or {},
+                envs={
+                    **await proxy_trust_envs(sandbox),
+                    **(envs or {}),
+                },
                 on_error=lambda e: kill_sandbox(sandbox),  # Kill the sandbox on error
             )
 
@@ -431,6 +439,11 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -578,6 +591,11 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
             test_mock={"execute_code": _mock_execute_code},
         )
 
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # The box lives `timeout` seconds; at 0 or less it gets E2B's default instead,
+        # which isn't known here, so only the cap bounds the run.
+        return self.walltime_bound(input_data.get("timeout"))
+
     async def run(
         self,
         input_data: Input,
@@ -688,6 +706,10 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
             ],
             test_mock={"execute_code": _mock_execute_code},
         )
+
+    def max_usage(self, input_data: BlockInput) -> NodeExecutionStats | None:
+        # Its code stops at `run_code`'s own limit, inside the reconnect's margin.
+        return self.walltime_bound(RESUMED_SANDBOX_SECONDS)
 
     async def run(
         self,

@@ -146,9 +146,14 @@ class ReadSpreadsheetBlock(Block):
                         # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
                         # missing, and a gap in a numeric column no longer upcasts the
                         # whole column to float (turning 12 into "12.0").
+                        # header=None hands every row, header included, to the CSV
+                        # reader below, so pandas doesn't rename duplicate or blank
+                        # headers ("a.1", "Unnamed: 2") and Excel gets the same
+                        # header handling as CSV.
                         return pd.read_excel(
                             io.BytesIO(workbook),
                             sheet_name=input_data.sheet_name or 0,
+                            header=None,
                             dtype=object,
                             keep_default_na=False,
                         )
@@ -161,6 +166,7 @@ class ReadSpreadsheetBlock(Block):
                     df.to_csv(
                         csv_buffer,
                         index=False,
+                        header=False,
                         sep=input_data.delimiter,
                         quotechar=input_data.quotechar,
                     )
@@ -189,29 +195,89 @@ class ReadSpreadsheetBlock(Block):
             escapechar=input_data.escapechar,
         )
 
+        # Blank lines before the header count toward skip_rows. A header whose
+        # cells are all empty is still the header: skipping it would make the
+        # first data row the header and lose its values.
+        skip_rows = input_data.skip_rows
         header = None
         if input_data.has_header:
-            header = next(reader)
-            if input_data.strip:
-                header = [h.strip() for h in header]
+            # Empty input has no header row; don't let StopIteration escape
+            # the async generator (it becomes a RuntimeError).
+            header = next(reader, None)
+            while header == []:
+                skip_rows = max(skip_rows - 1, 0)
+                header = next(reader, None)
+            if header is not None:
+                if input_data.strip:
+                    header = [h.strip() for h in header]
+                header = _unique_column_names(header)
 
-        for _ in range(input_data.skip_rows):
-            next(reader)
+        for _ in range(skip_rows):
+            if next(reader, None) is None:
+                break
+
+        header_names = set(header or [])
+        extra_names: dict[int, str] = {}
+
+        def column_key(i: int) -> str:
+            if not header:
+                return str(i)
+            if i < len(header):
+                return header[i]
+            # A row with more fields than the header keeps the extra values,
+            # under the same key in every row.
+            if i not in extra_names:
+                extra_names[i] = _claim_name(f"column_{i + 1}", header_names, {})
+            return extra_names[i]
 
         def process_row(row):
             data = {}
             for i, value in enumerate(row):
                 if str(i) not in input_data.skip_columns:
-                    if input_data.has_header and header:
-                        data[header[i]] = value.strip() if input_data.strip else value
-                    else:
-                        data[str(i)] = value.strip() if input_data.strip else value
+                    data[column_key(i)] = value.strip() if input_data.strip else value
             return data
 
-        rows = [process_row(row) for row in reader]
+        # csv.reader yields [] for a blank line; don't turn those into {} rows.
+        rows = [process_row(row) for row in reader if row]
 
         if input_data.produce_singular_result:
             for processed_row in rows:
                 yield "row", processed_row
         else:
             yield "rows", rows
+
+
+def _unique_column_names(header: list[str]) -> list[str]:
+    """Turn header cells into distinct dict keys.
+
+    The first cell with a given text keeps it. A blank cell becomes
+    ``column_<position>`` and a repeat gets ``_2``, ``_3``…, skipping every
+    name a header cell has in the file, so no column overwrites another and a
+    key always names the column whose header it is.
+    """
+    taken = {name for name in header if name}
+    suffixes: dict[str, int] = {}
+    seen: set[str] = set()
+    names = []
+    for i, name in enumerate(header):
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+        else:
+            names.append(_claim_name(name or f"column_{i + 1}", taken, suffixes))
+    return names
+
+
+def _claim_name(base: str, taken: set[str], suffixes: dict[str, int]) -> str:
+    """Return ``base``, or ``base_<n>`` with the lowest free n, and mark it taken.
+
+    ``suffixes`` remembers where each base's search stopped. Names are only
+    ever added to ``taken``, so every lower suffix is still taken, and a
+    header of many repeats is named in linear time.
+    """
+    name, n = base, suffixes.get(base, 2)
+    while name in taken:
+        name, n = f"{base}_{n}", n + 1
+    suffixes[base] = n
+    taken.add(name)
+    return name

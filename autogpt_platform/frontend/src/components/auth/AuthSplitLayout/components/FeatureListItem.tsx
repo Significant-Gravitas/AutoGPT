@@ -18,7 +18,7 @@ export function FeatureListItem({ item }: Props) {
         {item.icon}
       </span>
       <div className="flex flex-col gap-0.5">
-        <Text variant="body-medium" tone="primary">
+        <Text variant="body" weight="medium" tone="primary">
           {item.title}
         </Text>
         {item.description ? (

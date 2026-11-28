@@ -102,6 +102,7 @@ export function AgentInfoStep({
     errors.agentOutputDemo
   );
   const thumbnailsHasError = !!errors.root;
+  const showKeepDescriptionHint = isMarketplaceUpdate && !errors.description;
   const basicsComplete =
     !basicsHasError &&
     !!watched.title &&
@@ -135,7 +136,12 @@ export function AgentInfoStep({
                   <Icon icon={InformationCircleIcon} size={18} />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
-                  <Text variant="body-medium" as="h3" tone="warning-strong">
+                  <Text
+                    variant="body"
+                    weight="medium"
+                    as="h3"
+                    tone="warning-strong"
+                  >
                     Update note
                   </Text>
                   <Text variant="small" tone="warning">
@@ -151,6 +157,7 @@ export function AgentInfoStep({
                   <Input
                     id={field.name}
                     labelVariant="body"
+                    labelWeight="normal"
                     label="What changed?"
                     labelTooltip="Summary of what's new or improved in this version. Reviewers see this first."
                     type="textarea"
@@ -171,12 +178,15 @@ export function AgentInfoStep({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-xl border border-border-base bg-surface shadow-subtle [&>*+*]:border-t [&>*+*]:border-border-base"
+            variant="card"
+            className="overflow-hidden"
           >
-            <AccordionItem value="basics" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="basics">
+              <AccordionTrigger>
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   className="flex items-center gap-2"
                 >
@@ -189,7 +199,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -198,6 +208,7 @@ export function AgentInfoStep({
                       <Input
                         id={field.name}
                         labelVariant="body"
+                        labelWeight="normal"
                         label="Title"
                         labelTooltip="Public name shown on the marketplace listing."
                         type="text"
@@ -219,6 +230,7 @@ export function AgentInfoStep({
                         <Input
                           id={field.name}
                           labelVariant="body"
+                          labelWeight="normal"
                           label="Tagline"
                           labelTooltip="The one-line subtitle shown under the workflow name and on preview cards. Start with a verb and name the outcome for the user."
                           type="text"
@@ -239,6 +251,7 @@ export function AgentInfoStep({
                     <Input
                       id={field.name}
                       labelVariant="body"
+                      labelWeight="normal"
                       label="Slug"
                       labelTooltip="URL-friendly identifier used in the marketplace path. Lowercase letters, numbers, hyphens only."
                       type="text"
@@ -256,6 +269,7 @@ export function AgentInfoStep({
                     <Select
                       id={field.name}
                       labelVariant="body"
+                      labelWeight="normal"
                       label="Category"
                       labelTooltip="Primary category that helps users discover the workflow."
                       placeholder={placeholder}
@@ -270,10 +284,12 @@ export function AgentInfoStep({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="thumbnails" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="thumbnails">
+              <AccordionTrigger>
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   className="flex items-center gap-2"
                 >
@@ -286,7 +302,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <ThumbnailImages
                   agentId={agentId}
                   onImagesChange={handleImagesChange}
@@ -297,10 +313,12 @@ export function AgentInfoStep({
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="experience" className="border-0 px-4">
-              <AccordionTrigger className="hover:no-underline">
+            <AccordionItem value="experience">
+              <AccordionTrigger>
                 <Text
-                  variant="body-medium-tight"
+                  variant="body"
+                  weight="medium"
+                  leading="5"
                   as="span"
                   className="flex items-center gap-2"
                 >
@@ -313,7 +331,7 @@ export function AgentInfoStep({
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pt-0 pb-4">
+              <AccordionContent>
                 <FormField
                   control={form.control}
                   name="description"
@@ -325,14 +343,33 @@ export function AgentInfoStep({
                       <Input
                         id={field.name}
                         labelVariant="body"
+                        labelWeight="normal"
                         label="Description"
                         labelTooltip="What the workflow does and the outcome users get."
                         type="textarea"
                         rows={2}
                         placeholder="Describe the outcome this workflow creates"
                         error={form.formState.errors.description?.message}
+                        aria-describedby={
+                          showKeepDescriptionHint
+                            ? `${field.name}-hint`
+                            : undefined
+                        }
+                        wrapperClassName={
+                          showKeepDescriptionHint ? "!mb-0" : undefined
+                        }
                         {...field}
                       />
+                      {showKeepDescriptionHint ? (
+                        <Text
+                          id={`${field.name}-hint`}
+                          variant="small"
+                          tone="subtle"
+                          className="mt-1 mb-6"
+                        >
+                          Leave empty to keep the current description.
+                        </Text>
+                      ) : null}
                     </CharCountedTextarea>
                   )}
                 />
@@ -348,6 +385,7 @@ export function AgentInfoStep({
                       <Input
                         id={field.name}
                         labelVariant="body"
+                        labelWeight="normal"
                         label="Instructions"
                         labelTooltip="Steps users should follow to set up and run the workflow."
                         type="textarea"
@@ -368,6 +406,7 @@ export function AgentInfoStep({
                       <Input
                         id={field.name}
                         labelVariant="body"
+                        labelWeight="normal"
                         label="YouTube video link"
                         labelTooltip="Demo or walkthrough video hosted on YouTube."
                         type="url"
@@ -385,6 +424,7 @@ export function AgentInfoStep({
                       <Input
                         id={field.name}
                         labelVariant="body"
+                        labelWeight="normal"
                         label="Output demo"
                         labelTooltip="Link showing example output the workflow produces."
                         type="url"
@@ -424,7 +464,8 @@ export function AgentInfoStep({
                           className="shrink-0"
                         />
                         <Text
-                          variant="body-tight"
+                          variant="body"
+                          leading="5"
                           as="span"
                           tone={field.value ? "inherit" : "subtle"}
                           className="truncate"

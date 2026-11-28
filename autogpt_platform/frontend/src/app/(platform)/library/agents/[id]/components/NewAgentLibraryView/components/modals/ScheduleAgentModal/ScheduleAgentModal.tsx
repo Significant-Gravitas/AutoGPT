@@ -5,7 +5,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ModalScheduleSection } from "./components/ModalScheduleSection/ModalScheduleSection";
+import { ScheduleKeysNotice } from "./components/ScheduleKeysNotice/ScheduleKeysNotice";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
+import { useScheduleKeys } from "./useScheduleKeys";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
 interface Props {
@@ -14,6 +16,8 @@ interface Props {
   agent: LibraryAgent;
   inputValues: Record<string, any>;
   inputCredentials: Record<string, any>;
+  /** The keys the run form shows, where the schedule can start on others. */
+  formCredentials?: Record<string, any>;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
@@ -23,9 +27,17 @@ export function ScheduleAgentModal({
   agent,
   inputValues,
   inputCredentials,
+  formCredentials,
   onScheduleCreated,
 }: Props) {
   const [isScheduleFormValid, setIsScheduleFormValid] = useState(true);
+  const {
+    credentials,
+    replacedKeys,
+    usesFormKeys,
+    handleUseFormKeys,
+    resetKeys,
+  } = useScheduleKeys(inputCredentials, formCredentials);
 
   const {
     scheduleName,
@@ -35,21 +47,28 @@ export function ScheduleAgentModal({
     handleSetScheduleName,
     handleSetCronExpression,
     resetForm,
-  } = useScheduleAgentModal(agent, inputValues, inputCredentials, {
+  } = useScheduleAgentModal(agent, inputValues, credentials, {
     onCreateSchedule: (schedule) => {
       onScheduleCreated?.(schedule);
     },
-    onClose: onClose,
+    onClose: () => {
+      resetKeys();
+      onClose();
+    },
   });
+
+  const canSchedule =
+    scheduleName.trim() !== "" && isScheduleFormValid && cronExpression !== "";
 
   function handleClose() {
     resetForm();
+    resetKeys();
     setIsScheduleFormValid(true);
     onClose();
   }
 
   async function handleScheduleClick() {
-    if (!scheduleName.trim() || !isScheduleFormValid) return;
+    if (!canSchedule) return;
 
     try {
       await handleSchedule(scheduleName, cronExpression);
@@ -58,8 +77,6 @@ export function ScheduleAgentModal({
       console.error("Failed to create schedule:", error);
     }
   }
-
-  const canSchedule = scheduleName.trim() && isScheduleFormValid;
 
   return (
     <Dialog
@@ -78,6 +95,11 @@ export function ScheduleAgentModal({
               onScheduleNameChange={handleSetScheduleName}
               onCronExpressionChange={handleSetCronExpression}
               onValidityChange={setIsScheduleFormValid}
+            />
+            <ScheduleKeysNotice
+              replacedKeys={replacedKeys}
+              usesFormKeys={usesFormKeys}
+              onUseFormKeys={handleUseFormKeys}
             />
           </div>
 

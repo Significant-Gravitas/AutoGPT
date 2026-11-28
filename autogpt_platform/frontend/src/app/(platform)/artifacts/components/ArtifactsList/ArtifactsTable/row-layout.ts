@@ -1,4 +1,5 @@
 import type { Variants } from "framer-motion";
+import { duration, ease } from "@/components/styles/motion";
 
 // Column template shared by the header and every row so cells line up.
 // Modified and Size collapse on narrow screens. The trailing column has a
@@ -25,8 +26,8 @@ export const ROW_VARIANTS: Variants = {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.3,
-      ease: [0.16, 1, 0.3, 1],
+      duration: duration.slow,
+      ease: ease.emphasized,
       delay: Math.min(index, STAGGER_CAP) * STAGGER_STEP_S,
     },
   }),
@@ -34,5 +35,5 @@ export const ROW_VARIANTS: Variants = {
 
 export const REDUCED_ROW_VARIANTS: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.2 } },
+  show: { opacity: 1, transition: { duration: duration.base } },
 };

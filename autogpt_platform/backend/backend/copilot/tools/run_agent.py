@@ -61,6 +61,7 @@ from backend.util.timezone_utils import (
 )
 
 from .base import GATE_APPROVED, GATE_DECIDED, BaseTool, parameters_without
+from .capability_gates import gate_denied, gate_denied_error
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -95,6 +96,7 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .schedule_duplicates import find_duplicate_graph_schedule
 from .utils import (
     build_missing_credentials_from_graph,
     extract_credentials_from_schema,
@@ -415,6 +417,11 @@ class RunAgentTool(BaseTool):
 
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
+
+        # A schedule is standing work whichever tool makes it, so this mode
+        # answers to the same permission as ``schedule_followup``.
+        if is_schedule and gate_denied("schedule_followup"):
+            return gate_denied_error(f"{self.name} with a schedule", session_id)
 
         # Session-level dry-run blocks scheduling — schedules create real
         # side effects that cannot be simulated.
@@ -1422,16 +1429,8 @@ class RunAgentTool(BaseTool):
             graph, user_id, *external_tenancy(session)
         )
         emit_tool_display_name(library_agent.name)
+        library_agent_link = f"/library/agents/{library_agent.id}"
 
-        # Create schedule — the scheduler re-validates credentials via
-        # ``validate_and_construct_node_execution_input`` and will raise
-        # ``GraphValidationError`` if any required credential is missing
-        # or invalid.  ``_check_prerequisites`` already catches the
-        # common case at the top of ``_execute``, but a race (creds
-        # deleted between prereq check and scheduler call) or any other
-        # validation drift could hit here — turn credential errors back
-        # into the inline ``SetupRequirementsResponse`` so the user
-        # sees the credential setup card instead of a generic error.
         # Session-anchored tenancy, mirroring ``_run_agent``: fire-time
         # executions of this schedule attribute to the chat session's org.
         # Likewise for expert attribution: a schedule created in an
@@ -1442,8 +1441,50 @@ class RunAgentTool(BaseTool):
         if org_id is None:
             org_id, team_id = await orgs_db().get_user_default_team(user_id)
 
+        scheduler = get_scheduler_client()
+        existing = await find_duplicate_graph_schedule(
+            scheduler,
+            user_id,
+            session,
+            graph_id=library_agent.graph_id,
+            graph_version=graph.version,
+            cron=cron,
+            timezone=user_timezone,
+            inputs=inputs,
+            input_defaults=_input_defaults(graph),
+            credentials=graph_credentials,
+            tenant=(org_id, team_id),
+            default_tenant=lambda: orgs_db().get_user_default_team(user_id),
+        )
+        if existing is not None:
+            return ExecutionStartedResponse(
+                message=(
+                    f"Already scheduled: '{existing.name}' runs workflow "
+                    f"'{library_agent.name}' on '{cron}' with these inputs, so "
+                    "no second schedule was added. To change it, delete it with "
+                    "tool:delete_schedule and schedule the new one. "
+                    f"{MSG_DO_NOT_SCHEDULE_AGAIN}"
+                ),
+                session_id=session_id,
+                execution_id=existing.id,
+                graph_id=library_agent.graph_id,
+                graph_name=library_agent.name,
+                library_agent_id=library_agent.id,
+                library_agent_link=library_agent_link,
+                status=SCHEDULED_STATUS,
+            ).from_outside()
+
+        # Create schedule — the scheduler re-validates credentials via
+        # ``validate_and_construct_node_execution_input`` and will raise
+        # ``GraphValidationError`` if any required credential is missing
+        # or invalid.  ``_check_prerequisites`` already catches the
+        # common case at the top of ``_execute``, but a race (creds
+        # deleted between prereq check and scheduler call) or any other
+        # validation drift could hit here — turn credential errors back
+        # into the inline ``SetupRequirementsResponse`` so the user
+        # sees the credential setup card instead of a generic error.
         try:
-            result = await get_scheduler_client().add_execution_schedule(
+            result = await scheduler.add_execution_schedule(
                 user_id=user_id,
                 graph_id=library_agent.graph_id,
                 graph_version=graph.version,
@@ -1488,7 +1529,6 @@ class RunAgentTool(BaseTool):
             library_agent_id=library_agent.id,
         )
 
-        library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
                 f"Workflow '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
@@ -1503,6 +1543,15 @@ class RunAgentTool(BaseTool):
             library_agent_link=library_agent_link,
             status=SCHEDULED_STATUS,
         ).from_outside()
+
+
+def _input_defaults(graph: GraphModel) -> dict[str, Any]:
+    """What a run fills an omitted input with."""
+    return {
+        name: field["default"]
+        for name, field in graph.input_schema.get("properties", {}).items()
+        if "default" in field
+    }
 
 
 def _unexpected_error(error: Exception, session: ChatSession) -> ErrorResponse:

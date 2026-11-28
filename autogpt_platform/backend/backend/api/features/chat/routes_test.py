@@ -24,6 +24,12 @@ from backend.copilot import transports as chat_transports
 from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.constants import (
+    BUDGET_EXHAUSTED_NOTICE,
+    EMPTY_COMPLETION_NOTICE,
+    NO_COMMENTARY_NOTICE,
+    STREAM_INCOMPLETE_MARKER,
+)
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import (
     AutopilotMode,
@@ -33,7 +39,13 @@ from backend.copilot.model import (
 )
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
-from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
+from backend.copilot.response_model import (
+    StreamFinish,
+    StreamReasoningDelta,
+    StreamStatus,
+    StreamTextDelta,
+    StreamToolInputStart,
+)
 from backend.copilot.tools.local_pc_machine import (
     MachineControlError,
     MachineNotConnectedError,
@@ -438,13 +450,96 @@ def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
 ) -> None:
     """The relay's latency lands on the request's own transaction, which the
     ASGI middleware starts for it in production."""
+    _relay_through_the_stream_route(
+        mocker,
+        [
+            StreamStatus(message="Message received…"),
+            StreamTextDelta(id="t", delta="hi"),
+            StreamFinish(),
+        ],
+    )
+
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert request["contexts"]["trace"]["op"] == "http.server"
+    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
+    assert data["copilot.stream.ttft_ms"] <= data["copilot.stream.first_text_ms"]
+    assert data["copilot.stream.chunk_count"] == 3
+
+
+@pytest.mark.parametrize(
+    "before_the_finish, answered",
+    [
+        (
+            [
+                StreamReasoningDelta(id="r", delta="thinking"),
+                StreamTextDelta(id="t", delta="hi"),
+            ],
+            True,
+        ),
+        (
+            [
+                StreamReasoningDelta(id="r", delta="thinking"),
+                StreamToolInputStart(toolCallId="c", toolName="run_block"),
+            ],
+            False,
+        ),
+        # Whitespace on its own shows nothing.
+        ([StreamTextDelta(id="t", delta="\n\n")], False),
+    ],
+)
+def test_stream_chat_records_when_the_answer_text_reached_the_client(
+    mocker: pytest_mock.MockerFixture, sentry_transactions, before_the_finish, answered
+) -> None:
+    """Reasoning and a tool call are the turn's first token, not its answer:
+    only text times the answer."""
+    _relay_through_the_stream_route(
+        mocker,
+        [StreamStatus(message="Message received…"), *before_the_finish, StreamFinish()],
+    )
+
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert "copilot.stream.ttft_ms" in data
+    assert ("copilot.stream.first_text_ms" in data) is answered
+
+
+@pytest.mark.parametrize(
+    "notice",
+    [
+        STREAM_INCOMPLETE_MARKER,
+        EMPTY_COMPLETION_NOTICE,
+        BUDGET_EXHAUSTED_NOTICE,
+        NO_COMMENTARY_NOTICE,
+    ],
+)
+def test_stream_chat_does_not_time_a_notice_as_the_answer(
+    mocker: pytest_mock.MockerFixture, sentry_transactions, notice
+) -> None:
+    """A turn that ends without an answer streams a notice the platform wrote
+    in its place: it is neither the turn's first token nor its answer."""
+    _relay_through_the_stream_route(
+        mocker,
+        [
+            StreamStatus(message="Message received…"),
+            StreamTextDelta(id="n", delta=notice),
+            StreamFinish(),
+        ],
+    )
+
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert "copilot.stream.ttft_ms" not in data
+    assert "copilot.stream.first_text_ms" not in data
+
+
+def _relay_through_the_stream_route(
+    mocker: pytest_mock.MockerFixture, chunks: list
+) -> None:
+    """POST a message and have the stream route relay *chunks* to the client."""
     _mock_stream_internals(mocker)
     relayed: asyncio.Queue = asyncio.Queue()
-    for chunk in (
-        StreamStatus(message="Message received…"),
-        StreamTextDelta(id="t", delta="hi"),
-        StreamFinish(),
-    ):
+    for chunk in chunks:
         relayed.put_nowait((None, chunk))
     mocker.patch.object(
         chat_routes.stream_registry,
@@ -472,11 +567,6 @@ def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
     )
 
     assert response.status_code == 200
-    [request] = sentry_transactions
-    data = request["contexts"]["trace"]["data"]
-    assert request["contexts"]["trace"]["op"] == "http.server"
-    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
-    assert data["copilot.stream.chunk_count"] == 3
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -6635,7 +6725,7 @@ def test_start_session_desktop_returns_the_stream(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.chat.routes.open_desktop",
+        "backend.api.features.chat.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         return_value=(
             DesktopStream(url="https://6080-sbx.e2b.app/vnc.html", sandbox_id="sbx"),
@@ -6659,13 +6749,40 @@ def test_start_session_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     mocker.patch(
-        "backend.api.features.chat.routes.open_desktop",
+        "backend.api.features.chat.routes.open_desktop_from_ui",
         new_callable=AsyncMock,
         side_effect=SandboxLimitError("Too many sandboxes are running right now."),
     )
     response = client.post("/sessions/sess-1/desktop")
     assert response.status_code == 429
     assert response.json()["detail"] == "Too many sandboxes are running right now."
+
+
+def test_start_session_desktop_past_the_usage_allowance_is_a_429_and_opens_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """No turn's admission stands behind the panel's open, so the route itself
+    must refuse a box on the platform's E2B key once the allowance is spent."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_session_like(None),
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.copilot.computer.platform_spend_refusal",
+        new_callable=AsyncMock,
+        return_value="You've reached your daily usage limit.",
+    )
+    mocker.patch("backend.copilot.computer._charge_box_time", new_callable=AsyncMock)
+    open_desktop = mocker.patch(
+        "backend.copilot.computer.open_desktop", new_callable=AsyncMock
+    )
+    response = client.post("/sessions/sess-1/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "You've reached your daily usage limit."
+    open_desktop.assert_not_awaited()
 
 
 def test_start_session_desktop_without_e2b_is_503(
@@ -6702,7 +6819,7 @@ def test_start_session_desktop_is_refused_for_a_local_pc_chat(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = "e2b-key"
     open_desktop = mocker.patch(
-        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+        "backend.api.features.chat.routes.open_desktop_from_ui", new_callable=AsyncMock
     )
 
     response = client.post("/sessions/sess-1/desktop")
@@ -6728,7 +6845,7 @@ def test_start_session_desktop_is_refused_for_an_archived_experts_chat(
         return_value=False,
     )
     open_desktop = mocker.patch(
-        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+        "backend.api.features.chat.routes.open_desktop_from_ui", new_callable=AsyncMock
     )
     response = client.post("/sessions/sess-1/desktop")
     # Same non-enumerable 404 a turn gets for a fired or foreign expert.

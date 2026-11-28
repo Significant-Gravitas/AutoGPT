@@ -24,7 +24,9 @@ describe("MCPAuthSchemeField", () => {
       <MCPAuthSchemeField
         value="bearer"
         onChange={onChange}
-        labelVariant="body-medium-tight"
+        labelVariant="body"
+        labelWeight="medium"
+        labelLeading="5"
       />,
     );
 

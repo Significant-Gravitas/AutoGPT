@@ -2,6 +2,7 @@
 
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Button } from "@/components/atoms/Button/Button";
+import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
 import { PencilEdit02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { ExpertWorkflowCardMenu } from "./ExpertWorkflowCardMenu";
 
@@ -31,6 +32,7 @@ export function ExpertWorkflowActions({
   variant = "floating",
   size = "icon-xs",
 }: Props) {
+  const shape = size === "icon-sm" ? "soft" : "sharp";
   return (
     <>
       {builderHref ? (
@@ -39,6 +41,7 @@ export function ExpertWorkflowActions({
           href={builderHref}
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Edit workflow"
           leadingIcon={PencilEdit02Icon}
         />
@@ -48,6 +51,7 @@ export function ExpertWorkflowActions({
           type="button"
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Ask about this workflow"
           leadingIcon={SparklesIcon}
           onClick={() => onAsk(chatPrompt)}
@@ -56,8 +60,15 @@ export function ExpertWorkflowActions({
         <Button
           as="NextLink"
           href={chatHref}
+          onClick={(e) => {
+            // A modified click opens a new tab, which prefills from the href;
+            // stashing there would leave a send nobody asked for behind.
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            stashCopilotPrompt({ prompt: chatPrompt, autosubmit: true });
+          }}
           variant={variant}
           size={size}
+          shape={shape}
           aria-label="Ask about this workflow"
           leadingIcon={SparklesIcon}
         />

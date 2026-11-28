@@ -73,14 +73,14 @@ export function HandoffStatus({
             />
           </p>
           {unknown && (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-tertiary">
+            <span className="inline-flex shrink-0 items-center rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-tertiary">
               Status unknown
             </span>
           )}
           {outcome.link && (
             <NextLink
               href={outcome.link}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-base bg-surface px-3 py-1.5 text-body font-medium text-foreground-emphasis shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-pill border border-border-base bg-surface px-3 py-1.5 text-body font-medium text-foreground-emphasis shadow-sm transition-colors hover:border-border-strong hover:bg-surface-muted focus-visible:ring-1 focus-visible:ring-focus focus-visible:outline-none"
             >
               Open {possessive(name)} chat
               <Icon

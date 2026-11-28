@@ -2,6 +2,7 @@
 Tests for content handlers (blocks, store agents, documentation).
 """
 
+import logging
 import os
 import subprocess
 import sys
@@ -521,6 +522,45 @@ async def test_documentation_handler_get_missing_items(tmp_path, mocker):
             )
             assert api_item is not None
             assert "API Reference" in api_item.searchable_text
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "target, target_exists",
+    [
+        ("CONTRIBUTING.md", False),
+        ("CONTRIBUTING.md", True),
+        ("docs/moved.md", False),
+    ],
+    ids=["dangling-outside", "resolves-outside", "dangling-inside"],
+)
+async def test_documentation_handler_lists_only_readable_pages_in_the_root(
+    tmp_path, caplog, target, target_exists
+):
+    """The image copies docs/ alone, so a link out of it dangles there; no such
+    link may be listed, and a dangling one must not warn on every pass."""
+    handler = DocumentationHandler()
+    docs_root = tmp_path / "docs"
+    docs_root.mkdir()
+    (docs_root / "guide.md").write_text("# Guide\n\nA real page.")
+    if target_exists:
+        (tmp_path / target).write_text("# Contributing")
+    (docs_root / "contributing.md").symlink_to(tmp_path / target)
+
+    with (
+        patch.object(handler, "_get_docs_root", return_value=docs_root),
+        patch(
+            "backend.api.features.search.content_handlers.query_raw_with_schema",
+            return_value=[],
+        ),
+        caplog.at_level(logging.WARNING),
+    ):
+        items = await handler.get_missing_items(batch_size=10)
+        valid_ids = await handler.get_valid_content_ids()
+
+    assert [item.content_id for item in items] == ["guide.md::0"]
+    assert valid_ids == {"guide.md::0"}
+    assert not [r for r in caplog.records if "Failed to read" in r.getMessage()]
 
 
 @pytest.mark.asyncio(loop_scope="session")

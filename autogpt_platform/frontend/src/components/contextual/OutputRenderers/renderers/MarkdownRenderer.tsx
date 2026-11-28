@@ -200,7 +200,7 @@ const MARKDOWN_COMPONENTS: Components = {
   // Custom components for better rendering
   pre: ({ children, ...props }) => (
     <pre
-      className="my-4 overflow-x-auto rounded-md bg-action-hover p-4"
+      className="my-4 overflow-x-auto rounded-md bg-surface-inverse-hover p-4"
       {...props}
     >
       {children}
@@ -221,7 +221,7 @@ const MARKDOWN_COMPONENTS: Components = {
     }
     // Block code is handled by rehype-highlight
     return (
-      <code className="font-mono text-body text-action-foreground" {...props}>
+      <code className="font-mono text-body text-foreground-inverse" {...props}>
         {children}
       </code>
     );

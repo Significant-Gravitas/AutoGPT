@@ -70,9 +70,15 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
   // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "var(--shell-sidebar-width-tour)",
+          } as CSSProperties
+        }
+      >
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset surface="muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -91,7 +97,9 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
       <SidebarProvider
         persistState
         defaultOpen={!isBuilderRoute && openOutsideBuilder}
-        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+        style={
+          { "--sidebar-width": "var(--shell-sidebar-width)" } as CSSProperties
+        }
       >
         <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
@@ -99,7 +107,7 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
         {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
         <FirstRunTour />
         <ContextualTips />
-        <SidebarInset className="bg-surface-muted">
+        <SidebarInset surface="muted">
           <header
             className={cn(
               "flex shrink-0 items-center pt-6 pb-4",
@@ -107,8 +115,8 @@ function PlatformShell({ children, persistedSidebarOpen }: Props) {
               // instead of reserving vertical space, so the chat scrolls to
               // the viewport top underneath it.
               overlayInsetHeader
-                ? "pointer-events-none absolute inset-x-0 top-0 z-40"
-                : "relative z-10",
+                ? "pointer-events-none absolute inset-x-0 top-0 z-header"
+                : "relative z-raised",
               !overlayInsetHeader && !hasInsetHeaderTitle && "md:hidden",
             )}
           >

@@ -24,7 +24,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
 
   return (
     <section className="flex flex-col gap-2 lg:mt-4">
-      <Text variant="body-medium" tone="emphasis" className="lg:mb-2">
+      <Text variant="body" weight="medium" tone="emphasis" className="lg:mb-2">
         Most expensive tasks
       </Text>
       <ul className="flex flex-col divide-y divide-separator rounded-medium border border-separator bg-surface">
@@ -49,7 +49,7 @@ export function TopRunsList({ runs, agentLookup }: Props) {
                 </Text>
               </div>
               <div className="tabular-nums">
-                <Text variant="body-medium" tone="emphasis">
+                <Text variant="body" weight="medium" tone="emphasis">
                   {formatCents(run.cost_cents)}
                 </Text>
               </div>

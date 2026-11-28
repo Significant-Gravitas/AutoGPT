@@ -170,9 +170,11 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
         patch(
             "backend.copilot.model.get_chat_session", AsyncMock(return_value=session)
         ),
-        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+        patch("backend.copilot.executor.utils.schedule_turn", enqueue),
     ):
-        await _enqueue_for_recovery("sess-1", "user-1", "do the thing", dry_run=False)
+        await _enqueue_for_recovery(
+            "sess-1", "user-1", "do the thing", dry_run=False, permissions=None
+        )
 
     enqueue.assert_awaited_once()
     assert enqueue.await_args.kwargs["tool_name"] == "autopilot_block"
@@ -220,3 +222,46 @@ async def test_a_budget_refusal_reaches_the_graph_without_a_recovery_run(fronten
 
     assert outputs == [("session_id", "sess-1"), ("error", _OUT_OF_TODAY_MESSAGE)]
     recovery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "outcome, result",
+    [
+        ("rejected_concurrent_turn_cap", SessionResult()),
+        ("refused", SessionResult(refusal="That session already has a turn.")),
+    ],
+    ids=["turn-cap", "refused"],
+)
+async def test_a_turn_that_was_not_started_is_not_queued_again(outcome, result):
+    """Nothing ran, so there is nothing to recover: the error goes to the graph
+    and no second turn is sent for it."""
+    block = AutoPilotBlock()
+    session = MagicMock()
+    session.metadata.llm_auth_provider = "platform"
+    session.metadata.llm_credential_id = None
+    schedule_turn = AsyncMock()
+    enqueue = AsyncMock()
+
+    with (
+        patch.object(block, "create_session", AsyncMock(return_value="sess-1")),
+        _waited(outcome, result),
+        patch(
+            "backend.copilot.model.get_chat_session", AsyncMock(return_value=session)
+        ),
+        patch("backend.copilot.executor.utils.schedule_turn", schedule_turn),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+    ):
+        outputs = [
+            name
+            async for name, _ in block.run(
+                AutoPilotBlock.Input(
+                    prompt="go", transport=AutoPilotTransport.PLATFORM
+                ),
+                execution_context=ExecutionContext(user_id="user-1"),
+            )
+        ]
+
+    assert outputs == ["session_id", "error"]
+    schedule_turn.assert_not_awaited()
+    enqueue.assert_not_awaited()

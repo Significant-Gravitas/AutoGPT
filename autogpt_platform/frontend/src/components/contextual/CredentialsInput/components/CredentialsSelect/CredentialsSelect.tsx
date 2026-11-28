@@ -78,7 +78,7 @@ export function CredentialsSelect({
           value={selectedCredentials?.id ?? "__none__"}
           onChange={handleValueChange}
           disabled={readOnly}
-          className="absolute inset-0 z-10 cursor-pointer opacity-0"
+          className="absolute inset-0 z-raised cursor-pointer opacity-0"
           aria-label={`Select ${displayName} credential`}
         >
           {allowNone ? (

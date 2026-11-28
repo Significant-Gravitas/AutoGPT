@@ -128,7 +128,7 @@ async def test_credential_bearing_url_returns_error():
     response = await tool._execute(
         user_id=_USER_ID,
         session=session,
-        server_url="https://user:secret@mcp.example.com/mcp",  # pragma: allowlist secret  # noqa: E501; fmt: skip
+        server_url="https://user:secret@mcp.example.com/mcp",  # pragma: allowlist secret  # fmt: skip
     )
     assert isinstance(response, ErrorResponse)
     assert (

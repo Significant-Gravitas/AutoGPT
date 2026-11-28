@@ -38,10 +38,10 @@ export function CardStat({ icon, label, singular, count }: StatProps) {
   return (
     <div className="flex items-center gap-1 whitespace-nowrap text-foreground-emphasis tabular-nums">
       <Icon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
-      <Text variant="body-medium" as="dd" tone="emphasis">
+      <Text variant="body" weight="medium" as="dd" tone="emphasis">
         {count}
       </Text>
-      <Text variant="body-medium" as="dt" tone="inherit">
+      <Text variant="body" weight="medium" as="dt" tone="inherit">
         <span className="sr-only">{label}</span>
         <span aria-hidden="true">{word}</span>
       </Text>

@@ -6,6 +6,7 @@ from prisma.enums import (
     DreamPassRoute,
     DreamPassStatus,
     DreamPassTrigger,
+    ReviewStatus,
 )
 from pydantic import TypeAdapter
 
@@ -23,6 +24,7 @@ from backend.copilot.dream.schemas import (
     DreamPassUsage,
     PhaseUsage,
 )
+from backend.copilot.model import ChatSessionSaveFields
 from backend.util.json import to_dict
 from backend.util.service import EXPOSED_FLAG
 
@@ -41,6 +43,30 @@ def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "set_turn_duration")
     assert hasattr(DatabaseManager, "update_chat_session_llm_route")
     assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
+
+
+def test_session_fields_are_optional_and_round_trip_through_rpc() -> None:
+    """A caller that supplies session fields gets them through unchanged.
+    Current executor calls omit them for older-manager compatibility."""
+    fields = ChatSessionSaveFields(
+        credentials={"github": {"id": "cred-1"}},
+        successful_agent_runs={"graph-1": 2},
+        successful_agent_schedules={},
+        total_prompt_tokens=120,
+        total_completion_tokens=30,
+    )
+    rows = {
+        "session_id": "s1",
+        "messages": [{"role": "assistant", "content": "hi"}],
+        "start_sequence": 3,
+    }
+    manager = DatabaseManager()
+    endpoint = manager._create_fastapi_endpoint(manager.add_chat_messages_batch)
+    body = inspect.signature(endpoint).parameters["body"].annotation
+
+    sent = body.model_validate(to_dict({**rows, "session_fields": fields}))
+    assert sent.session_fields == fields
+    assert body.model_validate(to_dict(rows)).session_fields is None
 
 
 def test_bot_analytics_methods_registered() -> None:
@@ -213,6 +239,25 @@ def test_the_audience_consumer_can_read_the_opt_out() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")
 
 
+def test_the_gate_spends_an_approval_as_it_read_it_over_the_rpc() -> None:
+    """The copilot executor has no Prisma, so the gate spends an approval over
+    this RPC. The row's creation time and status must arrive exactly as read,
+    or the delete misses the row it read and nothing runs."""
+    assert hasattr(DatabaseManagerAsyncClient, "delete_review_as_read")
+    args = {
+        "node_exec_id": "copilot-gate-bash_exec|abc",
+        "user_id": "u1",
+        "status": ReviewStatus.APPROVED,
+        "created_at": datetime(2026, 11, 17, 8, 0, 0, 123000, tzinfo=timezone.utc),
+    }
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        DatabaseManager.delete_review_as_read
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(to_dict(args))
+    assert sent.model_dump() == args
+
+
 def test_the_executor_can_record_a_scheduled_run() -> None:
     """The copilot executor has no Prisma of its own. A run's outcome, the
     deepest payload here, crosses this RPC; a schema that cannot be built
@@ -228,6 +273,15 @@ def test_the_executor_can_forget_a_deleted_scheduled_chat() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "forget_scheduled_chat")
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.forget_scheduled_chat)
+
+
+def test_the_scheduler_can_check_a_turn_owners_membership() -> None:
+    """The scheduler has no Prisma of its own; a scheduled turn's org is
+    re-checked through this RPC when it fires."""
+    assert hasattr(DatabaseManagerAsyncClient, "is_active_member")
+    assert hasattr(DatabaseManagerAsyncClient, "resolve_default_tenancy")
+    manager = DatabaseManager()
+    manager._create_fastapi_endpoint(manager.is_active_member)
 
 
 def test_the_scheduler_can_post_a_note_into_a_chat() -> None:

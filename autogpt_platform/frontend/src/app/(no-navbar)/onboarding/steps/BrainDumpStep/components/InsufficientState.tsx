@@ -50,7 +50,7 @@ export function InsufficientState({
     <section className="relative isolate flex w-full max-w-xl flex-col items-center">
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 -top-10 -z-10 h-1/2 rounded-full bg-accent-surface blur-3xl"
+        className="absolute inset-x-0 -top-10 z-behind h-1/2 rounded-full bg-accent-surface blur-3xl"
       />
       <YourMessage text={heard} />
       <div

@@ -286,9 +286,9 @@ class TestFeatures:
         assert a._client.call.call_args_list == []
 
     @pytest.mark.asyncio
-    async def test_command_menu_registered_on_startup(self):
+    async def test_command_menu_published_on_startup(self):
         a = _adapter()
-        await a._register_command_menu()
+        await a.on_startup()
         assert a._client.call.call_args.args == ("setMyCommands",)
         menu = a._client.call.call_args.kwargs["commands"]
         assert {c["command"] for c in menu} >= {"setup", "new", "help", "unlink"}

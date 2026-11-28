@@ -36,12 +36,13 @@ import shutil
 import tempfile
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
-from backend.util.request import validate_url_host
+from backend.util.request import parse_url, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -253,12 +254,13 @@ _pending_saves: dict[str, set[asyncio.Task[None]]] = {}
 # start a new one that nothing will ever stop.
 _closing_sessions: set[str] = set()
 
-# Turn-end teardown budget. Drain plus close must stay under the executor's
-# _CANCEL_GRACE_SECONDS (5s), with room for the rest of the turn's cleanup:
-# past the grace the worker re-cancels the turn task, the teardown never
-# reaps, and the cluster lock is released while it is still running. A save
-# slower than the drain is dropped; the next turn restores from the last one
-# that landed.
+# Turn-end teardown budget. Drain plus close should fit in the executor's
+# _CANCEL_GRACE_SECONDS (5s) with the rest of the turn's cleanup. Past the
+# grace the worker releases the chat while the teardown still runs: its
+# second cancel no longer cuts the teardown short (DeferredCancel), but the
+# chat's next turn can start meanwhile, and a teardown that finds a newer turn
+# of the chat on this pod leaves its browser alone. A save slower than the
+# drain is dropped; the next turn restores from the last one that landed.
 _SAVE_DRAIN_TIMEOUT = 2
 _TURN_END_CLOSE_TIMEOUT = 2
 
@@ -375,7 +377,7 @@ async def _restore_browser_state(
         if url:
             # Validate the saved URL to prevent SSRF via stored redirect targets.
             try:
-                await validate_url_host(url)
+                url = await _checked_url(url)
             except ValueError:
                 logger.warning(
                     "[browser] State restore: blocked SSRF URL %s", url[:200]
@@ -483,6 +485,12 @@ async def _ensure_session(
             return
         if await _restore_browser_state(session_name, user_id, session):
             _alive_sessions.add(session_name)
+
+
+def browser_daemon_may_run(session_name: str) -> bool:
+    """Whether this pod may run an agent-browser daemon for *session_name*:
+    a browser command reached it since its last close."""
+    return session_name in _touched_sessions
 
 
 async def close_browser_daemon(session_name: str) -> bool:
@@ -672,7 +680,7 @@ class BrowserNavigateTool(BaseTool):
             ).from_outside()
 
         try:
-            await validate_url_host(url)
+            url = await _checked_url(url)
         except ValueError as e:
             return ErrorResponse(
                 message=str(e),
@@ -738,6 +746,22 @@ class BrowserNavigateTool(BaseTool):
 
         return result
 
+
+async def _checked_url(url: str) -> str:
+    """The URL the browser may open: the one ``validate_url_host`` checked,
+    rebuilt from its scheme and host, never the caller's own string. A URL
+    without a scheme (protocol-relative or not) is checked as ``https://``."""
+    url = url.strip().replace("\\", "/").lstrip("/")
+    if "://" not in url:
+        url = f"https://{url}"
+    checked, _, _ = await validate_url_host(url)
+    # The check quotes the path's sub-delimiters too, which changes what a
+    # signed URL signs; keep RFC 3986's path characters as they were.
+    return checked._replace(path=quote(parse_url(url).path, safe=_PATH_CHARS)).geturl()
+
+
+# RFC 3986 pchar beyond unreserved, plus the separator and existing escapes.
+_PATH_CHARS = "/%:@!$&'()*+,;="
 
 # ---------------------------------------------------------------------------
 # Tool: browser_act

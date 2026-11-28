@@ -80,10 +80,10 @@ export function ApproveSplitButton({
                 onSelect={() => onApprove(rule, scope)}
                 className="flex flex-col items-start gap-0.5 py-2"
               >
-                <Text variant="body-tight" as="span" tone="primary">
+                <Text variant="body" leading="5" as="span" tone="primary">
                   {title}
                 </Text>
-                <Text variant="small-tight" as="span" tone="muted">
+                <Text variant="small" leading="4" as="span" tone="muted">
                   {detail}
                 </Text>
               </DropdownMenuItem>

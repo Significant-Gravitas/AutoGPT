@@ -56,7 +56,7 @@ export function ExpertHireControl({ expert, isHired }: Props) {
       <Badge
         variant="success"
         // oxlint-disable-next-line design-system/no-restyle -- the hired pill matches the hire button's shape; Badge has no pill size
-        className="rounded-full px-2.5 py-1 shadow-subtle"
+        className="rounded-pill px-2.5 py-1 shadow-subtle"
       >
         <Icon icon={CheckmarkCircle02Icon} size={14} aria-hidden />
         On your team

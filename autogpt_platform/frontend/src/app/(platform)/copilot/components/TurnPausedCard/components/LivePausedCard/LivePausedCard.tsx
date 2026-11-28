@@ -36,10 +36,10 @@ export function LivePausedCard({ onStop, ...args }: Props) {
           <Icon icon={PauseIcon} size={18} />
         </span>
         <div className="min-w-0 flex-1">
-          <Text tone="primary" variant="body-medium">
+          <Text tone="primary" variant="body" weight="medium">
             {card.title}
           </Text>
-          <Text tone="muted" variant="small-loose" className="mt-1">
+          <Text tone="muted" variant="small" leading="5" className="mt-1">
             {card.body}
           </Text>
         </div>

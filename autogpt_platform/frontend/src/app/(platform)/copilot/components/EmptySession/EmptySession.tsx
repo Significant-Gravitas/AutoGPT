@@ -30,6 +30,7 @@ import {
 } from "./helpers";
 import { useHomeComposer } from "./useHomeComposer";
 import { useRecipientPicker } from "./useRecipientPicker";
+import { duration } from "@/components/styles/motion";
 
 interface Props {
   isCreatingSession: boolean;
@@ -150,14 +151,14 @@ export function EmptySession({
     <div className="relative flex h-full flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
       {/* Which connection the new chat runs on, kept out of the composer and
           in the page corner, level with the inset header's controls. */}
-      <div className="absolute top-3 right-3 z-30 empty:hidden">
+      <div className="absolute top-3 right-3 z-floating empty:hidden">
         <ConnectionPicker className="ml-0" />
       </div>
       <motion.div
-        className={cn("relative z-10 w-full text-center", "max-w-[1120px]")}
+        className={cn("relative z-raised w-full text-center", "max-w-[1120px]")}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: duration.slow }}
       >
         <div className="mx-auto max-w-[52rem] pt-6">
           {intro.isVisible ? (

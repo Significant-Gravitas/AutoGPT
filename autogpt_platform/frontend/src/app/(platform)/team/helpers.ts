@@ -14,7 +14,6 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { formatDistanceToNow } from "date-fns";
 
 /** Section headings sit outside the cards, so they need the cards' own content
  *  inset (1px border-box padding + p-4, matching AutopilotCard's p-5) to line
@@ -150,15 +149,14 @@ export function groupExpertsByPods(
   };
 }
 
-export function getLastRunLabel(expert: Expert) {
+export function getLastRun(expert: Expert) {
   if (!expert.last_run_at) return null;
-  const when = formatDistanceToNow(new Date(expert.last_run_at), {
-    addSuffix: true,
-  });
+  const at = expert.last_run_at;
   if (expert.last_run_status === "COMPLETED")
-    return `Last run succeeded ${when}`;
-  if (expert.last_run_status === "FAILED") return `Last run failed ${when}`;
-  return `Last run ${when}`;
+    return { label: "Last run succeeded", at };
+  if (expert.last_run_status === "FAILED")
+    return { label: "Last run failed", at };
+  return { label: "Last run", at };
 }
 
 export function getWeeklySpend(expert: Expert) {
@@ -425,11 +423,11 @@ export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
 
 // The expert and Otto pages' tabs: a segmented control with a white pill
 // that slides to the active tab (TabsLine's indicator, restyled). The list
-// sets no z-index, so its grey track paints first, the pill (z-10) over it
-// and the labels (z-20) on top.
+// sets no z-index, so its grey track paints first, the pill (z-raised) over it
+// and the labels (z-sticky) on top.
 export const PROFILE_TABS_LIST_CLASS =
-  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
+  "relative w-full gap-0.5 overflow-x-auto rounded-pill border-b-0 bg-surface-hover/80 p-1 [&>button]:flex-1";
 export const PROFILE_TABS_INDICATOR_CLASS =
-  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-surface shadow-sm ring-1 ring-border-base/70";
+  "pointer-events-none z-raised bottom-1 top-1 h-auto rounded-pill bg-surface shadow-sm ring-1 ring-border-base/70";
 export const PROFILE_TABS_TRIGGER_CLASS =
-  "z-20 rounded-full px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";
+  "z-sticky rounded-pill px-3.5 py-1.5 text-body-md leading-inherit max-sm:px-2 text-foreground-tertiary transition-colors hover:text-foreground-strong data-[state=active]:text-foreground-strong [&_svg]:!size-4";

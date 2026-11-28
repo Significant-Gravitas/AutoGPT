@@ -25,14 +25,22 @@ from apscheduler.triggers.interval import IntervalTrigger
 from backend.api.features.experts.models import ExpertRoutine
 from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVAL
 from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
+from backend.copilot.context import set_execution_context
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
+    ALL_TOOL_NAMES,
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
+    CopilotPermissions,
 )
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.copilot.tools._test_data import make_session
+from backend.copilot.tools.schedule_followup import (
+    ScheduleCreatedResponse,
+    ScheduleFollowupTool,
+)
 from backend.executor import scheduler as scheduler_module
 from backend.executor.scheduler import (
     _MAX_CAP_RETRIES,
@@ -186,6 +194,34 @@ def test_build_trigger_run_at_returns_datetrigger():
     when = datetime.now(tz=timezone.utc) + timedelta(hours=1)
     trigger = _build_trigger(cron=None, run_at=when, user_timezone="UTC")
     assert isinstance(trigger, DateTrigger)
+
+
+@pytest.mark.parametrize(
+    "cron",
+    [
+        "0 * * * *",  # 60 minutes → hourly
+        "0 0 * * *",  # 24 hours → daily
+        "*/59 * * * *",
+        "0 */23 * * *",
+        "15 9 */30 * *",  # day cap 30, not 31
+        "*/1 * * * *",
+    ],
+)
+def test_build_trigger_accepts_frontend_custom_interval_crons(cron: str):
+    """Every interval the frontend's custom-interval clamp emits must build a
+    trigger."""
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize(
+    "cron",
+    ["*/60 * * * *", "0 */24 * * *", "0 0 */31 * *", "*/0 * * * *"],
+)
+def test_build_trigger_rejects_out_of_range_custom_interval_crons(cron: str):
+    with pytest.raises(ValueError):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +633,72 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         llm_credential_id=None,
     )
     assert mock_schedule_turn.call_args.kwargs["session_id"] == "new-expert-session"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session_id", [None, "session-1"], ids=["new", "existing"])
+@pytest.mark.parametrize(
+    "still_a_member, tenancy",
+    [(True, ("org-sched", "team-sched")), (False, ("personal-org", "personal-team"))],
+)
+async def test_a_turn_runs_in_its_scheduled_org_only_while_its_owner_belongs(
+    _turn_owners_belong_to_their_org, still_a_member, tenancy, session_id
+):
+    orgs = _turn_owners_belong_to_their_org
+    orgs.is_active_member.return_value = still_a_member
+    orgs.resolve_default_tenancy.return_value = ("personal-org", "personal-team")
+    args = _args(
+        session_id=session_id, organization_id="org-sched", team_id="team-sched"
+    )
+    chat = MagicMock(archived_at=None, session_id="new-session", expert_id=None)
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock(return_value=chat)
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=chat)),
+        patch(
+            f"{_SCHEDULER_PATH}.get_chat_session_metadata", AsyncMock(return_value=chat)
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    dispatched = mock_schedule_turn.call_args.kwargs
+    assert (dispatched["organization_id"], dispatched["team_id"]) == tenancy
+    if session_id is None:
+        created = mock_create_session.await_args.kwargs
+        assert (created["organization_id"], created["team_id"]) == tenancy
+    orgs.is_active_member.assert_awaited_once_with("user-1", "org-sched", "team-sched")
+    if still_a_member:
+        orgs.resolve_default_tenancy.assert_not_awaited()
+    else:
+        orgs.resolve_default_tenancy.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_whose_membership_cannot_be_read_is_not_dispatched(
+    _turn_owners_belong_to_their_org,
+):
+    _turn_owners_belong_to_their_org.is_active_member.side_effect = RuntimeError(
+        "database manager unavailable"
+    )
+    args = _args(session_id=None, organization_id="org-sched", team_id="team-sched")
+    mock_schedule_turn = AsyncMock()
+    mock_create_session = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.create_chat_session", new=mock_create_session
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_create_session.assert_not_awaited()
+    mock_schedule_turn.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1894,7 +1996,10 @@ def _registered_jobs(
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
-        patch(f"{_SCHEDULER_PATH}.BackgroundScheduler", return_value=mock_scheduler),
+        patch(
+            f"{_SCHEDULER_PATH}.StopSafeBackgroundScheduler",
+            return_value=mock_scheduler,
+        ),
         patch(f"{_SCHEDULER_PATH}.load_dotenv"),
         patch(f"{_SCHEDULER_PATH}.asyncio.new_event_loop", return_value=MagicMock()),
         patch(f"{_SCHEDULER_PATH}.threading.Thread", return_value=MagicMock()),
@@ -2697,6 +2802,109 @@ async def test_reschedule_after_cap_keeps_the_routine_behind_the_turn():
         mock_client.add_copilot_turn_schedule.call_args.kwargs["routine_id"]
         == "routine-1"
     )
+
+
+_FILTERED = CopilotPermissions(
+    tools=["web_fetch", "schedule_followup", "schedule_routine"],
+    tools_exclude=False,
+    blocks=["HTTP Request"],
+    blocks_exclude=False,
+)
+
+
+@pytest.mark.asyncio
+async def test_a_followup_fires_under_the_filter_of_the_turn_that_scheduled_it():
+    """From the tool that sets it, through the job as its store keeps it, to
+    the turn its fire starts."""
+    service = Scheduler(register_system_tasks=False)
+    job = MagicMock(id="job-1", next_run_time=None)
+    job.name = "Check CI"
+    client = MagicMock()
+    client.add_copilot_turn_schedule = AsyncMock(
+        side_effect=lambda **kwargs: service.add_copilot_turn_schedule(**kwargs)
+    )
+    client.get_execution_schedules = AsyncMock(return_value=[])
+    users = MagicMock()
+    users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    session = make_session("user-1")
+    set_execution_context("user-1", session, permissions=_FILTERED)
+    try:
+        with (
+            patch.object(service, "_persist_schedule", return_value=job) as persist,
+            patch(
+                "backend.copilot.tools.schedule_followup.get_scheduler_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.copilot.tools.schedule_followup.user_db", return_value=users
+            ),
+        ):
+            created = await ScheduleFollowupTool()._execute(
+                user_id="user-1",
+                session=session,
+                session_id=session.session_id,
+                message="check CI",
+                delay_seconds=600,
+            )
+    finally:
+        set_execution_context(None, None)
+    assert isinstance(created, ScheduleCreatedResponse)
+
+    stored = persist.call_args.kwargs["job_args"].model_dump(mode="json")
+    schedule_turn = AsyncMock()
+    with (
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+    ):
+        await _execute_copilot_turn(**stored)
+
+    assert schedule_turn.await_args is not None
+    assert schedule_turn.await_args.kwargs["permissions"] == _FILTERED
+
+
+@pytest.mark.asyncio
+async def test_a_routine_fires_under_its_own_filter_and_the_one_it_was_set_under():
+    args = _args(routine_id="routine-1", permissions=_FILTERED)
+    granted = ExpertRoutine(
+        id="routine-1",
+        title="Sweep",
+        prompt="Read the queue.",
+        crons=["0 9 * * 1"],
+        enabled=True,
+        grants_credentials=True,
+    )
+    db = MagicMock()
+    db.get_routine = AsyncMock(return_value=granted)
+    schedule_turn = AsyncMock()
+    session = make_session("user-1")
+
+    with (
+        patch(f"{_SCHEDULER_PATH}.experts_db", return_value=db),
+        patch(f"{_SCHEDULER_PATH}.schedule_turn", schedule_turn),
+        patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    assert schedule_turn.await_args is not None
+    permissions = schedule_turn.await_args.kwargs["permissions"]
+    allowed = permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    assert "web_fetch" in allowed
+    # Granted, the routine's own filter alone would leave this.
+    assert "bash_exec" not in allowed
+    assert not ROUTINE_SELF_ESCALATION_TOOLS & allowed
+    assert permissions.is_block_allowed("id", "HTTP Request")
+    assert not permissions.is_block_allowed("id", "Send Email")
+
+
+@pytest.mark.asyncio
+async def test_reschedule_after_cap_keeps_the_filter_it_was_set_under():
+    args = _args(cap_retry_count=0, permissions=_FILTERED)
+    mock_client = AsyncMock()
+    with patch(f"{_SCHEDULER_PATH}.get_scheduler_client", return_value=mock_client):
+        await _reschedule_one_shot_after_cap(args)
+
+    kwargs = mock_client.add_copilot_turn_schedule.call_args.kwargs
+    assert kwargs["permissions"] == _FILTERED
 
 
 @pytest.mark.asyncio

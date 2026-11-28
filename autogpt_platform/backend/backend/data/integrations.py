@@ -18,9 +18,10 @@ from backend.data.includes import (
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.integrations.webhooks.utils import loggable_event_type, webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+from backend.util.url_redaction import mask_credential
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -158,7 +159,7 @@ async def get_webhook(
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
     if not webhook:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
@@ -294,7 +295,7 @@ async def set_webhook_tenancy(
         },
     )
     if updated_webhook is None:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return Webhook.from_db(updated_webhook)
 
 
@@ -317,7 +318,7 @@ async def update_webhook(
         data=data,
     )
     if _updated_webhook is None:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     return Webhook.from_db(_updated_webhook)
 
 
@@ -397,7 +398,7 @@ async def delete_webhook(user_id: str, webhook_id: str) -> None:
         where={"id": webhook_id, "userId": user_id}
     )
     if deleted < 1:
-        raise NotFoundError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
 
 
 # --------------------- WEBHOOK EVENTS --------------------- #
@@ -416,6 +417,12 @@ class WebhookEventBus(AsyncRedisEventBus[WebhookEvent]):
     @property
     def event_bus_name(self) -> str:
         return "webhooks"
+
+    def _loggable_key(self, channel_key: str) -> str:
+        # A channel is named for its webhook, whose ID is the credential in its
+        # ingress URL.
+        webhook_id, _, event_type = channel_key.partition("/")
+        return f"{mask_credential(webhook_id)}/{loggable_event_type(event_type, webhook_id)}"
 
 
 _webhook_event_bus = WebhookEventBus()

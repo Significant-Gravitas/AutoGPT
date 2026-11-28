@@ -4,6 +4,7 @@ import mimetypes
 from enum import Enum
 from pathlib import Path
 from typing import Any, Literal, cast
+from urllib.parse import unquote_to_bytes, urlparse
 
 import discord
 from pydantic import SecretStr
@@ -18,7 +19,7 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import APIKeyCredentials, SchemaField
-from backend.util.file import store_media_file
+from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -756,14 +757,11 @@ class SendDiscordFileBlock(Block):
                 detected_filename = filename
 
                 if file.startswith("data:"):
-                    # Data URI - extract the base64 content
-                    header, encoded = file.split(",", 1)
-                    file_bytes = base64.b64decode(encoded)
+                    mime_type, file_bytes = _decode_data_uri(file)
 
-                    # Try to get MIME type and suggest filename if not provided
-                    if not filename and ";" in header:
-                        mime_match = header.split(":")[1].split(";")[0]
-                        ext = mimetypes.guess_extension(mime_match) or ".bin"
+                    # Suggest a filename from the MIME type if not provided
+                    if not filename:
+                        ext = mimetypes.guess_extension(mime_type) or ".bin"
                         detected_filename = f"file{ext}"
 
                 elif file.startswith(("http://", "https://")):
@@ -773,24 +771,31 @@ class SendDiscordFileBlock(Block):
 
                     # Try to get filename from URL if not provided
                     if not filename:
-                        from urllib.parse import urlparse
-
                         path = urlparse(file).path
                         detected_filename = Path(path).name or "download"
                 else:
-                    # Local file path - read from stored media file
-                    # This would be a path from a previous block's output
-                    stored_file = await store_media_file(
+                    # A workspace://, cloud or local file. store_media_file
+                    # names its local copy after the file itself, which a
+                    # reference such as workspace://<id>#text/csv doesn't
+                    # spell out.
+                    local_path = await store_media_file(
                         file=file,
                         execution_context=execution_context,
-                        return_format="for_external_api",  # Get content to send to Discord
+                        return_format="for_local_processing",
                     )
-                    # Now process as data URI
-                    header, encoded = stored_file.split(",", 1)
-                    file_bytes = base64.b64decode(encoded)
+                    if not execution_context.graph_exec_id:
+                        raise ValueError("execution_context.graph_exec_id is required")
+                    stored = Path(
+                        get_exec_file_path(execution_context.graph_exec_id, local_path)
+                    )
+                    # Read the copy before anything else is awaited. A workflow
+                    # run keeps every node's copies in one folder, so another
+                    # node sending a file of the same name could replace this
+                    # copy while this one waited.
+                    file_bytes = stored.read_bytes()
 
                     if not filename:
-                        detected_filename = Path(file).name or "file"
+                        detected_filename = stored.name
 
                 if not file_bytes:
                     result["status"] = "Error: Could not read file content"
@@ -852,6 +857,20 @@ class SendDiscordFileBlock(Block):
             raise ValueError(f"Login error occurred: {login_err}")
         except Exception as e:
             raise ValueError(f"An error occurred: {e}")
+
+
+def _decode_data_uri(data_uri: str) -> tuple[str, bytes]:
+    """The MIME type and the bytes of a ``data:`` URI.
+
+    Per RFC 2397 the data is percent-encoded, and base64 under that when
+    ``;base64`` ends the header; a URI that names no MIME type holds text/plain.
+    """
+    header, _, data = data_uri.removeprefix("data:").partition(",")
+    mime_type, *parameters = header.split(";")
+    content = unquote_to_bytes(data)
+    if parameters and parameters[-1].strip().lower() == "base64":
+        content = base64.b64decode(content)
+    return mime_type.strip().lower() or "text/plain", content
 
 
 class ReplyToDiscordMessageBlock(Block):

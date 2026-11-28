@@ -92,13 +92,13 @@ export function ConnectIntegrationTool({ part }: Props) {
       </div>
 
       {isError && errorMessage && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           {errorMessage}
         </Text>
       )}
 
       {isCorrupted && (
-        <Text variant="body-tight" tone="error" className="mt-1">
+        <Text variant="body" leading="5" tone="error" className="mt-1">
           The sign-in card data arrived corrupted and can&apos;t be shown. Ask
           your expert to retry connecting {providerName}.
         </Text>

@@ -13,7 +13,9 @@ into marketplace rows. The rules that make updates safe:
 * Only platform rows are written: listings with both owner columns null, and
   templates with no owner. A user's copy is never touched here. What reaches
   copies is :mod:`backend.copilot.tools.skills`, lazily, by comparing a copy's
-  recorded baseline to the active version.
+  recorded baseline to the active version. The one exception is a creator's
+  listing that was never approved under a slug the catalog ships: it moves to
+  a slug of its own and its pending versions are answered.
 * A package that disappears from the catalog without an entry in
   ``retirements`` is left alone and reported. Absence is not deletion.
 
@@ -23,8 +25,9 @@ every environment, so a deploy publishes the catalog's ``main``.
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Iterable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import prisma
 import prisma.enums
@@ -33,13 +36,14 @@ import prisma.types
 from pydantic import BaseModel
 
 from backend.api.features.experts import seed as expert_seed
+from backend.copilot.tools.skills import MAX_NAME_CHARS
 from backend.data import db as database
 from backend.util.json import SafeJson
 
 from . import skill_db
 from .skill_catalog_release import LoadedPackage, LoadedRelease
 from .skill_model import legacy_package_sha256
-from .skill_submission_db import snapshot_version_files
+from .skill_submission_db import lock_creator_submissions, snapshot_version_files
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,7 @@ _PLATFORM_LISTING: prisma.types.SkillListingWhereInput = {
 
 
 class CatalogConflictError(ValueError):
-    """A catalog slug collides with a listing a user owns."""
+    """A catalog slug collides with a listing a user owns and had approved."""
 
 
 class PublishSummary(BaseModel):
@@ -170,9 +174,12 @@ async def _publish_package(
     if listing is not None and (
         listing.owningUserId is not None or listing.owningOrgId is not None
     ):
-        raise CatalogConflictError(
-            f"catalog skill '{package.slug}' collides with a listing a user owns"
-        )
+        if listing.hasApprovedVersion:
+            raise CatalogConflictError(
+                f"catalog skill '{package.slug}' collides with a listing a user owns"
+            )
+        await _move_unapproved_listing(tx, listing, dry_run=dry_run)
+        listing = None
     if listing is None:
         if dry_run:
             return "created"
@@ -202,6 +209,46 @@ async def _publish_package(
             },
         )
     return outcome
+
+
+async def _move_unapproved_listing(
+    tx: prisma.Prisma, listing: prisma.models.SkillListing, *, dry_run: bool
+) -> None:
+    """Give a creator's never-approved listing a slug of its own, and answer
+    its pending versions so the creator learns why."""
+    suffix = uuid.uuid4().hex[:8]
+    slug = f"{listing.slug[: MAX_NAME_CHARS - len(suffix) - 1].rstrip('-')}-{suffix}"
+    logger.warning(
+        f"{'Would move' if dry_run else 'Moving'} unapproved listing {listing.id} "
+        f"from '{listing.slug}' to '{slug}': the catalog publishes that name"
+    )
+    if dry_run:
+        return
+    if listing.owningUserId is not None:
+        await lock_creator_submissions(tx, listing.owningUserId)
+    # Versions before the listing, the order a verdict writes them, and the slug
+    # moves only while unapproved: an approval that commits first keeps it.
+    await prisma.models.SkillListingVersion.prisma(tx).update_many(
+        where={
+            "skillListingId": listing.id,
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+        },
+        data={
+            "submissionStatus": prisma.enums.SubmissionStatus.REJECTED,
+            "reviewComments": (
+                f"The platform now publishes a skill named '{listing.slug}'. "
+                "Rename yours and publish it again."
+            ),
+            "reviewedAt": datetime.now(UTC),
+        },
+    )
+    moved = await prisma.models.SkillListing.prisma(tx).update_many(
+        where={"id": listing.id, "hasApprovedVersion": False}, data={"slug": slug}
+    )
+    if not moved:
+        raise CatalogConflictError(
+            f"catalog skill '{listing.slug}' collides with a listing a user owns"
+        )
 
 
 async def _version_for(

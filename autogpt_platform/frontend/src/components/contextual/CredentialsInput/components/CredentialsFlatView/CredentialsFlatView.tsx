@@ -9,6 +9,7 @@ import { Alert02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import { AyrshareConnectButton } from "../AyrshareConnectButton/AyrshareConnectButton";
+import { getCredentialDisplayName } from "../../helpers";
 import { CredentialRow } from "../CredentialRow/CredentialRow";
 import { CredentialsSelect } from "../CredentialsSelect/CredentialsSelect";
 
@@ -78,6 +79,8 @@ type Props = {
   provider: string;
   displayName: string;
   credentials: Credential[];
+  /** Every key saved for the provider, to tell a filtered-out key from a deleted one. */
+  allProviderCredentials?: Credential[];
   selectedCredential?: CredentialsMetaInput;
   actionButtonText: string;
   isOptional: boolean;
@@ -95,6 +98,7 @@ export function CredentialsFlatView({
   provider,
   displayName,
   credentials,
+  allProviderCredentials = [],
   selectedCredential,
   actionButtonText,
   isOptional,
@@ -106,7 +110,21 @@ export function CredentialsFlatView({
   onAddCredential,
   onDeleteCredential,
 }: Props) {
-  const hasCredentials = credentials.length > 0;
+  // A run's read-only view shows the credential it used, or a deleted marker,
+  // never the other keys saved for the provider.
+  const shownCredentials: Credential[] =
+    readOnly && selectedCredential
+      ? [
+          credentials.find(({ id }) => id === selectedCredential.id) ??
+            allProviderCredentials.find(
+              ({ id }) => id === selectedCredential.id,
+            ) ?? {
+              ...selectedCredential,
+              title: `${getCredentialDisplayName(selectedCredential, displayName)} (deleted)`,
+            },
+        ]
+      : credentials;
+  const hasCredentials = shownCredentials.length > 0;
   // Ayrshare has no user-settable credential — provisioning runs on the
   // server after the user clicks the Connect Social Media Accounts
   // button rendered below. Exposing "Add API key" / "Use a new API key"
@@ -157,7 +175,7 @@ export function CredentialsFlatView({
             />
           ) : (
             <div className="mb-4 space-y-2">
-              {credentials.map((credential) => (
+              {shownCredentials.map((credential) => (
                 <CredentialRow
                   key={credential.id}
                   credential={credential}

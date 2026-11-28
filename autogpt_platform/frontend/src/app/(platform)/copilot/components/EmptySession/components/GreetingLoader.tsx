@@ -7,6 +7,7 @@ import {
   ORB_FLIP_TRANSITION,
   ORB_FLIP_TRANSITION_REDUCED,
 } from "../../../helpers/greetingOrb";
+import { duration } from "@/components/styles/motion";
 
 // What the page is while the greeting is still being written: Otto,
 // alone, breathing in the middle of the empty session. It carries the
@@ -36,7 +37,7 @@ export function GreetingLoader() {
           ...(prefersReducedMotion
             ? ORB_FLIP_TRANSITION_REDUCED
             : ORB_FLIP_TRANSITION),
-          opacity: { duration: 0.25, delay: 0.15 },
+          opacity: { duration: duration.base, delay: 0.15 },
         }}
       >
         <motion.span

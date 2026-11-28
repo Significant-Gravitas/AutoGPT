@@ -39,7 +39,7 @@ export function EditBudgetDialog({ expert, open, onClose }: Props) {
               id="expert-weekly-budget"
               size="small"
               label="Weekly budget"
-              labelVariant="small-medium"
+              labelVariant="small"
               placeholder="e.g. 25"
               value={value}
               error={

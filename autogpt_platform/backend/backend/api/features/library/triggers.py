@@ -15,6 +15,7 @@ from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor.utils import (
+    _enforce_expert_credential_scope,
     make_node_credentials_input_map,
     validate_and_construct_node_execution_input,
 )
@@ -22,6 +23,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
+from backend.util.url_redaction import mask_credential
 
 from . import db
 from . import model as models
@@ -153,6 +155,9 @@ async def setup_triggered_preset(
             expert_id,
             not_found_message=f"Expert #{expert_id} not found",
         )
+        # Every delivery's run would be refused for a key the expert was never
+        # granted, and nobody sees that refusal, so the trigger is refused here.
+        await _enforce_expert_credential_scope(user_id, expert_id, agent_credentials)
     else:
         # Like a preset: the graph's org/team where the user belongs to it,
         # their own otherwise.
@@ -218,6 +223,9 @@ async def update_triggered_preset(
     current = await db.get_preset(user_id, preset_id)
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found")
+    if current.expert_id:
+        # As at setup, and before anything is registered with the provider.
+        await _enforce_expert_credential_scope(user_id, current.expert_id, credentials)
 
     new_webhook = None
     if inputs is not None and credentials is not None:
@@ -396,4 +404,6 @@ async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
             user_id, webhook.id, credentials
         )
     except Exception as e:
-        logger.warning(f"Best-effort prune of webhook #{webhook_id} failed: {e}")
+        logger.warning(
+            f"Best-effort prune of webhook #{mask_credential(webhook_id)} failed: {e}"
+        )
