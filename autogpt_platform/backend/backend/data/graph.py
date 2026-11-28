@@ -2734,6 +2734,7 @@ async def fork_graph(
 
     record_copy_sources([graph, *graph.sub_graphs])
     graph.name = fork_name(graph.name)
+    _fit_names(graph.sub_graphs)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
@@ -2777,6 +2778,7 @@ async def copy_graph(
 
     record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
+    _fit_names([graph, *graph.sub_graphs])
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
@@ -2793,6 +2795,14 @@ async def copy_graph(
         )
 
     return graph
+
+
+def _fit_names(graphs: Iterable[BaseGraph]) -> None:
+    """Cut a stored name over the saved-name bound to fit, ending it with "…"."""
+    limit = GRAPH_TEXT_MAX_LENGTHS["name"]
+    for graph in graphs:
+        if len(graph.name) > limit:
+            graph.name = graph.name[: limit - 1].rstrip() + "…"
 
 
 def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
