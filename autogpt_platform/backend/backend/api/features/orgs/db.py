@@ -689,7 +689,12 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
             where={"orgId": org_id, "userId": user_id, "isOwner": False}
         )
         if removed != 1:
-            raise ValueError(_OWNER_REMOVAL_REFUSED)
+            # It passed the checks above, so it was removed meanwhile or made the owner.
+            if await tx.orgmember.find_unique(
+                where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
+            ):
+                raise ValueError(_OWNER_REMOVAL_REFUSED)
+            raise NotFoundError(f"Member {user_id} not found in org {org_id}")
         await tx.teammember.delete_many(
             where={"userId": user_id, "Team": {"is": {"orgId": org_id}}}
         )

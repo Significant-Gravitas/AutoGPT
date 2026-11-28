@@ -59,10 +59,8 @@ _LOCK_RENEW_EVERY = 50
 # conversion's "-personal-1" can take the final slug to 120 characters.
 _MAX_SLUG_LENGTH = 100
 
-# Numbered suffixes keep a common slug readable; the random ones guarantee the
-# search ends.
+# Numbered suffixes keep a common slug readable.
 _NUMBERED_SLUG_ATTEMPTS = 20
-_RANDOM_SLUG_ATTEMPTS = 3
 
 # A handful of per-account failures in a row (bad data, not the database) is
 # tolerated; this many consecutive ones reads as the database itself being
@@ -84,7 +82,8 @@ async def _resolve_unique_slug(desired: str) -> str:
     candidates = [
         desired,
         *(f"{desired}-{i}" for i in range(1, _NUMBERED_SLUG_ATTEMPTS + 1)),
-        *(f"{desired}-{uuid4().hex[:8]}" for _ in range(_RANDOM_SLUG_ATTEMPTS)),
+        # For the 22nd account on a common base, such as the email name "info".
+        f"{desired}-{uuid4().hex[:8]}",
     ]
     for candidate in candidates:
         org = await prisma.organization.find_unique(where={"slug": candidate})

@@ -1954,7 +1954,7 @@ class TestMigrationSlugEdgeCases:
             return_value=MagicMock(id="taken")
         )
 
-        with pytest.raises(RuntimeError, match="after 24 attempts"):
+        with pytest.raises(RuntimeError, match="after 22 attempts"):
             await _resolve_unique_slug("occupied")
 
 
