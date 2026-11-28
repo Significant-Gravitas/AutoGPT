@@ -1,4 +1,9 @@
 import { getWebSocketToken } from "@/lib/auth/actions";
+import {
+  isUnrecognizedActionError,
+  promptForNewDeployment,
+  reloadForNewDeployment,
+} from "@/lib/auth/deployment-reload";
 import { hasWebSocketDisconnectIntent } from "@/lib/auth/helpers";
 import { environment } from "@/services/environment";
 import {
@@ -147,6 +152,17 @@ export class BackendWebSocket {
       this.attach(socket, generation, token);
     } catch (error) {
       if (generation !== this.generation) return;
+      if (hasDisconnectIntent()) {
+        this.finishConnecting();
+        return;
+      }
+      if (isUnrecognizedActionError(error)) {
+        // A deploy replaced the server this build talks to, so no retry can
+        // get a token until the tab loads the new build.
+        this.finishConnecting();
+        handOffToNewDeployment();
+        return;
+      }
       console.warn("[BackendAPI] Could not connect WebSocket:", error);
       this.scheduleRetry(generation);
     }
@@ -414,6 +430,13 @@ export class BackendWebSocket {
       void this.open(this.generation);
     }
   };
+}
+
+// A reload could lose what the user is typing or building in a tab they can
+// see, so that tab is only asked to refresh.
+function handOffToNewDeployment() {
+  if (document.visibilityState === "visible") promptForNewDeployment();
+  else reloadForNewDeployment();
 }
 
 function hasDisconnectIntent(): boolean {

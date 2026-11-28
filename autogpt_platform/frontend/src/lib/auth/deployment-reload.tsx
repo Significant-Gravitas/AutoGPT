@@ -9,6 +9,7 @@ const DEPLOYMENT_RELOAD_COOLDOWN_MS = 60_000;
 const RELOAD_DID_NOT_HELP = "did-not-help";
 
 let hasPromptedForRefresh = false;
+let reloadRequested = false;
 
 /**
  * Reloads the page so it picks up the deployment the server is now running.
@@ -23,6 +24,9 @@ export function reloadForNewDeployment(
   reload: () => void = () => window.location.reload(),
 ): boolean {
   if (environment.isServerSide()) return false;
+  // A second caller before the page unloads would read this reload's own guard
+  // as a reload that didn't help, and turn auto-reload off in this tab.
+  if (reloadRequested) return true;
 
   const guard = readReloadGuard();
   if (guard !== RELOAD_DID_NOT_HELP) {
@@ -31,13 +35,20 @@ export function reloadForNewDeployment(
     if (coolingDown) {
       writeReloadGuard(RELOAD_DID_NOT_HELP);
     } else if (writeReloadGuard(String(Date.now()))) {
+      reloadRequested = true;
       reload();
       return true;
     }
   }
 
-  promptForRefresh(reload);
+  promptForNewDeployment(reload);
   return false;
+}
+
+// Next's `unstable_isUnrecognizedActionError` uses `instanceof`; the name check
+// also holds when the error crosses a module or bundle boundary.
+export function isUnrecognizedActionError(error: unknown): boolean {
+  return error instanceof Error && error.name === "UnrecognizedActionError";
 }
 
 // The guard goes straight to the browser's sessionStorage, not the safe
@@ -61,7 +72,10 @@ function writeReloadGuard(value: string): boolean {
   }
 }
 
-function promptForRefresh(reload: () => void): void {
+/** Asks the user to refresh, once per page load, without reloading the page. */
+export function promptForNewDeployment(
+  reload: () => void = () => window.location.reload(),
+): void {
   if (hasPromptedForRefresh) return;
   hasPromptedForRefresh = true;
   toast({

@@ -77,6 +77,22 @@ describe("reloading onto a new deployment", () => {
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
+  it("ignores a second skew on a page that is already reloading, so a later deploy still reloads", async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+
+    vi.resetModules();
+    const { reloadForNewDeployment } = await import("../deployment-reload");
+    expect(reloadForNewDeployment(reload)).toBe(true);
+    expect(reloadForNewDeployment(reload)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(toast).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(61_000);
+    expect(await loadPageAndHitDeploySkew(reload)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
   it("never reloads again once a skew has come back on the reloaded page", async () => {
     vi.useFakeTimers();
     const reload = vi.fn();
