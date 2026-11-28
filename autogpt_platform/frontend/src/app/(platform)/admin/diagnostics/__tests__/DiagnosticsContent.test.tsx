@@ -157,101 +157,36 @@ const scheduleData = {
   timestamp: "2026-04-17T00:00:00Z",
 };
 
-function setupLoadedMocks() {
-  mockExecQuery.mockReturnValue({
-    data: { data: executionData },
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-  mockAgentQuery.mockReturnValue({
-    data: { data: agentData },
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-  mockScheduleQuery.mockReturnValue({
-    data: { data: scheduleData },
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-}
-
-function setupLoadingMocks() {
-  mockExecQuery.mockReturnValue({
-    data: undefined,
-    isLoading: true,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-  mockAgentQuery.mockReturnValue({
-    data: undefined,
-    isLoading: true,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-  mockScheduleQuery.mockReturnValue({
-    data: undefined,
-    isLoading: true,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-}
-
-function setupErrorMocks() {
-  mockExecQuery.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isError: true,
-    error: { status: 500, message: "Server error" },
-    refetch: vi.fn(),
-  });
-  mockAgentQuery.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-  mockScheduleQuery.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  });
-}
-
 describe("DiagnosticsContent", () => {
   it("shows loading state", () => {
-    setupLoadingMocks();
-    render(<DiagnosticsContent />);
+    renderContent({
+      exec: queryResult({ isLoading: true }),
+      agent: queryResult({ isLoading: true }),
+      schedule: queryResult({ isLoading: true }),
+    });
     expect(screen.getByText("Loading diagnostics...")).toBeDefined();
   });
 
   it("shows error state with retry", () => {
-    setupErrorMocks();
-    render(<DiagnosticsContent />);
+    renderContent({
+      exec: queryResult({
+        isError: true,
+        error: { status: 500, message: "Server error" },
+      }),
+      agent: queryResult(),
+      schedule: queryResult(),
+    });
     expect(screen.getByText("Try Again")).toBeDefined();
   });
 
   it("renders system diagnostics heading with data", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("System Diagnostics")).toBeDefined();
     expect(screen.getByText("Refresh")).toBeDefined();
   });
 
   it("renders execution queue status cards", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("Execution Queue Status")).toBeDefined();
     expect(screen.getByText("Running Executions")).toBeDefined();
     expect(screen.getByText("Queued in Database")).toBeDefined();
@@ -259,8 +194,7 @@ describe("DiagnosticsContent", () => {
   });
 
   it("renders throughput metrics", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("System Throughput")).toBeDefined();
     expect(screen.getByText("Completed (24h)")).toBeDefined();
     expect(screen.getByText("Throughput Rate")).toBeDefined();
@@ -268,16 +202,14 @@ describe("DiagnosticsContent", () => {
   });
 
   it("renders schedule summary card", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("User Schedules")).toBeDefined();
     expect(screen.getByText("Upcoming Runs (1h)")).toBeDefined();
     expect(screen.getByText("Upcoming Runs (24h)")).toBeDefined();
   });
 
   it("renders alert cards for critical issues", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("Orphaned Executions")).toBeDefined();
     expect(screen.getByText("Failed Executions (24h)")).toBeDefined();
     expect(screen.getByText("Long-Running Executions")).toBeDefined();
@@ -286,38 +218,18 @@ describe("DiagnosticsContent", () => {
   });
 
   it("hides alert cards when counts are zero", () => {
-    mockExecQuery.mockReturnValue({
-      data: {
-        data: {
-          ...executionData,
-          orphaned_running: 0,
-          orphaned_queued: 0,
-          failed_count_24h: 0,
-          stuck_running_24h: 0,
-          invalid_queued_with_start: 0,
-          invalid_running_without_start: 0,
-        },
-      },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: loaded({
+        ...executionData,
+        orphaned_running: 0,
+        orphaned_queued: 0,
+        failed_count_24h: 0,
+        stuck_running_24h: 0,
+        invalid_queued_with_start: 0,
+        invalid_running_without_start: 0,
+      }),
+      schedule: loaded({ ...scheduleData, total_orphaned: 0 }),
     });
-    mockAgentQuery.mockReturnValue({
-      data: { data: agentData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: { data: { ...scheduleData, total_orphaned: 0 } },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     expect(screen.queryByText("Orphaned Executions")).toBeNull();
     expect(screen.queryByText("Failed Executions (24h)")).toBeNull();
     expect(screen.queryByText("Long-Running Executions")).toBeNull();
@@ -326,237 +238,119 @@ describe("DiagnosticsContent", () => {
   });
 
   it("renders diagnostic information section", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("Diagnostic Information")).toBeDefined();
     expect(screen.getByText("Throughput Metrics:")).toBeDefined();
     expect(screen.getByText("Queue Health:")).toBeDefined();
   });
 
   it("shows no data message when execution data is null", () => {
-    mockExecQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: queryResult(),
+      agent: queryResult(),
+      schedule: queryResult(),
     });
-    mockAgentQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     const noDataMessages = screen.getAllByText("No data available");
     expect(noDataMessages.length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows RabbitMQ error state when depth is -1", () => {
-    mockExecQuery.mockReturnValue({
-      data: {
-        data: { ...executionData, queued_executions_rabbitmq: -1 },
-      },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: loaded({ ...executionData, queued_executions_rabbitmq: -1 }),
     });
-    mockAgentQuery.mockReturnValue({
-      data: { data: agentData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: { data: scheduleData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     const errorTexts = screen.getAllByText("Error");
     expect(errorTexts.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders completed 24h and 1h values", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("1200")).toBeDefined();
     expect(screen.getByText("50 in last hour")).toBeDefined();
   });
 
   it("renders schedule metric values", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText("12")).toBeDefined();
     expect(screen.getByText("48")).toBeDefined();
   });
 
   it("renders oldest running hours in alert card", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/oldest:.*26h/)).toBeDefined();
   });
 
   it("renders cancel queue depth error when -1", () => {
-    mockExecQuery.mockReturnValue({
-      data: {
-        data: { ...executionData, cancel_queue_depth: -1 },
-      },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: loaded({ ...executionData, cancel_queue_depth: -1 }),
     });
-    mockAgentQuery.mockReturnValue({
-      data: { data: agentData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: { data: scheduleData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     const errorTexts = screen.getAllByText("Error");
     expect(errorTexts.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders stuck queued count in queue status card", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/2 stuck/)).toBeDefined();
   });
 
   it("renders schedule orphaned count in card", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/3 orphaned/)).toBeDefined();
   });
 
-  it("clicking orphaned alert card does not crash", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
-    fireEvent.click(screen.getByText("Orphaned Executions"));
-  });
-
-  it("clicking failed alert card does not crash", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
-    fireEvent.click(screen.getByText("Failed Executions (24h)"));
-  });
-
-  it("clicking long-running alert card does not crash", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
-    fireEvent.click(screen.getByText("Long-Running Executions"));
-  });
-
-  it("clicking orphaned schedules alert card does not crash", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
-    fireEvent.click(screen.getByText("Orphaned Schedules"));
-  });
-
-  it("clicking invalid states alert card does not crash", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
-    fireEvent.click(screen.getByText("Invalid States (Data Corruption)"));
+  it.each([
+    ["orphaned", "Orphaned Executions"],
+    ["failed", "Failed Executions (24h)"],
+    ["long-running", "Long-Running Executions"],
+    ["orphaned schedules", "Orphaned Schedules"],
+    ["invalid states", "Invalid States (Data Corruption)"],
+  ])("clicking %s alert card does not crash", (_, cardTitle) => {
+    renderContent();
+    fireEvent.click(screen.getByText(cardTitle));
   });
 
   it("renders orphan detail text in schedule alert", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/2 deleted graph/)).toBeDefined();
     expect(screen.getByText(/1 no access/)).toBeDefined();
   });
 
   it("renders failure rate in failed alert card", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/0.8\/hr rate/)).toBeDefined();
   });
 
   it("renders click to view text on alert cards", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     const clickTexts = screen.getAllByText(/Click to view/);
     expect(clickTexts.length).toBeGreaterThanOrEqual(3);
   });
 
   it("renders schedule next hour count", () => {
-    setupLoadedMocks();
-    render(<DiagnosticsContent />);
+    renderContent();
     expect(screen.getByText(/from 4 schedules/)).toBeDefined();
   });
 
   it("shows error state when only the agent query errors (coalesces error)", () => {
-    const err = { status: 500, message: "agent boom" };
-    mockExecQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: queryResult(),
+      agent: queryResult({
+        isError: true,
+        error: { status: 500, message: "agent boom" },
+      }),
+      schedule: queryResult(),
     });
-    mockAgentQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: err,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     expect(screen.getByText("Try Again")).toBeDefined();
   });
 
   it("shows error state when only the schedule query errors (coalesces error)", () => {
-    const err = { status: 503, message: "schedule boom" };
-    mockExecQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
+    renderContent({
+      exec: queryResult(),
+      agent: queryResult(),
+      schedule: queryResult({
+        isError: true,
+        error: { status: 503, message: "schedule boom" },
+      }),
     });
-    mockAgentQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: err,
-      refetch: vi.fn(),
-    });
-    render(<DiagnosticsContent />);
     expect(screen.getByText("Try Again")).toBeDefined();
   });
 
@@ -564,31 +358,40 @@ describe("DiagnosticsContent", () => {
     const refetchExec = vi.fn();
     const refetchAgent = vi.fn();
     const refetchSchedule = vi.fn();
-    mockExecQuery.mockReturnValue({
-      data: { data: executionData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchExec,
+    renderContent({
+      exec: loaded(executionData, { refetch: refetchExec }),
+      agent: loaded(agentData, { refetch: refetchAgent }),
+      schedule: loaded(scheduleData, { refetch: refetchSchedule }),
     });
-    mockAgentQuery.mockReturnValue({
-      data: { data: agentData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchAgent,
-    });
-    mockScheduleQuery.mockReturnValue({
-      data: { data: scheduleData },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: refetchSchedule,
-    });
-    render(<DiagnosticsContent />);
     fireEvent.click(screen.getByText("Refresh"));
     expect(refetchExec).toHaveBeenCalled();
     expect(refetchAgent).toHaveBeenCalled();
     expect(refetchSchedule).toHaveBeenCalled();
   });
 });
+
+function renderContent({
+  exec = loaded(executionData),
+  agent = loaded(agentData),
+  schedule = loaded(scheduleData),
+} = {}) {
+  mockExecQuery.mockReturnValue(exec);
+  mockAgentQuery.mockReturnValue(agent);
+  mockScheduleQuery.mockReturnValue(schedule);
+  return render(<DiagnosticsContent />);
+}
+
+function loaded(data: object, overrides = {}) {
+  return queryResult({ data: { data }, ...overrides });
+}
+
+function queryResult(overrides = {}) {
+  return {
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  };
+}
