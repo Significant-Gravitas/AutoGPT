@@ -4102,6 +4102,8 @@ def _dispatch_response(
             if not acc.has_appended_assistant:
                 ctx.session.messages.append(acc.assistant_response)
                 acc.has_appended_assistant = True
+                # This row follows the results; the next delta extends it.
+                acc.has_tool_results = False
 
     elif isinstance(response, StreamToolDisplayAvailable):
         display = response.data
@@ -4136,6 +4138,7 @@ def _dispatch_response(
         if not acc.has_appended_assistant:
             ctx.session.messages.append(acc.assistant_response)
             acc.has_appended_assistant = True
+            acc.has_tool_results = False
 
     elif isinstance(response, StreamToolOutputAvailable):
         # Dedupe: the response adapter can emit the same tool_use_id more than
@@ -4166,6 +4169,7 @@ def _dispatch_response(
             if isinstance(response.output, str)
             else json.dumps(response.output, ensure_ascii=False)
         )
+        _drop_unused_placeholder(acc, ctx.session)
         ctx.session.messages.append(
             ChatMessage(
                 role="tool",
@@ -4184,9 +4188,31 @@ def _dispatch_response(
         acc.has_tool_results = True
 
     elif isinstance(response, StreamFinish):
+        _drop_unused_placeholder(acc, ctx.session)
         acc.stream_completed = True
 
     return response
+
+
+def _drop_unused_placeholder(acc: "_StreamAccumulator", session: ChatSession) -> None:
+    """Remove the pre-created assistant row that no text or tool call landed in.
+
+    Saved, it is an empty row the stream never carried, so every client's
+    rows for the turn sit one off from the saved ones.
+    """
+    placeholder = acc.assistant_response
+    if (
+        not acc.has_appended_assistant
+        or placeholder.sequence is not None
+        or placeholder.content
+        or placeholder.tool_calls
+    ):
+        return
+    for index in range(len(session.messages) - 1, -1, -1):
+        if session.messages[index] is placeholder:
+            del session.messages[index]
+            acc.has_appended_assistant = False
+            return
 
 
 class _BuildingModeRestart(Exception):

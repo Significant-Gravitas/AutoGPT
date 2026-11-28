@@ -8,7 +8,14 @@ from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from claude_agent_sdk import Message
+from claude_agent_sdk import (
+    AssistantMessage,
+    ContentBlock,
+    Message,
+    TextBlock,
+    ThinkingBlock,
+)
+from claude_agent_sdk.types import StreamEvent
 from openai.types.chat import ChatCompletionChunk
 
 from backend.copilot.baseline import service as baseline
@@ -143,6 +150,38 @@ async def sdk_turn(
     checkpoint = turn_checkpoint(session.messages, turn_start)
     if checkpoint is not None:
         yield checkpoint
+
+
+def streamed(blocks: list[ContentBlock]) -> list[Message]:
+    """One assistant message as the CLI sends it with partial messages on,
+    which production runs with: each block's stream events, then the summary."""
+    events: list[dict[str, Any]] = [{"type": "message_start"}]
+    for index, block in enumerate(blocks):
+        if isinstance(block, TextBlock):
+            half = len(block.text) // 2
+            deltas = [
+                {"type": "text_delta", "text": part}
+                for part in (block.text[:half], block.text[half:])
+            ]
+            start = {"type": "text", "text": ""}
+        elif isinstance(block, ThinkingBlock):
+            deltas = [{"type": "thinking_delta", "thinking": block.thinking}]
+            start = {"type": "thinking"}
+        else:
+            deltas = []
+            start = {"type": "tool_use"}
+        events.append(
+            {"type": "content_block_start", "index": index, "content_block": start}
+        )
+        events += [
+            {"type": "content_block_delta", "index": index, "delta": delta}
+            for delta in deltas
+        ]
+        events.append({"type": "content_block_stop", "index": index})
+    return [
+        *(StreamEvent(uuid="drift", session_id="drift", event=e) for e in events),
+        AssistantMessage(content=blocks, model="drift"),
+    ]
 
 
 async def sdk_service_turn(

@@ -1,0 +1,15 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "tool-input-start", "toolCallId": "mv-1", "toolName": "bash_exec"}}
+{"id": "6-0", "data": {"type": "tool-input-available", "toolCallId": "mv-1", "toolName": "bash_exec", "input": {"command": "mv a old/"}}}
+{"id": "7-0", "data": {"type": "tool-output-available", "toolCallId": "mv-1", "output": "", "toolName": "bash_exec", "success": true}}
+{"id": "8-0", "data": {"type": "finish-step"}}
+{"id": "9-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "10-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "11-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "12-0", "data": {"type": "start-step"}}
+{"id": "13-0", "data": {"type": "finish-step"}}
+{"id": "14-0", "data": {"type": "data-checkpoint", "rows": 2, "sequence": 1, "digest": "b0acc91cd2686a4f68006e800d1fc21a8f5cae77229e68e46b24b38cdf3c7203"}}
+{"id": "15-0", "data": {"type": "finish"}}

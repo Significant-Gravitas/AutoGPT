@@ -15,16 +15,17 @@ def fold_rows(chunks: Iterable[dict[str, Any]]) -> list[list[Any]]:
     blocks: dict[str, int] = {}
     for chunk in chunks:
         kind = chunk["type"]
-        if kind == "text-start":
+        if kind == "reasoning-start":
+            rows.append(["reasoning", "", []])
+            blocks[chunk["id"]] = len(rows) - 1
+        elif kind == "reasoning-delta":
+            rows[blocks[chunk["id"]]][1] += chunk["delta"]
+        elif kind == "text-delta":
+            # A text block that never carries a delta leaves no row.
             if assistant is None:
                 rows.append(["assistant", "", []])
                 assistant = len(rows) - 1
-            blocks[chunk["id"]] = assistant
-        elif kind == "reasoning-start":
-            rows.append(["reasoning", "", []])
-            blocks[chunk["id"]] = len(rows) - 1
-        elif kind in ("text-delta", "reasoning-delta"):
-            rows[blocks[chunk["id"]]][1] += chunk["delta"]
+            rows[assistant][1] += chunk["delta"]
         elif kind == "tool-input-available":
             if assistant is None:
                 rows.append(["assistant", "", []])

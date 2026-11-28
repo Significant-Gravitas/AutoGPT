@@ -1,0 +1,22 @@
+{"id": "1-0", "data": {"type": "data-status", "message": "Message received…"}}
+{"id": "2-0", "data": {"type": "data-status", "message": "Setting up your environment…"}}
+{"id": "3-0", "data": {"type": "start", "messageId": "00000000-0000-4000-8000-000000000001", "sessionId": "drift-session"}}
+{"id": "4-0", "data": {"type": "start-step"}}
+{"id": "5-0", "data": {"type": "tool-input-start", "toolCallId": "read-1", "toolName": "bash_exec"}}
+{"id": "6-0", "data": {"type": "tool-input-available", "toolCallId": "read-1", "toolName": "bash_exec", "input": {"command": "cat a"}}}
+{"id": "7-0", "data": {"type": "tool-input-start", "toolCallId": "read-2", "toolName": "bash_exec"}}
+{"id": "8-0", "data": {"type": "tool-input-available", "toolCallId": "read-2", "toolName": "bash_exec", "input": {"command": "cat b"}}}
+{"id": "9-0", "data": {"type": "tool-output-available", "toolCallId": "read-1", "output": "A: 3", "toolName": "bash_exec", "success": true}}
+{"id": "10-0", "data": {"type": "finish-step"}}
+{"id": "11-0", "data": {"type": "data-status", "message": "Analyzing result…"}}
+{"id": "12-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "13-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000002"}}
+{"id": "14-0", "data": {"type": "tool-output-available", "toolCallId": "read-2", "output": "", "toolName": "bash_exec", "success": true}}
+{"id": "15-0", "data": {"type": "start-step"}}
+{"id": "16-0", "data": {"type": "text-start", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "17-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "Report A has "}}
+{"id": "18-0", "data": {"type": "text-delta", "id": "00000000-0000-4000-8000-000000000003", "delta": "three entries."}}
+{"id": "19-0", "data": {"type": "text-end", "id": "00000000-0000-4000-8000-000000000003"}}
+{"id": "20-0", "data": {"type": "finish-step"}}
+{"id": "21-0", "data": {"type": "data-checkpoint", "rows": 4, "sequence": 1, "digest": "6f0d0ef6ced7e76186426e77e497a54b4ee35831599cfe3872896185bde29473"}}
+{"id": "22-0", "data": {"type": "finish"}}
