@@ -48,7 +48,7 @@ class JSONSchema(BaseModel):
         elif self.enum:
             schema["enum"] = self.enum
         else:
-            schema["minumum"] = self.minimum
+            schema["minimum"] = self.minimum
             schema["maximum"] = self.maximum
 
         schema = {k: v for k, v in schema.items() if v is not None}
