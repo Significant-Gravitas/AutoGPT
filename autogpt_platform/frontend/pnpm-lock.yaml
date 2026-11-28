@@ -421,8 +421,8 @@ importers:
         specifier: 10.6.3
         version: 10.6.3(eslint@8.57.1)(typescript@5.9.3)
       happy-dom:
-        specifier: 20.8.9
-        version: 20.8.9
+        specifier: 21.0.4
+        version: 21.0.4
       import-in-the-middle:
         specifier: 3.5.2
         version: 3.5.2
@@ -479,7 +479,7 @@ importers:
         version: 6.0.4(typescript@5.9.3)(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
       vitest:
         specifier: 4.1.11
-        version: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+        version: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
 
 packages:
 
@@ -4368,8 +4368,8 @@ packages:
   '@types/whatwg-mimetype@3.0.2':
     resolution: {integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==}
 
-  '@types/ws@8.18.1':
-    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript-eslint/eslint-plugin@8.73.0':
     resolution: {integrity: sha512-UkygMFer53Yzn29MCYFTHf34hGXf5KJhiDWfIm1tXtXRrym1CS6l5H9Y3yCtPWChpC0/f93H88gdj8tN0dd4kw==}
@@ -5224,6 +5224,10 @@ packages:
 
   buffer-from@1.1.2:
     resolution: {integrity: sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ==}
+
+  buffer-image-size@0.6.4:
+    resolution: {integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==}
+    engines: {node: '>=4.0'}
 
   buffer-xor@1.0.3:
     resolution: {integrity: sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ==}
@@ -6531,8 +6535,8 @@ packages:
   hachure-fill@0.5.2:
     resolution: {integrity: sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==}
 
-  happy-dom@20.8.9:
-    resolution: {integrity: sha512-Tz23LR9T9jOGVZm2x1EPdXqwA37G/owYMxRwU0E4miurAtFsPMQ1d2Jc2okUaSjZqAFz2oEn3FLXC5a0a+siyA==}
+  happy-dom@21.0.4:
+    resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
 
   has-bigints@1.1.0:
@@ -13563,7 +13567,7 @@ snapshots:
 
   '@types/whatwg-mimetype@3.0.2': {}
 
-  '@types/ws@8.18.1':
+  '@types/ws@8.18.2':
     dependencies:
       '@types/node': 26.6.2
 
@@ -13865,7 +13869,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.2.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
 
   '@vitest/expect@3.2.4':
     dependencies:
@@ -14354,7 +14358,7 @@ snapshots:
       pg: 8.23.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
-      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
+      vitest: 4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
@@ -14491,6 +14495,10 @@ snapshots:
       update-browserslist-db: 1.3.4(browserslist@4.29.3)
 
   buffer-from@1.1.2: {}
+
+  buffer-image-size@0.6.4:
+    dependencies:
+      '@types/node': 26.6.2
 
   buffer-xor@1.0.3: {}
 
@@ -16062,11 +16070,12 @@ snapshots:
 
   hachure-fill@0.5.2: {}
 
-  happy-dom@20.8.9:
+  happy-dom@21.0.4:
     dependencies:
       '@types/node': 26.6.2
       '@types/whatwg-mimetype': 3.0.2
-      '@types/ws': 8.18.1
+      '@types/ws': 8.18.2
+      buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
       ws: 8.21.1
@@ -19840,7 +19849,7 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.0
 
-  vitest@4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@20.8.9)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0)):
+  vitest@4.1.11(@opentelemetry/api@1.10.0)(@types/node@26.6.2)(@vitest/coverage-v8@4.1.11)(happy-dom@21.0.4)(jsdom@27.4.0(@noble/hashes@2.4.0))(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(msw@2.15.0(@types/node@26.6.2)(typescript@5.9.3))(vite@7.3.7(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.23.15)(yaml@2.9.0))
@@ -19866,7 +19875,7 @@ snapshots:
       '@opentelemetry/api': 1.10.0
       '@types/node': 26.6.2
       '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
-      happy-dom: 20.8.9
+      happy-dom: 21.0.4
       jsdom: 27.4.0(@noble/hashes@2.4.0)
     transitivePeerDependencies:
       - msw
