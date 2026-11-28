@@ -93,7 +93,7 @@ export function CopilotPage() {
             <ChatFrame
               onUnmount={frame.keepSnapshot}
               hasSession={!!sessionId}
-              className="absolute inset-0 z-10"
+              className="absolute inset-0 z-raised"
             />
           )}
         </div>

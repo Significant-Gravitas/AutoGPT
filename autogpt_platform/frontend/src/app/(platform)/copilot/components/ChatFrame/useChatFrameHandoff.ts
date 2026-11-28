@@ -6,9 +6,8 @@ import type { FrameSnapshot } from "./chatFrameHandoff";
 // settles cannot leave the frame up for good.
 export const FRAME_FALLBACK_MS = 15_000;
 
-/** Whether the server-rendered chat frame is still the page's message box.
- *  Only a page that came from the server's HTML starts with it, and it stays
- *  until the chat under it can take the box. */
+/** Whether the server-rendered frame is still the message box: only a page
+ *  from the server's HTML has it, until the chat under it can take the box. */
 export function useChatFrameHandoff(isChatMounted: boolean) {
   const isHydrating = useSyncExternalStore(
     subscribeToNothing,

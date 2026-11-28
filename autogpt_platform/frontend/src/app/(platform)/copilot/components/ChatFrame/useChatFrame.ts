@@ -29,10 +29,8 @@ export function useChatFrame(
     () => true,
   );
 
-  // React owns the box from here: the inline script stands down, and the box
-  // takes focus the way the chat's own does. On the way out it records itself
-  // for the chat; cleanups run before React removes the node, so the box is
-  // still there and still focused.
+  // The cleanup records the box for the chat: it runs before React removes
+  // the node, so the box is still there and still focused.
   useLayoutEffect(() => {
     const root = ref.current;
     if (!root) return;

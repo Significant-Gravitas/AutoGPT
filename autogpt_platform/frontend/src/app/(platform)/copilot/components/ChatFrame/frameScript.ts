@@ -1,8 +1,7 @@
 import { FRAME_PENDING_TEXT, SEND_PENDING_ATTRIBUTE } from "./chatFrameHandoff";
 
-// Runs from the server's HTML, before React: Enter or send in the frame's box
-// queues the message instead of dropping the key. React takes over once it
-// marks the frame hydrated. Kept to plain ES5 because it runs uncompiled.
+// Before React, Enter or send marks the message pending instead of losing the
+// key; plain ES5 because it runs uncompiled from the server's HTML.
 export const FRAME_HYDRATED_ATTRIBUTE = "data-hydrated";
 
 export const FRAME_SCRIPT = `(function(){

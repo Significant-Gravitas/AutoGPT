@@ -15,10 +15,8 @@ interface Props {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-// ChatInput's composer as plain markup, its classes copied so the box does not
-// move or change when the chat takes over: a working text box, and a send that
-// waits for the chat. Plain elements, because the frame is in the server's
-// HTML and the box must work before any of the chat's code has loaded.
+// ChatInput's look in plain elements, which work before any chat code loads;
+// the classes are copied so nothing moves when the chat takes over.
 export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
   const [isMultiline, setIsMultiline] = useState(false);
   return (
@@ -33,10 +31,8 @@ export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
       <div
         className={
           stacked
-            ? // oxlint-disable-next-line design-system/no-arbitrary-values -- the card composer's shallow two-layer drop; no shadow token has it
-              "relative z-10 flex w-full min-w-0 flex-col items-center gap-3 overflow-hidden rounded-3xl border border-border-base bg-surface px-3.5 pt-3 pb-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.05),0_2px_4px_rgba(0,0,0,0.02)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong"
-            : // oxlint-disable-next-line design-system/no-arbitrary-values -- the pill composer's 2rem radius and two-layer lift; no radius or shadow token has them
-              "relative z-10 flex w-full min-w-0 flex-col items-center overflow-hidden rounded-[2rem] border border-border-base bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-border-strong max-md:rounded-3xl"
+            ? "relative z-raised flex w-full min-w-0 flex-col items-center gap-3 overflow-hidden rounded-3xl border border-border-base bg-surface px-3.5 pt-3 pb-3.5 shadow-sm has-[[data-slot=input-group-control]:focus-visible]:border-border-strong"
+            : "relative z-raised flex w-full min-w-0 flex-col items-center overflow-hidden rounded-4xl border border-border-base bg-surface shadow-composer has-[[data-slot=input-group-control]:focus-visible]:border-border-strong max-md:rounded-3xl"
         }
       >
         <div
@@ -96,9 +92,9 @@ export function FrameComposer({ stacked, placeholder, onSubmit }: Props) {
                 stacked
                   ? cn(
                       CARD_SEND_BUTTON_CLASS,
-                      "inline-flex shrink-0 items-center justify-center border group-has-[textarea:placeholder-shown]/frame:bg-foreground-base/[0.06] group-has-[textarea:placeholder-shown]/frame:text-foreground-subtle",
+                      "inline-flex shrink-0 items-center justify-center border group-has-[textarea:placeholder-shown]/frame:bg-fill-strong/[0.06] group-has-[textarea:placeholder-shown]/frame:text-foreground-subtle",
                     )
-                  : "inline-flex size-[2.625rem] shrink-0 items-center justify-center rounded-full border border-action bg-action text-action-foreground group-has-[textarea:placeholder-shown]/frame:border-border-base group-has-[textarea:placeholder-shown]/frame:bg-surface-active max-md:size-10"
+                  : "inline-flex size-[2.625rem] shrink-0 items-center justify-center rounded-pill border border-action bg-action text-action-foreground group-has-[textarea:placeholder-shown]/frame:border-border-base group-has-[textarea:placeholder-shown]/frame:bg-surface-active max-md:size-10"
               }
             >
               <Icon

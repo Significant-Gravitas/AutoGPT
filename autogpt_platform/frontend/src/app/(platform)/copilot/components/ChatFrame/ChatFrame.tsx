@@ -14,10 +14,8 @@ interface Props {
   className?: string;
 }
 
-// What the chat looks like while it loads, in the server's HTML too. The
-// message box is a real one: typing goes there until the chat takes the box
-// over, text, caret and all. Its spacing copies ChatContainer's and
-// EmptySession's, so the box stays where it is when the chat takes over.
+// The chat while it loads, in the server's HTML too, with a real message box.
+// Spacing copies ChatContainer's and EmptySession's so the box never moves.
 export function ChatFrame({ hasSession, onUnmount, className }: Props) {
   const { ref, isHydrating, composer } = useChatFrame(hasSession, onUnmount);
   return (

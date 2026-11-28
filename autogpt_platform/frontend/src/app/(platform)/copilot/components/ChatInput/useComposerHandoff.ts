@@ -34,9 +34,8 @@ interface Restore {
 let kept: { key: string; at: number; restore: Restore } | null = null;
 const KEPT_FOR_MS = 1000;
 
-/** Carries the text, caret, selection, focus and any pending send from the
- *  chat frame's message box into this one, and keeps the caret where it was
- *  when this composer is unmounted and mounted again. */
+/** Takes the frame's text, caret, focus and pending send into this composer,
+ *  and keeps its caret when it is unmounted and mounted again. */
 export function useComposerHandoff({
   inputId,
   draftKey,

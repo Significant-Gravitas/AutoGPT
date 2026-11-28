@@ -37,9 +37,8 @@ export function markSendPending(root: HTMLElement) {
   if (status) status.textContent = FRAME_PENDING_TEXT;
 }
 
-/** Tells the page whether the chat can take the message box right now, so the
- *  frame hands it over only while it can. `null` leaves the report to another
- *  part of the chat. */
+/** Whether the chat can take the message box now; `null` leaves the report to
+ *  another part of the chat. */
 export function useReportChatLoaded(isLoaded: boolean | null) {
   const { reportChatLoaded } = useContext(ChatFrameHandoffContext);
   useEffect(() => {
@@ -61,9 +60,8 @@ export function readFrame(root: HTMLElement): FrameSnapshot | null {
   };
 }
 
-/** The composer's text once the frame's is handed to it, and where the frame's
- *  caret lands in it. A draft the composer already held stays in front, so
- *  neither is lost. */
+/** The composer's text with the frame's added after any draft it held, and
+ *  where the frame's caret lands in it. */
 export function mergeHandoffText(draft: string, typed: string) {
   if (!typed) return { value: draft, offset: draft.length, typedEmpty: true };
   if (!draft.trim() || draft === typed)
