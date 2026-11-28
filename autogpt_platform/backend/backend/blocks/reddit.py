@@ -184,6 +184,12 @@ class GetRedditPostsBlock(Block):
         posts: list[RedditPost] = SchemaField(description="List of all Reddit posts")
 
     def __init__(self):
+        post1 = RedditPost(
+            post_id="id1", subreddit="subreddit", title="title1", body="body1"
+        )
+        post2 = RedditPost(
+            post_id="id2", subreddit="subreddit", title="title2", body="body2"
+        )
         super().__init__(
             id="c6731acb-4285-4ee1-bc9b-03d0766c370f",
             description="This block fetches Reddit posts from a defined subreddit name.",
@@ -202,41 +208,9 @@ class GetRedditPostsBlock(Block):
                 "post_limit": 2,
             },
             test_output=[
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id1",
-                        subreddit="subreddit",
-                        title="title1",
-                        body="body1",
-                    ),
-                ),
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id2",
-                        subreddit="subreddit",
-                        title="title2",
-                        body="body2",
-                    ),
-                ),
-                (
-                    "posts",
-                    [
-                        RedditPost(
-                            post_id="id1",
-                            subreddit="subreddit",
-                            title="title1",
-                            body="body1",
-                        ),
-                        RedditPost(
-                            post_id="id2",
-                            subreddit="subreddit",
-                            title="title2",
-                            body="body2",
-                        ),
-                    ],
-                ),
+                ("post", post1),
+                ("post", post2),
+                ("posts", [post1, post2]),
             ],
             test_mock={
                 "get_posts": lambda input_data, credentials: [
@@ -507,6 +481,21 @@ class GetRedditPostBlock(Block):
         )
 
     def __init__(self):
+        post = RedditPostDetails(
+            id="abc123",
+            subreddit="test",
+            title="Test Post",
+            body="Test body",
+            author="testuser",
+            score=100,
+            upvote_ratio=0.95,
+            num_comments=10,
+            created_utc=1234567890.0,
+            url="https://reddit.com/r/test/comments/abc123/test_post/",
+            permalink="/r/test/comments/abc123/test_post/",
+            is_self=True,
+            over_18=False,
+        )
         super().__init__(
             id="36e6a259-168c-4032-83ec-b2935d0e4584",
             description="Get detailed information about a specific Reddit post by its ID.",
@@ -523,42 +512,9 @@ class GetRedditPostBlock(Block):
                 "post_id": "abc123",
             },
             test_output=[
-                (
-                    "post",
-                    RedditPostDetails(
-                        id="abc123",
-                        subreddit="test",
-                        title="Test Post",
-                        body="Test body",
-                        author="testuser",
-                        score=100,
-                        upvote_ratio=0.95,
-                        num_comments=10,
-                        created_utc=1234567890.0,
-                        url="https://reddit.com/r/test/comments/abc123/test_post/",
-                        permalink="/r/test/comments/abc123/test_post/",
-                        is_self=True,
-                        over_18=False,
-                    ),
-                ),
+                ("post", post),
             ],
-            test_mock={
-                "get_post": lambda creds, post_id: RedditPostDetails(
-                    id="abc123",
-                    subreddit="test",
-                    title="Test Post",
-                    body="Test body",
-                    author="testuser",
-                    score=100,
-                    upvote_ratio=0.95,
-                    num_comments=10,
-                    created_utc=1234567890.0,
-                    url="https://reddit.com/r/test/comments/abc123/test_post/",
-                    permalink="/r/test/comments/abc123/test_post/",
-                    is_self=True,
-                    over_18=False,
-                )
-            },
+            test_mock={"get_post": lambda creds, post_id: post.model_copy()},
             effect=BlockEffect.READ,
         )
 
@@ -619,6 +575,12 @@ class GetUserPostsBlock(Block):
         )
 
     def __init__(self):
+        post1 = RedditPost(
+            post_id="id1", subreddit="sub1", title="title1", body="body1"
+        )
+        post2 = RedditPost(
+            post_id="id2", subreddit="sub2", title="title2", body="body2"
+        )
         super().__init__(
             id="6fbe6329-d13e-4d2e-bd4d-b4d921b56161",
             description="Fetch posts by a specific Reddit user.",
@@ -636,35 +598,9 @@ class GetUserPostsBlock(Block):
                 "post_limit": 2,
             },
             test_output=[
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id1", subreddit="sub1", title="title1", body="body1"
-                    ),
-                ),
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id2", subreddit="sub2", title="title2", body="body2"
-                    ),
-                ),
-                (
-                    "posts",
-                    [
-                        RedditPost(
-                            post_id="id1",
-                            subreddit="sub1",
-                            title="title1",
-                            body="body1",
-                        ),
-                        RedditPost(
-                            post_id="id2",
-                            subreddit="sub2",
-                            title="title2",
-                            body="body2",
-                        ),
-                    ],
-                ),
+                ("post", post1),
+                ("post", post2),
+                ("posts", [post1, post2]),
             ],
             test_mock={
                 "get_user_posts": lambda creds, username, limit, sort: [
@@ -752,6 +688,12 @@ class RedditGetMyPostsBlock(Block):
         )
 
     def __init__(self):
+        post1 = RedditPost(
+            post_id="id1", subreddit="sub1", title="title1", body="body1"
+        )
+        post2 = RedditPost(
+            post_id="id2", subreddit="sub2", title="title2", body="body2"
+        )
         super().__init__(
             id="4ab3381b-0c07-4201-89b3-fa2ec264f154",
             description="Fetch posts created by the authenticated Reddit user (you).",
@@ -768,35 +710,9 @@ class RedditGetMyPostsBlock(Block):
                 "post_limit": 2,
             },
             test_output=[
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id1", subreddit="sub1", title="title1", body="body1"
-                    ),
-                ),
-                (
-                    "post",
-                    RedditPost(
-                        post_id="id2", subreddit="sub2", title="title2", body="body2"
-                    ),
-                ),
-                (
-                    "posts",
-                    [
-                        RedditPost(
-                            post_id="id1",
-                            subreddit="sub1",
-                            title="title1",
-                            body="body1",
-                        ),
-                        RedditPost(
-                            post_id="id2",
-                            subreddit="sub2",
-                            title="title2",
-                            body="body2",
-                        ),
-                    ],
-                ),
+                ("post", post1),
+                ("post", post2),
+                ("posts", [post1, post2]),
             ],
             test_mock={
                 "get_my_posts": lambda creds, limit, sort: [
@@ -910,6 +826,28 @@ class SearchRedditBlock(Block):
         error: str = SchemaField(description="Error message if search failed")
 
     def __init__(self):
+        result1 = RedditSearchResult(
+            id="id1",
+            subreddit="sub1",
+            title="title1",
+            body="body1",
+            author="author1",
+            score=100,
+            num_comments=10,
+            created_utc=1234567890.0,
+            permalink="/r/sub1/comments/id1/title1/",
+        )
+        result2 = RedditSearchResult(
+            id="id2",
+            subreddit="sub2",
+            title="title2",
+            body="body2",
+            author="author2",
+            score=50,
+            num_comments=5,
+            created_utc=1234567891.0,
+            permalink="/r/sub2/comments/id2/title2/",
+        )
         super().__init__(
             id="4a0c975e-807b-4d5e-83c9-1619864a4b1a",
             description="Search Reddit for posts matching a query. Can search all of Reddit or a specific subreddit.",
@@ -927,61 +865,9 @@ class SearchRedditBlock(Block):
                 "limit": 2,
             },
             test_output=[
-                (
-                    "result",
-                    RedditSearchResult(
-                        id="id1",
-                        subreddit="sub1",
-                        title="title1",
-                        body="body1",
-                        author="author1",
-                        score=100,
-                        num_comments=10,
-                        created_utc=1234567890.0,
-                        permalink="/r/sub1/comments/id1/title1/",
-                    ),
-                ),
-                (
-                    "result",
-                    RedditSearchResult(
-                        id="id2",
-                        subreddit="sub2",
-                        title="title2",
-                        body="body2",
-                        author="author2",
-                        score=50,
-                        num_comments=5,
-                        created_utc=1234567891.0,
-                        permalink="/r/sub2/comments/id2/title2/",
-                    ),
-                ),
-                (
-                    "results",
-                    [
-                        RedditSearchResult(
-                            id="id1",
-                            subreddit="sub1",
-                            title="title1",
-                            body="body1",
-                            author="author1",
-                            score=100,
-                            num_comments=10,
-                            created_utc=1234567890.0,
-                            permalink="/r/sub1/comments/id1/title1/",
-                        ),
-                        RedditSearchResult(
-                            id="id2",
-                            subreddit="sub2",
-                            title="title2",
-                            body="body2",
-                            author="author2",
-                            score=50,
-                            num_comments=5,
-                            created_utc=1234567891.0,
-                            permalink="/r/sub2/comments/id2/title2/",
-                        ),
-                    ],
-                ),
+                ("result", result1),
+                ("result", result2),
+                ("results", [result1, result2]),
             ],
             test_mock={
                 "search_reddit": lambda creds, query, subreddit, sort, time_filter, limit: [
@@ -1179,6 +1065,17 @@ class GetSubredditInfoBlock(Block):
         )
 
     def __init__(self):
+        info = SubredditInfo(
+            name="t5_2qh0y",
+            display_name="python",
+            title="Python",
+            description="News about the Python programming language",
+            public_description="News about Python",
+            subscribers=1000000,
+            created_utc=1234567890.0,
+            over_18=False,
+            url="/r/python/",
+        )
         super().__init__(
             id="5a2d1f0c-01fb-43ea-bad7-2260d269c930",
             description="Get information about a subreddit including subscriber count, description, and rules.",
@@ -1195,34 +1092,11 @@ class GetSubredditInfoBlock(Block):
                 "subreddit": "python",
             },
             test_output=[
-                (
-                    "info",
-                    SubredditInfo(
-                        name="t5_2qh0y",
-                        display_name="python",
-                        title="Python",
-                        description="News about the Python programming language",
-                        public_description="News about Python",
-                        subscribers=1000000,
-                        created_utc=1234567890.0,
-                        over_18=False,
-                        url="/r/python/",
-                    ),
-                ),
+                ("info", info),
                 ("subreddit", "python"),
             ],
             test_mock={
-                "get_subreddit_info": lambda creds, subreddit: SubredditInfo(
-                    name="t5_2qh0y",
-                    display_name="python",
-                    title="Python",
-                    description="News about the Python programming language",
-                    public_description="News about Python",
-                    subscribers=1000000,
-                    created_utc=1234567890.0,
-                    over_18=False,
-                    url="/r/python/",
-                )
+                "get_subreddit_info": lambda creds, subreddit: info.model_copy()
             },
             effect=BlockEffect.READ,
         )
@@ -1299,6 +1173,32 @@ class GetRedditPostCommentsBlock(Block):
         )
 
     def __init__(self):
+        comment1 = RedditComment(
+            comment_id="comment1",
+            post_id="abc123",
+            parent_comment_id=None,
+            author="user1",
+            body="Comment body 1",
+            score=10,
+            created_utc=1234567890.0,
+            edited=False,
+            is_submitter=False,
+            permalink="/r/test/comments/abc123/test/comment1/",
+            depth=0,
+        )
+        comment2 = RedditComment(
+            comment_id="comment2",
+            post_id="abc123",
+            parent_comment_id=None,
+            author="user2",
+            body="Comment body 2",
+            score=5,
+            created_utc=1234567891.0,
+            edited=False,
+            is_submitter=True,
+            permalink="/r/test/comments/abc123/test/comment2/",
+            depth=0,
+        )
         super().__init__(
             id="98422b2c-c3b0-4d70-871f-56bd966f46da",
             description="Get top-level comments on a Reddit post.",
@@ -1316,69 +1216,9 @@ class GetRedditPostCommentsBlock(Block):
                 "limit": 2,
             },
             test_output=[
-                (
-                    "comment",
-                    RedditComment(
-                        comment_id="comment1",
-                        post_id="abc123",
-                        parent_comment_id=None,
-                        author="user1",
-                        body="Comment body 1",
-                        score=10,
-                        created_utc=1234567890.0,
-                        edited=False,
-                        is_submitter=False,
-                        permalink="/r/test/comments/abc123/test/comment1/",
-                        depth=0,
-                    ),
-                ),
-                (
-                    "comment",
-                    RedditComment(
-                        comment_id="comment2",
-                        post_id="abc123",
-                        parent_comment_id=None,
-                        author="user2",
-                        body="Comment body 2",
-                        score=5,
-                        created_utc=1234567891.0,
-                        edited=False,
-                        is_submitter=True,
-                        permalink="/r/test/comments/abc123/test/comment2/",
-                        depth=0,
-                    ),
-                ),
-                (
-                    "comments",
-                    [
-                        RedditComment(
-                            comment_id="comment1",
-                            post_id="abc123",
-                            parent_comment_id=None,
-                            author="user1",
-                            body="Comment body 1",
-                            score=10,
-                            created_utc=1234567890.0,
-                            edited=False,
-                            is_submitter=False,
-                            permalink="/r/test/comments/abc123/test/comment1/",
-                            depth=0,
-                        ),
-                        RedditComment(
-                            comment_id="comment2",
-                            post_id="abc123",
-                            parent_comment_id=None,
-                            author="user2",
-                            body="Comment body 2",
-                            score=5,
-                            created_utc=1234567891.0,
-                            edited=False,
-                            is_submitter=True,
-                            permalink="/r/test/comments/abc123/test/comment2/",
-                            depth=0,
-                        ),
-                    ],
-                ),
+                ("comment", comment1),
+                ("comment", comment2),
+                ("comments", [comment1, comment2]),
                 ("post_id", "abc123"),
             ],
             test_mock={
@@ -1504,6 +1344,19 @@ class GetRedditCommentRepliesBlock(Block):
         )
 
     def __init__(self):
+        reply = RedditComment(
+            comment_id="reply1",
+            post_id="abc123",
+            parent_comment_id="comment1",
+            author="replier1",
+            body="Reply body 1",
+            score=3,
+            created_utc=1234567892.0,
+            edited=False,
+            is_submitter=False,
+            permalink="/r/test/comments/abc123/test/reply1/",
+            depth=1,
+        )
         super().__init__(
             id="7fa83965-7289-432f-98a9-1575f5bcc8f1",
             description="Get replies to a specific Reddit comment.",
@@ -1522,40 +1375,8 @@ class GetRedditCommentRepliesBlock(Block):
                 "limit": 2,
             },
             test_output=[
-                (
-                    "reply",
-                    RedditComment(
-                        comment_id="reply1",
-                        post_id="abc123",
-                        parent_comment_id="comment1",
-                        author="replier1",
-                        body="Reply body 1",
-                        score=3,
-                        created_utc=1234567892.0,
-                        edited=False,
-                        is_submitter=False,
-                        permalink="/r/test/comments/abc123/test/reply1/",
-                        depth=1,
-                    ),
-                ),
-                (
-                    "replies",
-                    [
-                        RedditComment(
-                            comment_id="reply1",
-                            post_id="abc123",
-                            parent_comment_id="comment1",
-                            author="replier1",
-                            body="Reply body 1",
-                            score=3,
-                            created_utc=1234567892.0,
-                            edited=False,
-                            is_submitter=False,
-                            permalink="/r/test/comments/abc123/test/reply1/",
-                            depth=1,
-                        ),
-                    ],
-                ),
+                ("reply", reply),
+                ("replies", [reply]),
                 ("comment_id", "comment1"),
                 ("post_id", "abc123"),
             ],
@@ -2121,6 +1942,16 @@ class GetRedditInboxBlock(Block):
         error: str = SchemaField(description="Error message if fetch failed")
 
     def __init__(self):
+        item = RedditInboxItem(
+            item_id="msg123",
+            item_type="message",
+            subject="Hello",
+            body="Test message body",
+            author="sender_user",
+            created_utc=1234567890.0,
+            is_read=False,
+            context=None,
+        )
         super().__init__(
             id="5a91bb34-7ffe-4b9e-957b-9d4f8fe8dbc9",
             description="Get messages, mentions, and comment replies from your Reddit inbox.",
@@ -2138,34 +1969,8 @@ class GetRedditInboxBlock(Block):
                 "limit": 10,
             },
             test_output=[
-                (
-                    "item",
-                    RedditInboxItem(
-                        item_id="msg123",
-                        item_type="message",
-                        subject="Hello",
-                        body="Test message body",
-                        author="sender_user",
-                        created_utc=1234567890.0,
-                        is_read=False,
-                        context=None,
-                    ),
-                ),
-                (
-                    "items",
-                    [
-                        RedditInboxItem(
-                            item_id="msg123",
-                            item_type="message",
-                            subject="Hello",
-                            body="Test message body",
-                            author="sender_user",
-                            created_utc=1234567890.0,
-                            is_read=False,
-                            context=None,
-                        ),
-                    ],
-                ),
+                ("item", item),
+                ("items", [item]),
             ],
             test_mock={
                 "get_inbox": lambda creds, inbox_type, limit: [
@@ -2393,6 +2198,12 @@ class GetSubredditFlairsBlock(Block):
         error: str = SchemaField(description="Error message if fetch failed")
 
     def __init__(self):
+        flair = SubredditFlair(
+            flair_id="abc123",
+            text="Discussion",
+            text_editable=False,
+            css_class="discussion",
+        )
         super().__init__(
             id="ada08f34-a7a9-44aa-869f-0638fa4e0a84",
             description="Get available link flair options for a subreddit.",
@@ -2409,26 +2220,8 @@ class GetSubredditFlairsBlock(Block):
                 "subreddit": "test",
             },
             test_output=[
-                (
-                    "flair",
-                    SubredditFlair(
-                        flair_id="abc123",
-                        text="Discussion",
-                        text_editable=False,
-                        css_class="discussion",
-                    ),
-                ),
-                (
-                    "flairs",
-                    [
-                        SubredditFlair(
-                            flair_id="abc123",
-                            text="Discussion",
-                            text_editable=False,
-                            css_class="discussion",
-                        ),
-                    ],
-                ),
+                ("flair", flair),
+                ("flairs", [flair]),
                 ("subreddit", "test"),
             ],
             test_mock={
@@ -2511,6 +2304,13 @@ class GetSubredditRulesBlock(Block):
         error: str = SchemaField(description="Error message if fetch failed")
 
     def __init__(self):
+        rule = SubredditRule(
+            short_name="No spam",
+            description="Do not post spam or self-promotional content.",
+            kind="all",
+            violation_reason="Spam",
+            priority=0,
+        )
         super().__init__(
             id="222aa36c-fa70-4879-8e8a-37d100175f5c",
             description="Get the rules for a subreddit to ensure compliance before posting.",
@@ -2527,28 +2327,8 @@ class GetSubredditRulesBlock(Block):
                 "subreddit": "test",
             },
             test_output=[
-                (
-                    "rule",
-                    SubredditRule(
-                        short_name="No spam",
-                        description="Do not post spam or self-promotional content.",
-                        kind="all",
-                        violation_reason="Spam",
-                        priority=0,
-                    ),
-                ),
-                (
-                    "rules",
-                    [
-                        SubredditRule(
-                            short_name="No spam",
-                            description="Do not post spam or self-promotional content.",
-                            kind="all",
-                            violation_reason="Spam",
-                            priority=0,
-                        ),
-                    ],
-                ),
+                ("rule", rule),
+                ("rules", [rule]),
                 ("subreddit", "test"),
             ],
             test_mock={
