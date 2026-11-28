@@ -229,8 +229,8 @@ def test_expert_lookup_errors_preserve_rpc_status_and_type():
         raise ExpertPrivateTenancyNotFoundError("expert-1")
 
     raw = TestClient(app, raise_server_exceptions=False)
-    missing_expert_response = raw.get("/missing-expert")
-    missing_tenancy_response = raw.get("/missing-expert-tenancy")
+    missing_expert_response = _as_httpx_response(raw.get("/missing-expert"))
+    missing_tenancy_response = _as_httpx_response(raw.get("/missing-expert-tenancy"))
 
     assert missing_expert_response.status_code == 404
     assert missing_expert_response.json()["type"] == "ExpertNotFoundError"
@@ -269,8 +269,10 @@ def test_a_conflict_is_answered_as_a_409_not_a_server_error():
     def add_graph_execution_schedule():
         raise ConflictError("Taken")
 
-    response = TestClient(app, raise_server_exceptions=False).post(
-        "/add_graph_execution_schedule"
+    response = _as_httpx_response(
+        TestClient(app, raise_server_exceptions=False).post(
+            "/add_graph_execution_schedule"
+        )
     )
 
     assert response.status_code == 409
@@ -1082,6 +1084,15 @@ def test_cleanup_stops_the_loop_run_created(mocker):
     assert not loop_thread.is_alive()
     assert service.shared_event_loop.is_closed()
     process_cleanup.assert_called_once_with()
+
+
+def _as_httpx_response(response: Any) -> httpx.Response:
+    # Starlette's TestClient answers with httpx2; the service client reads httpx.
+    return httpx.Response(
+        response.status_code,
+        content=response.content,
+        request=httpx.Request(response.request.method, str(response.request.url)),
+    )
 
 
 class _LoopService(AppService):

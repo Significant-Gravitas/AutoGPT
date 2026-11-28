@@ -1,7 +1,7 @@
 """Response compression, as the REST API registers it, has a bounded cost."""
 
 import asyncio
-import gzip
+import zlib
 from collections.abc import Iterator
 
 import pytest
@@ -54,30 +54,29 @@ def client() -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def compressed_bytes(mocker: pytest_mock.MockerFixture) -> list[int]:
-    """How many bytes went through the compressor, one entry per write."""
+def compression_calls(mocker: pytest_mock.MockerFixture) -> tuple[list[int], list[int]]:
+    """Bytes fed to each compress call, and the level of each compressor made."""
     sizes: list[int] = []
-    real_write = gzip.GzipFile.write
+    levels: list[int] = []
+    real_compressobj = zlib.compressobj
 
-    def write(self: gzip.GzipFile, data: bytes) -> int:
-        sizes.append(len(data))
-        return real_write(self, data)
+    def compressobj(level: int = -1, *args, **kwargs) -> "_CountingCompressor":
+        levels.append(level)
+        return _CountingCompressor(real_compressobj(level, *args, **kwargs), sizes)
 
-    mocker.patch.object(gzip.GzipFile, "write", write)
-    return sizes
+    mocker.patch.object(zlib, "compressobj", compressobj)
+    return sizes, levels
 
 
 @pytest.fixture
-def compress_levels(mocker: pytest_mock.MockerFixture) -> list[int]:
-    levels: list[int] = []
-    real_init = gzip.GzipFile.__init__
+def compressed_bytes(compression_calls: tuple[list[int], list[int]]) -> list[int]:
+    """How many bytes went through the compressor, one entry per write."""
+    return compression_calls[0]
 
-    def init(self: gzip.GzipFile, *args, compresslevel: int = 9, **kwargs) -> None:
-        levels.append(compresslevel)
-        real_init(self, *args, compresslevel=compresslevel, **kwargs)
 
-    mocker.patch.object(gzip.GzipFile, "__init__", init)
-    return levels
+@pytest.fixture
+def compress_levels(compression_calls: tuple[list[int], list[int]]) -> list[int]:
+    return compression_calls[1]
 
 
 def test_a_response_over_the_cap_is_sent_uncompressed(
@@ -240,3 +239,53 @@ async def test_a_stream_without_a_length_reaches_the_client_before_it_ends(
     assert b"content-encoding" not in dict(start["headers"])
     bodies = [m["body"] for m in sent if m["type"] == "http.response.body"]
     assert bodies[0] == first_chunk
+
+
+@pytest.mark.asyncio
+async def test_a_partial_response_without_a_length_over_the_cap_starts_once(
+    compressed_bytes: list[int],
+) -> None:
+    sent: list[Message] = []
+
+    async def partial(scope: Scope, receive: Receive, send: Send) -> None:
+        headers = [(b"content-type", b"text/plain")]
+        await send({"type": "http.response.start", "status": 206, "headers": headers})
+        for _ in range(6):
+            await send(
+                {"type": "http.response.body", "body": b"a" * MIB, "more_body": True}
+            )
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    async def receive() -> Message:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    scope: Scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/partial",
+        "headers": [(b"accept-encoding", b"gzip")],
+    }
+    entry = _registered_gzip_middleware()
+    middleware = entry.cls(partial, *entry.args, **entry.kwargs)
+    await middleware(scope, receive, send)
+
+    assert [m["type"] for m in sent].count("http.response.start") == 1
+    body = b"".join(m["body"] for m in sent if m["type"] == "http.response.body")
+    assert body == b"a" * 6 * MIB
+    assert sum(compressed_bytes) == 0
+
+
+class _CountingCompressor:
+    def __init__(self, inner: "zlib._Compress", sizes: list[int]) -> None:
+        self._inner = inner
+        self._sizes = sizes
+
+    def compress(self, data: bytes) -> bytes:
+        self._sizes.append(len(data))
+        return self._inner.compress(data)
+
+    def flush(self, *args: int) -> bytes:
+        return self._inner.flush(*args)
