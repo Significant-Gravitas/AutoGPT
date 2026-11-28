@@ -2,7 +2,7 @@
 else does (``ingest._promote_restated``), through the production worker
 against a live FalkorDB. The turn promotes a never-recalled dream proposal
 it restates and a fact of its own that graphiti's model labelled tentative.
-It leaves alone the fact it invalidates, and an assistant's finding, a
+It leaves alone the fact it invalidates, and a
 memory-store call or a dream write promotes nothing.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
@@ -42,12 +42,6 @@ _BUDGET: Fact = ("Alice", "Atlas", "Alice owns the Atlas budget")
 _RESTATED: Fact = ("Alice", "Atlas", "Alice is working on Atlas")
 _NEW: Fact = ("Alice", "Atlas", "Alice leads the Atlas launch")
 _CONTRADICTS: Fact = ("Alice", "Atlas", "Alice handed the Atlas budget to Bob")
-# Long enough for the finding lane (``ingest._MIN_FINDING_LENGTH``).
-_FINDING = (
-    "Based on the project notes, Alice is working on Atlas and leads the Atlas "
-    "launch this quarter, with the budget review for the whole programme "
-    "scheduled for next month."
-)
 _PROPOSAL = {
     "status": "tentative",
     "source_kind": "assistant_derived",
@@ -139,38 +133,31 @@ async def _chat_turn(
     scope: MemoryScope,
     client,
     *,
-    lane: str,
     user_msg: str,
-    assistant_msg: str = "",
 ) -> str:
-    """One chat turn through ``enqueue_conversation_turn`` and the worker,
-    only its ``lane`` episode (``conversation_`` for the user's words,
-    ``finding_`` for the assistant's finding) written: that episode's uuid."""
+    """One chat turn through ``enqueue_conversation_turn`` and the worker: its
+    episode's uuid."""
     completion = ingest.IngestionCompletion()
     enqueue = ingest._enqueue_payload
     queued: list[str] = []
 
-    async def one_lane(target: MemoryScope, payload: dict) -> bool:
-        if not payload["name"].startswith(lane):
-            return True
+    async def record(target: MemoryScope, payload: dict) -> bool:
         payload["_completion"] = completion
         queued.append(payload["name"])
         return await enqueue(target, payload)
 
     with (
-        patch.object(ingest, "_enqueue_payload", side_effect=one_lane),
+        patch.object(ingest, "_enqueue_payload", side_effect=record),
         patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
     ):
-        await ingest.enqueue_conversation_turn(
-            scope.owner_user_id, "s-2", user_msg, assistant_msg
-        )
-        assert queued == [f"{lane}s-2"], "the turn made no such episode"
+        await ingest.enqueue_conversation_turn(scope.owner_user_id, "s-2", user_msg)
+        assert queued == ["conversation_s-2"], "the turn made no such episode"
         completion.register()
         assert await ingest.wait_for_ingestion(completion, _WAIT_SECONDS)
     [episode] = await rows(
         driver,
         "MATCH (ep:Episodic {name: $name}) RETURN ep.uuid AS uuid",
-        name=f"{lane}s-2",
+        name="conversation_s-2",
     )
     return episode["uuid"]
 
@@ -205,7 +192,6 @@ async def test_a_users_turn_promotes_what_it_states_and_nothing_else(
         driver,
         scope,
         client,
-        lane="conversation_",
         user_msg=". ".join(sentence for _, _, sentence in facts),
     )
 
@@ -221,32 +207,6 @@ async def test_a_users_turn_promotes_what_it_states_and_nothing_else(
     assert episode not in contradicted["episodes"]
     assert contradicted["expired_at"], "graphiti invalidated it"
     assert _still_a_proposal(contradicted)
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_an_assistants_finding_promotes_nothing(
-    scope_graph, stub_graphiti_client, ingest_worker_cleanup, mocker: MockerFixture
-) -> None:
-    """The finding lane's episode, as ``enqueue_conversation_turn`` builds it:
-    neither the proposal it restates nor its own tentative fact moves."""
-    driver, scope = scope_graph
-    learnt = await _proposals(driver, scope, stub_graphiti_client)
-    client = _turn_client(mocker, driver, stub_graphiti_client, [_RESTATED, _NEW])
-
-    episode = await _chat_turn(
-        driver,
-        scope,
-        client,
-        lane="finding_",
-        user_msg="What is Alice doing?",
-        assistant_msg=_FINDING,
-    )
-
-    restated = await edge_properties(driver, learnt[ALICE[2]])
-    assert episode in restated["episodes"]
-    assert _still_a_proposal(restated)
-    assert _still_a_proposal(await _fact(driver, _NEW[2]))
 
 
 @pytest.mark.integration
