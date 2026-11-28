@@ -684,13 +684,16 @@ class DocumentationHandler(ContentHandler):
         if total_sections == 0:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
-        # Count embeddings in database for DOCUMENTATION type
+        # Count current sections only: a removed page's embeddings stay until cleanup.
+        placeholders = ",".join([f"${i+1}" for i in range(total_sections)])
         embedded_result = await query_raw_with_schema(
-            """
+            f"""
             SELECT COUNT(*) as count
-            FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" = 'DOCUMENTATION'::{schema_prefix}"ContentType"
-            """
+            FROM {{schema_prefix}}"UnifiedContentEmbedding"
+            WHERE "contentType" = 'DOCUMENTATION'::{{schema_prefix}}"ContentType"
+            AND "contentId" = ANY(ARRAY[{placeholders}])
+            """,
+            *all_section_ids,
         )
 
         with_embeddings = embedded_result[0]["count"] if embedded_result else 0
