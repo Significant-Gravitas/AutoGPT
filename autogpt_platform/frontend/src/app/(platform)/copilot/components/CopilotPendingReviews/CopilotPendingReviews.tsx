@@ -4,6 +4,7 @@ import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/Pe
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/helpers";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import type { ExpertIdentity } from "../../useExpertMap";
 import type { RunReviewTarget } from "../ChatMessagesContainer/helpers";
 import { ApprovalQueue } from "../ApprovalQueue/ApprovalQueue";
@@ -60,19 +61,26 @@ export function CopilotPendingReviews(props: Props) {
     if (remaining.length > 0) return;
 
     // Graph executions auto-resume after approval; chat reviews need resume_capability.
-    if (runs) {
-      const many = decidedRuns.length > 1;
-      onSend(
-        `All pending reviews have been processed. ` +
-          `The workflow execution${many ? "s" : ""} will resume automatically for approved reviews. ` +
-          `Use view_agent_output with ${decidedRuns.map((id) => `execution_id="${id}"`).join(", ")} to check the result${many ? "s" : ""}.`,
-      );
-    } else {
-      onSend(
-        `All pending reviews have been processed. ` +
-          `For any approved reviews, call resume_capability with the corresponding review_id to execute them. ` +
-          `For rejected reviews, no further action is needed.`,
-      );
+    const many = decidedRuns.length > 1;
+    const message = runs
+      ? `All pending reviews have been processed. ` +
+        `The workflow execution${many ? "s" : ""} will resume automatically for approved reviews. ` +
+        `Use view_agent_output with ${decidedRuns.map((id) => `execution_id="${id}"`).join(", ")} to check the result${many ? "s" : ""}.`
+      : `All pending reviews have been processed. ` +
+        `For any approved reviews, call resume_capability with the corresponding review_id to execute them. ` +
+        `For rejected reviews, no further action is needed.`;
+    const recovery = runs
+      ? "saved review decisions still apply. Open the workflow run to check its status"
+      : "saved review decisions still apply. Check the chat before asking Otto to continue";
+
+    try {
+      await onSend(message);
+    } catch (error) {
+      toastSendFailure({
+        title: "Couldn't send the review follow-up",
+        error,
+        recovery,
+      });
     }
   }
 

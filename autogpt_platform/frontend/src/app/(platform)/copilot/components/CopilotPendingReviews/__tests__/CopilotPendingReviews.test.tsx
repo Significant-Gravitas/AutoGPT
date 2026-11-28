@@ -9,6 +9,7 @@ import {
 import type { ReviewRequest } from "@/app/api/__generated__/models/reviewRequest";
 import type { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { server } from "@/mocks/mock-server";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import {
   cleanup,
   render,
@@ -77,6 +78,64 @@ test("a chat's queue is read from the chat, and the resume is AutoPilot's", asyn
   });
   expect(onSend.mock.calls[0][0]).toContain("resume_capability");
 });
+
+test.each([
+  { scope: "chat", isRun: false },
+  { scope: "workflow run", isRun: true },
+])(
+  "reports a failed follow-up after saving the $scope review",
+  async ({ isRun }) => {
+    const review = makeReview(
+      isRun ? { session_id: null, graph_exec_id: "exec-9" } : {},
+    );
+    let waiting = [review];
+    const decisions: ReviewRequest[] = [];
+    onSend.mockRejectedValue(new Error("Connection lost"));
+    server.use(
+      getGetV2GetPendingReviewsForChatSessionMockHandler(() => waiting),
+      getGetV2GetPendingReviewsForExecutionMockHandler(() => waiting),
+      getPostV2ProcessReviewActionMockHandler200(async ({ request }) => {
+        decisions.push((await request.json()) as ReviewRequest);
+        waiting = [];
+        return { approved_count: 1, rejected_count: 0, failed_count: 0 };
+      }),
+    );
+
+    render(
+      <>
+        {isRun ? (
+          <CopilotPendingReviews runs={[{ graphExecId: "exec-9" }]} />
+        ) : (
+          <CopilotPendingReviews chatSessionId="chat-1" />
+        )}
+        <Toaster />
+      </>,
+    );
+
+    const [approve] = await screen.findAllByRole("button", {
+      name: /^Approve/,
+    });
+    await userEvent.click(approve);
+
+    await screen.findByText(
+      isRun
+        ? /saved review decisions still apply[.] Open the workflow run/
+        : /saved review decisions still apply[.] Check the chat before asking Otto to continue/,
+    );
+    expect(
+      screen.getByText("Couldn't send the review follow-up"),
+    ).toBeDefined();
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].reviews).toEqual([
+      expect.objectContaining({
+        node_exec_id: review.node_exec_id,
+        approved: true,
+      }),
+    ]);
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /^Approve/ })).toBeNull();
+  },
+);
 
 test("an agent run's queue is read from its execution", async () => {
   server.use(
