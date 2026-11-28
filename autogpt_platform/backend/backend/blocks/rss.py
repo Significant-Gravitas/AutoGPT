@@ -1,12 +1,15 @@
 import asyncio
 import logging
+from asyncio import sleep as async_sleep
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Any
 
 import feedparser
 import pydantic
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -16,6 +19,9 @@ from backend.blocks._base import (
 )
 from backend.data.model import SchemaField
 from backend.util.request import Requests
+
+DEFAULT_CONTINUOUS_RUNTIME_SECONDS = 60 * 60
+MAX_CONTINUOUS_RUNTIME_SECONDS = 4 * 60 * 60
 
 
 class RSSEntry(pydantic.BaseModel):
@@ -28,6 +34,10 @@ class RSSEntry(pydantic.BaseModel):
 
 
 class ReadRSSFeedBlock(Block):
+    execution_timeout_seconds: int | None = (
+        MAX_CONTINUOUS_RUNTIME_SECONDS + DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    )
+
     class Input(BlockSchemaInput):
         rss_url: str = SchemaField(
             description="The URL of the RSS feed to read",
@@ -41,6 +51,12 @@ class ReadRSSFeedBlock(Block):
         polling_rate: int = SchemaField(
             description="The number of seconds to wait between polling attempts.",
             placeholder="300",
+        )
+        max_duration_seconds: int = SchemaField(
+            description="Maximum time to poll continuously before this block finishes.",
+            default=DEFAULT_CONTINUOUS_RUNTIME_SECONDS,
+            ge=1,
+            le=MAX_CONTINUOUS_RUNTIME_SECONDS,
         )
         run_continuously: bool = SchemaField(
             description="Whether to run the block continuously or just once.",
@@ -139,14 +155,37 @@ class ReadRSSFeedBlock(Block):
             return {"entries": []}
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        keep_going = True
-        start_time = datetime.now(timezone.utc) - timedelta(
+        # The window cutoff is fixed at run start: advancing it to the newest
+        # pub_date seen would skip entries from feeds that stamp local time as
+        # UTC and entries that appear late with an older pub_date. Links already
+        # emitted in this run are skipped instead; the set stays small because
+        # the run is bounded by max_duration_seconds.
+        window_start = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period
         )
-        while keep_going:
-            keep_going = input_data.run_continuously
+        emitted_links: set[str] = set()
+        deadline = monotonic() + input_data.max_duration_seconds
 
-            feed = await self.parse_feed(input_data.rss_url)
+        while True:
+            if input_data.run_continuously:
+                remaining_seconds = deadline - monotonic()
+                if remaining_seconds <= 0:
+                    break
+                try:
+                    feed = await asyncio.wait_for(
+                        self.parse_feed(input_data.rss_url),
+                        timeout=remaining_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    # A throttled or stuck feed finishes the run normally at the
+                    # configured duration instead of failing at the executor cap.
+                    break
+            else:
+                feed = await asyncio.wait_for(
+                    self.parse_feed(input_data.rss_url),
+                    timeout=DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
+                )
+
             all_entries = []
             undated_count = 0
 
@@ -158,22 +197,26 @@ class ReadRSSFeedBlock(Block):
                     undated_count += 1
                     continue
                 pub_date = datetime(*parsed_date[:6], tzinfo=timezone.utc)
+                if pub_date < window_start:
+                    continue
+                link = entry.get("link", "")
+                if link and link in emitted_links:
+                    continue
 
-                if pub_date > start_time:
-                    rss_entry = RSSEntry(
-                        title=entry.get("title", ""),
-                        link=entry.get("link", ""),
-                        description=entry.get("summary", ""),
-                        pub_date=pub_date,
-                        author=entry.get("author", ""),
-                        categories=[
-                            tag["term"]
-                            for tag in entry.get("tags", [])
-                            if tag.get("term")
-                        ],
-                    )
-                    all_entries.append(rss_entry)
-                    yield "entry", rss_entry
+                rss_entry = RSSEntry(
+                    title=entry.get("title", ""),
+                    link=link,
+                    description=entry.get("summary", ""),
+                    pub_date=pub_date,
+                    author=entry.get("author", ""),
+                    categories=[
+                        tag["term"] for tag in entry.get("tags", []) if tag.get("term")
+                    ],
+                )
+                if link:
+                    emitted_links.add(link)
+                all_entries.append(rss_entry)
+                yield "entry", rss_entry
 
             if undated_count:
                 logging.warning(
@@ -181,5 +224,10 @@ class ReadRSSFeedBlock(Block):
                 )
 
             yield "entries", all_entries
-            if input_data.run_continuously:
-                await asyncio.sleep(input_data.polling_rate)
+            if not input_data.run_continuously:
+                break
+
+            remaining_seconds = deadline - monotonic()
+            if remaining_seconds <= 0:
+                break
+            await async_sleep(min(max(input_data.polling_rate, 1), remaining_seconds))
