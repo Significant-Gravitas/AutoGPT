@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { RJSFSchema } from "@rjsf/utils";
 import {
@@ -336,6 +337,108 @@ describe("OutputHandler with React Flow", () => {
     } finally {
       Reflect.deleteProperty(Object.prototype, "properties");
     }
+  });
+
+  it("collapses unconnected object sub-outputs until they are expanded", async () => {
+    const outputSchema: RJSFSchema = {
+      properties: {
+        main_result: {
+          type: "object",
+          title: "Main Result",
+          properties: {
+            text: { title: "Text" },
+            html: { title: "Html" },
+            profile: {
+              title: "Profile",
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    first_name: { title: "First Name", type: "string" },
+                    last_name: { title: "Last Name", type: "string" },
+                  },
+                },
+                { type: "null" },
+              ],
+            },
+          },
+        },
+        response: { title: "Response", type: "string" },
+      },
+    };
+
+    function outputRow(title: string) {
+      const row = document.querySelector(
+        `[data-tutorial-id="output-handler-node-a-${title}"]`,
+      );
+      if (!(row instanceof HTMLElement)) {
+        throw new Error(`Missing output row ${title}`);
+      }
+      return row;
+    }
+
+    render(<Flow outputSchema={outputSchema} />);
+    await waitFor(() =>
+      expect(sourceHandles()).toEqual(["main_result", "response"]),
+    );
+    expect(screen.getByText("Main Result")).toBeDefined();
+    expect(screen.getByText("Response")).toBeDefined();
+    expect(screen.queryByText("Text")).toBeNull();
+    expect(screen.queryByText("Html")).toBeNull();
+    expect(screen.queryByText("Profile")).toBeNull();
+    expect(screen.queryByText("First Name")).toBeNull();
+
+    fireEvent.click(
+      within(outputRow("Main Result")).getByRole("button", { name: "Expand" }),
+    );
+    expect(await screen.findByText("Text")).toBeDefined();
+    expect(screen.getByText("Html")).toBeDefined();
+    expect(screen.getByText("Profile")).toBeDefined();
+    expect(screen.queryByText("First Name")).toBeNull();
+    await waitFor(() =>
+      expect(sourceHandles()).toEqual([
+        "main_result",
+        "main_result_#_text",
+        "main_result_#_html",
+        "main_result_#_profile",
+        "response",
+      ]),
+    );
+
+    fireEvent.click(
+      within(outputRow("Profile")).getByRole("button", { name: "Expand" }),
+    );
+    expect(await screen.findByText("First Name")).toBeDefined();
+    expect(screen.getByText("Last Name")).toBeDefined();
+    await waitFor(() =>
+      expect(sourceHandles()).toContain("main_result_#_profile_#_first_name"),
+    );
+
+    fireEvent.click(
+      within(outputRow("Profile")).getAllByRole("button", {
+        name: "Collapse",
+      })[0],
+    );
+    await waitFor(() => expect(screen.queryByText("First Name")).toBeNull());
+    expect(screen.queryByText("Last Name")).toBeNull();
+    expect(screen.getByText("Text")).toBeDefined();
+
+    act(() => connect("main_result_#_profile_#_first_name"));
+    expect(await screen.findByText("First Name")).toBeDefined();
+    expect(screen.queryByText("Last Name")).toBeNull();
+
+    fireEvent.click(
+      within(outputRow("Main Result")).getAllByRole("button", {
+        name: "Collapse",
+      })[0],
+    );
+    await waitFor(() => expect(screen.queryByText("Text")).toBeNull());
+    expect(screen.queryByText("Html")).toBeNull();
+    expect(screen.queryByText("Last Name")).toBeNull();
+    expect(screen.getByText("First Name")).toBeDefined();
+    expect(screen.getByText("Response")).toBeDefined();
+    expect(sourceHandles()).toContain("main_result_#_profile_#_first_name");
+    expect(sourceHandles()).not.toContain("main_result_#_text");
   });
 
   it("keeps terminal output blocks free of source handles", async () => {

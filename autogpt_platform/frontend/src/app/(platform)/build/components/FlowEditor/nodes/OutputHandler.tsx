@@ -16,7 +16,7 @@ import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
 import {
   augmentOutputSchemaWithEdges,
-  getOutputProperties,
+  getNestedOutputProperties,
   type OutputProperties,
 } from "./outputSchema";
 import { BlockUIType } from "../../types";
@@ -88,7 +88,7 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
       const fullKey = keyPrefix ? `${keyPrefix}_#_${key}` : key;
       if (isOutputConnected(nodeId, fullKey) || brokenOutputs.has(fullKey))
         return true;
-      const nestedProperties = getOutputProperties(fieldSchema);
+      const nestedProperties = getNestedOutputProperties(fieldSchema);
       if (Object.keys(nestedProperties).length)
         return hasConnectedOrBrokenDescendant(nestedProperties, fullKey);
       return false;
@@ -113,7 +113,7 @@ export function OutputHandler({ outputSchema, nodeId, uiType }: Props) {
 
       const isConnected = isOutputConnected(nodeId, fullKey);
       const isBroken = brokenOutputs.has(fullKey);
-      const nestedProperties = getOutputProperties(fieldSchema);
+      const nestedProperties = getNestedOutputProperties(fieldSchema);
       const hasNestedProperties = Object.keys(nestedProperties).length > 0;
       const selfIsRelevant = isConnected || isBroken;
       const descendantIsRelevant =
