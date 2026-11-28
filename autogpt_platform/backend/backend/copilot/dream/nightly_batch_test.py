@@ -18,6 +18,8 @@ Contracts pinned here:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Literal
 from unittest.mock import AsyncMock, patch
@@ -79,14 +81,8 @@ async def test_paywalled_user_skips_entire_fanout_no_submitters_run():
     lookup + one Redis read for the night, not one per submitter."""
     dream_spy = AsyncMock()
     rat_spy = AsyncMock()
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(False, "insufficient_credits")),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
+    with _patched_submitters(
+        budget=(False, "insufficient_credits"), dream=dream_spy, ratification=rat_spy
     ):
         result = await run_nightly_batch_submit("u")
 
@@ -119,17 +115,8 @@ async def test_redis_brownout_during_budget_check_surfaces_as_error_not_skipped(
 
 @pytest.mark.asyncio
 async def test_happy_path_runs_dream_then_ratification_sharing_nightly_id():
-    dream_spy = AsyncMock(return_value=_dream_result())
     rat_spy = AsyncMock(return_value=_ratification_result(ratified=3, superseded=1))
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
-    ):
+    with _patched_submitters(ratification=rat_spy):
         result = await run_nightly_batch_submit("u")
 
     assert result.skipped is False
@@ -159,15 +146,7 @@ async def test_submitters_called_in_documented_order_dream_then_ratification():
         side_effect=lambda *_a, **_kw: call_order.append("rat")
         or _ratification_result()
     )
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
-    ):
+    with _patched_submitters(dream=dream_spy, ratification=rat_spy):
         await run_nightly_batch_submit("u")
 
     assert call_order == ["dream", "rat"]
@@ -183,15 +162,8 @@ async def test_dream_crash_still_lets_ratification_sweep_run():
     """A crashed dream submitter must not block the ratification
     sweep — they operate on disjoint tentative-edge populations."""
     rat_spy = AsyncMock(return_value=_ratification_result(superseded=2))
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass",
-        new=AsyncMock(side_effect=RuntimeError("dream boom")),
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
+    with _patched_submitters(
+        dream=AsyncMock(side_effect=RuntimeError("dream boom")), ratification=rat_spy
     ):
         result = await run_nightly_batch_submit("u")
 
@@ -206,17 +178,9 @@ async def test_dream_crash_still_lets_ratification_sweep_run():
 @pytest.mark.asyncio
 async def test_both_submitters_failing_concatenates_errors():
     """Both submitters can fail independently; both errors surface."""
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass",
-        new=AsyncMock(side_effect=RuntimeError("dream boom")),
-    ), patch.object(
-        nightly_batch,
-        "run_ratification_pass",
-        new=AsyncMock(side_effect=RuntimeError("rat boom")),
+    with _patched_submitters(
+        dream=AsyncMock(side_effect=RuntimeError("dream boom")),
+        ratification=AsyncMock(side_effect=RuntimeError("rat boom")),
     ):
         result = await run_nightly_batch_submit("u")
 
@@ -233,16 +197,7 @@ async def test_dream_internal_error_propagates_via_result_dream_error_not_top_le
     so the cron-wrapper log line can distinguish 'submitter crashed
     in nightly batch glue' from 'submitter ran and reported failure'."""
     dream_spy = AsyncMock(return_value=_dream_result(error="phase 1 LLM down"))
-    rat_spy = AsyncMock(return_value=_ratification_result())
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
-    ):
+    with _patched_submitters(dream=dream_spy):
         result = await run_nightly_batch_submit("u")
 
     # Top-level error stays None — submitter reported its own error.
@@ -268,16 +223,7 @@ async def test_batch_path_dream_sets_dream_in_flight():
     admin wrapper marks the row complete with this envelope) don't
     read the dream counts as final."""
     dream_spy = AsyncMock(return_value=_dream_result(execution_path="anthropic_batch"))
-    rat_spy = AsyncMock(return_value=_ratification_result())
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
-    ):
+    with _patched_submitters(dream=dream_spy):
         result = await run_nightly_batch_submit("u")
 
     assert result.dream_in_flight is True
@@ -293,18 +239,7 @@ async def test_skipped_or_errored_batch_path_dream_is_not_in_flight():
         _dream_result(execution_path="anthropic_batch", skipped=True),
         _dream_result(execution_path="anthropic_batch", error="submit failed"),
     ):
-        with patch.object(
-            nightly_batch,
-            "check_dream_budget",
-            new=AsyncMock(return_value=(True, None)),
-        ), patch(
-            "backend.copilot.dream.orchestrator.execute_dream_pass",
-            new=AsyncMock(return_value=dream),
-        ), patch.object(
-            nightly_batch,
-            "run_ratification_pass",
-            new=AsyncMock(return_value=_ratification_result()),
-        ):
+        with _patched_submitters(dream=AsyncMock(return_value=dream)):
             result = await run_nightly_batch_submit("u")
 
         assert result.dream_in_flight is False
@@ -316,12 +251,7 @@ async def test_expert_scope_reaches_both_submitters_and_the_owner_pays(trigger):
     """An expert's nightly cron runs the dream and the sweep on the expert's
     graph, while the budget check stays on the owner, whose allowance pays
     for it."""
-    budget = AsyncMock(return_value=(True, None))
-    dream_spy = AsyncMock(return_value=_dream_result())
-    rat_spy = AsyncMock(return_value=_ratification_result())
-    with patch.object(nightly_batch, "check_dream_budget", new=budget), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(nightly_batch, "run_ratification_pass", new=rat_spy):
+    with _patched_submitters() as (budget, dream_spy, rat_spy):
         result = await run_nightly_batch_submit(
             "u", expert_id="expert-1", trigger=trigger
         )
@@ -334,17 +264,7 @@ async def test_expert_scope_reaches_both_submitters_and_the_owner_pays(trigger):
 
 @pytest.mark.asyncio
 async def test_account_scope_runs_the_account_graph():
-    dream_spy = AsyncMock(return_value=_dream_result())
-    rat_spy = AsyncMock(return_value=_ratification_result())
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream_spy
-    ), patch.object(
-        nightly_batch, "run_ratification_pass", new=rat_spy
-    ):
+    with _patched_submitters() as (_, dream_spy, rat_spy):
         result = await run_nightly_batch_submit("u")
 
     dream_spy.assert_awaited_once_with("u", expert_id=None, trigger="cron")
@@ -363,22 +283,9 @@ async def test_skill_learning_runs_once_per_account_never_per_expert(
     with its flag on the account's nightly batch runs it and an expert's
     leaves it out."""
     learning = AsyncMock()
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass",
-        new=AsyncMock(return_value=_dream_result()),
-    ), patch.object(
-        nightly_batch,
-        "run_ratification_pass",
-        new=AsyncMock(return_value=_ratification_result()),
-    ), patch.object(
+    with _patched_submitters(), patch.object(
         nightly_batch, "is_feature_enabled", new=AsyncMock(return_value=True)
-    ), patch.object(
-        nightly_batch, "run_skill_learning_pass", new=learning
-    ):
+    ), patch.object(nightly_batch, "run_skill_learning_pass", new=learning):
         await run_nightly_batch_submit("u", expert_id=expert_id)
 
     if runs_learning:
@@ -389,18 +296,7 @@ async def test_skill_learning_runs_once_per_account_never_per_expert(
 
 @pytest.mark.asyncio
 async def test_skill_learning_crash_is_reported_not_raised():
-    with patch.object(
-        nightly_batch,
-        "check_dream_budget",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "backend.copilot.dream.orchestrator.execute_dream_pass",
-        new=AsyncMock(return_value=_dream_result()),
-    ), patch.object(
-        nightly_batch,
-        "run_ratification_pass",
-        new=AsyncMock(return_value=_ratification_result()),
-    ), patch.object(
+    with _patched_submitters(), patch.object(
         nightly_batch, "is_feature_enabled", new=AsyncMock(return_value=True)
     ), patch.object(
         nightly_batch,
@@ -411,3 +307,23 @@ async def test_skill_learning_crash_is_reported_not_raised():
 
     assert result.learning is None
     assert result.error == "learning: boom"
+
+
+@contextmanager
+def _patched_submitters(
+    *,
+    budget: tuple[bool, str | None] = (True, None),
+    dream: AsyncMock | None = None,
+    ratification: AsyncMock | None = None,
+) -> Iterator[tuple[AsyncMock, AsyncMock, AsyncMock]]:
+    """Patch the budget check and both submitters, yielding their mocks; by
+    default the budget allows the pass and each submitter returns a plain result."""
+    budget_check = AsyncMock(return_value=budget)
+    if dream is None:
+        dream = AsyncMock(return_value=_dream_result())
+    if ratification is None:
+        ratification = AsyncMock(return_value=_ratification_result())
+    with patch.object(nightly_batch, "check_dream_budget", new=budget_check), patch(
+        "backend.copilot.dream.orchestrator.execute_dream_pass", new=dream
+    ), patch.object(nightly_batch, "run_ratification_pass", new=ratification):
+        yield budget_check, dream, ratification
