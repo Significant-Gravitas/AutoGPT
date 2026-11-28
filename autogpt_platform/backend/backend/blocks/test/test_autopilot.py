@@ -1,6 +1,7 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,6 +18,8 @@ from backend.blocks.autopilot import (
     _inherited_permissions,
     _reset_recursion,
 )
+from backend.copilot.constants import AUTOPILOT_BLOCK_TOOL_NAME
+from backend.copilot.executor import utils as executor_utils
 from backend.copilot.permissions import ALL_TOOL_NAMES, CopilotPermissions
 from backend.data.execution import ExecutionContext
 
@@ -387,12 +390,15 @@ class TestRecoveryEnqueue:
                 outputs[name] = value
 
         assert "network error" in outputs.get("error", "")
+        # ``spawner_envelope`` is the spawning turn's, so recovery re-derives a
+        # child of it rather than re-rooting; a test context carries no tree.
         mock_enqueue.assert_awaited_once_with(
             "sess-recover",
             ctx.user_id,
             "do work",
             False,
             permissions=CopilotPermissions(tools=["web_fetch"], tools_exclude=False),
+            spawner_envelope=None,
         )
 
     @pytest.mark.asyncio
@@ -612,3 +618,80 @@ async def test_a_recovered_turn_starts_like_any_turn_under_the_blocks_filter():
     assert call.kwargs["session_id"] == "sess-1"
     assert call.kwargs["permissions"].tools == ["web_fetch"]
     assert call.kwargs["permissions"].tools_exclude is False
+
+
+@pytest.mark.asyncio
+async def test_a_recovered_graph_nested_turn_keeps_its_spawners_tree_and_filters():
+    """Kills: recovery re-rooting a graph-nested turn (it would drop its depth
+    and tools and charge its own chat), and recovery dropping the block's own
+    and outer filters (the re-run would reach tools and blocks the first
+    could not). Drives the real ``schedule_turn`` and ``dispatch_turn``."""
+    block = AutoPilotBlock()
+    block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
+    block.create_session = AsyncMock(return_value="sess-nested")
+    ctx = _make_context().model_copy(
+        update={
+            "copilot_tree_id": "tree-1",
+            "copilot_tree_depth": 1,
+            "copilot_tree_tools": ["run_sub_session", "web_fetch", "web_search"],
+            "copilot_tree_spend_session_id": "chat-origin",
+        }
+    )
+    input_data = block.Input(
+        prompt="do work",
+        max_recursion_depth=3,
+        tools=["web_fetch", "web_search"],
+        tools_exclude=False,
+    )
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    enqueue = AsyncMock()
+    token = _inherited_permissions.set(
+        CopilotPermissions(
+            tools=["web_fetch"], tools_exclude=False, blocks=["SendWebRequestBlock"]
+        )
+    )
+    try:
+        with (
+            patch(
+                "backend.copilot.turn_queue.count_inflight_turns",
+                new=AsyncMock(return_value=0),
+            ),
+            patch.object(executor_utils, "acquire_turn_slot", new=acquire),
+            patch.object(executor_utils, "admit_turn", new=AsyncMock()),
+            patch.object(
+                executor_utils,
+                "chat_db",
+                return_value=MagicMock(
+                    record_chat_session_turn=AsyncMock(return_value=True)
+                ),
+            ),
+            patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+            patch.object(executor_utils, "enqueue_copilot_turn", new=enqueue),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+        ):
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+    finally:
+        _inherited_permissions.reset(token)
+
+    call = enqueue.await_args
+    assert call is not None
+    envelope = call.kwargs["envelope"]
+    assert (envelope.tree_id, envelope.depth) == ("tree-1", 2)
+    assert envelope.spend_session_id == "chat-origin"
+    assert call.kwargs["tool_name"] == AUTOPILOT_BLOCK_TOOL_NAME
+    sent = CopilotPermissions.model_validate_json(
+        call.kwargs["permissions"].model_dump_json()
+    )
+    assert sent.effective_allowed_tools(ALL_TOOL_NAMES) == {"web_fetch"}
+    assert not sent.is_block_allowed(
+        "6595ae1f-b924-42cb-9a41-551a0611c4b4", "SendWebRequestBlock"
+    )
