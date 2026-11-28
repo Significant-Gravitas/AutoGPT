@@ -73,6 +73,7 @@
   "read_file",
   "read_skill",
   "read_tool_result",
+  "read_understanding",
   "read_workspace_file",
   "remove_expert_workflow",
   "render_ui",

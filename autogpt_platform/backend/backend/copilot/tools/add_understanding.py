@@ -5,7 +5,11 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import understanding_db
-from backend.data.understanding import BusinessUnderstandingInput
+from backend.data.understanding import (
+    LIST_FIELDS,
+    BusinessUnderstandingInput,
+    context_items,
+)
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, UnderstandingUpdatedResponse
@@ -103,7 +107,7 @@ class AddUnderstandingTool(BaseTool):
 
         # Build current understanding summary (filter out empty values)
         current_understanding = {
-            k: v
+            k: context_items(v, k) if k in LIST_FIELDS else v
             for k, v in understanding.model_dump(
                 exclude={"id", "user_id", "created_at", "updated_at"}
             ).items()

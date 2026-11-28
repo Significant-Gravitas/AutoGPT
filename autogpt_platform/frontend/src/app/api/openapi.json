@@ -36158,6 +36158,7 @@
           "execution_started",
           "agent_output",
           "understanding_updated",
+          "understanding",
           "suggested_goal",
           "agent_builder_guide",
           "agent_builder_preview",
