@@ -34,12 +34,13 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util.request import resolve_and_check_blocked
 
+TEST_SMTP_SERVER = "203.0.113.7"  # RFC 5737 documentation address.
 TEST_CREDENTIALS = UserPasswordCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="smtp",
     username=SecretStr("mock-smtp-username"),
     password=SecretStr("mock-smtp-password"),
-    scope="smtp://smtp.gmail.com",
+    scope=f"smtp://{TEST_SMTP_SERVER}",
     title="Mock SMTP credentials",
 )
 
@@ -101,7 +102,7 @@ class SendEmailBlock(Block):
                 "subject": "Test Email",
                 "body": "This is a test email.",
                 "config": {
-                    "smtp_server": "smtp.gmail.com",
+                    "smtp_server": TEST_SMTP_SERVER,
                     "smtp_port": 25,
                 },
                 "credentials": TEST_CREDENTIALS_INPUT,
