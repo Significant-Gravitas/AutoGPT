@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -39,6 +40,8 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class CreateTalkingAvatarVideoBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.D_ID], Literal["api_key"]

@@ -2,6 +2,7 @@ from typing import Any
 
 from firecrawl import FirecrawlApp
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
@@ -20,6 +21,8 @@ from ._config import firecrawl
 
 
 class FirecrawlExtractBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         urls: list[str] = SchemaField(

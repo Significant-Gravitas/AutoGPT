@@ -3,6 +3,7 @@ from typing import Any
 from firecrawl import FirecrawlApp
 from firecrawl.v2.types import ScrapeOptions
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.blocks.firecrawl._api import ScrapeFormat
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
@@ -22,6 +23,8 @@ from ._format_utils import convert_to_format_options
 
 
 class FirecrawlCrawlBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         url: str = SchemaField(description="The URL to crawl")

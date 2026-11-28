@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.blocks._base import Block
 from backend.data.execution import ExecutionContext
 from backend.executor import direct_block_execution, direct_block_run_parent
 from backend.executor.direct_block_execution import (
@@ -25,7 +26,15 @@ from backend.executor.direct_block_execution import (
 from backend.util.exceptions import BlockExecutionError, BlockUnknownError
 
 
-class _ReportsItsProcess:
+class _Block:
+    """Has Block's default deadline, as a real block without its own does."""
+
+    @property
+    def direct_run_timeout_seconds(self) -> float:
+        return Block.direct_run_timeout_seconds
+
+
+class _ReportsItsProcess(_Block):
     id = name = "reports-its-process"
 
     async def execute(self, input_data, *, execution_context, **kwargs):
@@ -34,7 +43,7 @@ class _ReportsItsProcess:
         yield "input", input_data
 
 
-class _Computes:
+class _Computes(_Block):
     """Writes a beat every 20 ms and takes no cancel, so it runs until it is killed."""
 
     id = name = "computes"
@@ -47,7 +56,7 @@ class _Computes:
         yield "never", None
 
 
-class _Fails:
+class _Fails(_Block):
     id = name = "fails"
 
     async def execute(self, input_data, **kwargs):
@@ -57,21 +66,21 @@ class _Fails:
         yield "never", None
 
 
-class _Allocates:
+class _Allocates(_Block):
     id = name = "allocates"
 
     async def execute(self, input_data, **kwargs):
         yield "size", len(bytearray(input_data["bytes"]))
 
 
-class _Outputs:
+class _Outputs(_Block):
     id = name = "outputs"
 
     async def execute(self, input_data, **kwargs):
         yield "text", "x" * input_data["characters"]
 
 
-class _StartsAHelper:
+class _StartsAHelper(_Block):
     """Starts a helper in a session of its own and ends it when cancelled, as the
     video blocks do with their renders."""
 
@@ -89,7 +98,7 @@ class _StartsAHelper:
         yield "never", None
 
 
-class _ReportsItsOOMScore:
+class _ReportsItsOOMScore(_Block):
     id = name = "reports-its-oom-score"
 
     async def execute(self, input_data, **kwargs):
@@ -166,9 +175,7 @@ async def test_the_run_parent_outlives_a_run_it_has_reaped(run_parent):
 async def test_a_block_computing_past_its_budget_is_killed(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    monkeypatch.setattr(
-        direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 0.5
-    )
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 0.5)
     # Past the cancel's grace, and short of the child's own alarm.
     monkeypatch.setattr(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS", 4
@@ -194,9 +201,7 @@ async def test_a_block_computing_past_its_budget_is_killed(
 async def test_a_run_past_its_deadline_ends_the_helpers_it_started(
     run_parent, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    monkeypatch.setattr(
-        direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 0.5
-    )
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 0.5)
     pid_file = tmp_path / "helper.pid"
 
     with pytest.raises(DirectBlockExecutionTimeoutError):
@@ -216,9 +221,7 @@ async def test_a_run_outliving_its_run_parent_ends_at_its_own_alarm(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    monkeypatch.setattr(
-        direct_block_execution, "DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS", 1
-    )
+    monkeypatch.setattr(Block, "direct_run_timeout_seconds", 1)
     monkeypatch.setattr(
         direct_block_execution, "DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS", 3
     )

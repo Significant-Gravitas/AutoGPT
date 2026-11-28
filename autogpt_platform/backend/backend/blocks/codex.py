@@ -7,6 +7,7 @@ from openai.types.responses import Response as OpenAIResponse
 from pydantic import SecretStr
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockOutput,
@@ -146,6 +147,8 @@ def CodexCredentialsField() -> CodexCredentials:
 
 class CodeGenerationBlock(Block):
     """Block that talks to Codex through an API key or ChatGPT connection."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(

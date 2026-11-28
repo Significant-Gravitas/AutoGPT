@@ -1,5 +1,5 @@
 """The block-execute route runs each block in a process of its own, ended at its
-deadline."""
+block's deadline."""
 
 import asyncio
 import gc
@@ -14,6 +14,7 @@ import pytest_mock
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.blocks.routes import router
+from backend.blocks._base import Block
 from backend.executor import direct_block_run_parent
 from backend.executor.direct_block_execution import start_run_parent, stop_run_parent
 
@@ -26,19 +27,27 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-class _ReportsItsProcess:
-    id = name = "reports-its-process"
+class _Block:
+    """Has Block's default deadline unless it sets its own, as a real block does."""
+
     disabled = False
+
+    @property
+    def direct_run_timeout_seconds(self) -> float:
+        return Block.direct_run_timeout_seconds
+
+
+class _ReportsItsProcess(_Block):
+    id = name = "reports-its-process"
 
     async def execute(self, input_data, **kwargs):
         yield "pid", os.getpid()
 
 
-class _Computes:
+class _Computes(_Block):
     """Writes a beat every 20 ms and takes no cancel, so it runs until it is killed."""
 
     id = name = "computes"
-    disabled = False
 
     async def execute(self, input_data, **kwargs):
         while True:
@@ -48,7 +57,29 @@ class _Computes:
         yield "never", None
 
 
-_BLOCKS = {block.id: block for block in (_ReportsItsProcess, _Computes)}
+class _ComputesForLonger(_Computes):
+    id = name = "computes-for-longer"
+    direct_run_timeout_seconds = 2
+
+
+class _TakesLongerThanTheDefault(_Block):
+    id = name = "takes-longer-than-the-default"
+    direct_run_timeout_seconds = 10
+
+    async def execute(self, input_data, **kwargs):
+        await asyncio.sleep(input_data["seconds"])
+        yield "slept", input_data["seconds"]
+
+
+_BLOCKS = {
+    block.id: block
+    for block in (
+        _ReportsItsProcess,
+        _Computes,
+        _ComputesForLonger,
+        _TakesLongerThanTheDefault,
+    )
+}
 
 
 @pytest.fixture(autouse=True)
@@ -107,10 +138,7 @@ async def test_the_block_runs_in_a_process_of_its_own(
 async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
     run_parent, mocker: pytest_mock.MockFixture, tmp_path: Path
 ):
-    mocker.patch(
-        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
-        1,
-    )
+    mocker.patch.object(Block, "direct_run_timeout_seconds", 1)
     mocker.patch(
         "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER",
         1,
@@ -142,6 +170,55 @@ async def test_a_block_computing_past_its_budget_gets_a_504_and_is_killed(
     assert beats.stat().st_size == stopped_at
     # The user's one slot is free again.
     assert again.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_block_with_a_longer_deadline_runs_past_the_default(
+    run_parent, mocker: pytest_mock.MockFixture
+):
+    mocker.patch.object(Block, "direct_run_timeout_seconds", 0.5)
+    _serve_blocks(mocker)
+
+    async with _client() as client:
+        response = await asyncio.wait_for(
+            client.post(
+                "/blocks/takes-longer-than-the-default/execute", json={"seconds": 1.5}
+            ),
+            timeout=30,
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"slept": [1.5]}
+
+
+@pytest.mark.asyncio
+async def test_a_block_with_a_longer_deadline_gets_a_504_at_its_own_deadline(
+    run_parent, mocker: pytest_mock.MockFixture, tmp_path: Path
+):
+    mocker.patch.object(Block, "direct_run_timeout_seconds", 0.5)
+    mocker.patch(
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS",
+        4,
+    )
+    _serve_blocks(mocker)
+    beats = tmp_path / "beats"
+
+    async with _client() as client:
+        started = time.monotonic()
+        response = await asyncio.wait_for(
+            client.post(
+                "/blocks/computes-for-longer/execute", json={"beats": str(beats)}
+            ),
+            timeout=30,
+        )
+        elapsed = time.monotonic() - started
+    stopped_at = beats.stat().st_size
+    await asyncio.sleep(0.5)
+
+    assert response.status_code == 504
+    assert "did not finish within 2 seconds" in response.json()["detail"]
+    assert elapsed >= 2
+    assert beats.stat().st_size == stopped_at
 
 
 @pytest.mark.asyncio

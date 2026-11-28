@@ -3,9 +3,9 @@
 The block-execute routes run one block and return its outputs. Each run is a
 child process forked from this server's run parent, which the server forks in
 start-up before it starts any thread or opens any connection
-(``start_run_parent``). The run parent cancels a child still running
-``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS`` after it started, kills it if it
-outlasts the cancel, and caps its memory (``direct_block_run_parent``).
+(``start_run_parent``). The run parent cancels a child still running at its
+block's ``direct_run_timeout_seconds``, kills it if it outlasts the cancel, and
+caps its memory (``direct_block_run_parent``).
 
 Each user may have ``DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER`` direct runs in
 flight on this server, and the server ``DIRECT_BLOCK_EXECUTION_MAX_RUNS``.
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS = 300
 # How long the server waits for a timed-out run's process to end; the run parent
 # cancels it at the deadline and kills it 2 seconds later.
 DIRECT_BLOCK_EXECUTION_KILL_WAIT_SECONDS = 5
@@ -142,8 +141,8 @@ async def run_block_in_child(
     and collect its outputs.
 
     Raises:
-        DirectBlockExecutionTimeoutError: The block ran past
-            ``DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS``; its process has been killed.
+        DirectBlockExecutionTimeoutError: The block ran past its
+            ``direct_run_timeout_seconds``; its process has been killed.
         DirectBlockExecutionBusyError: The run parent stopped.
         BlockExecutionError: The block failed on a ``ValueError``, ran out of
             memory, or returned too much output.
@@ -151,7 +150,7 @@ async def run_block_in_child(
     """
     if _run_parent is None:
         raise DirectBlockExecutionBusyError()
-    timeout = DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    timeout = block.direct_run_timeout_seconds
     try:
         return await _run_parent.run(block, input_data, execute_kwargs, timeout)
     except TimeoutError as e:

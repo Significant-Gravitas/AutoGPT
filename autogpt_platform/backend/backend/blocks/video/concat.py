@@ -3,6 +3,7 @@
 from typing import Literal
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -23,6 +24,8 @@ MAX_CONCAT_INPUTS = 10
 
 class VideoConcatBlock(VideoMediaStorage, Block):
     """Merge multiple video clips into one continuous video."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         videos: list[MediaFileType] = SchemaField(

@@ -5,6 +5,7 @@ from typing import Literal
 from moviepy import CompositeVideoClip, TextClip
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -26,6 +27,8 @@ from backend.util.file import MediaFileType, get_exec_file_path
 
 class VideoTextOverlayBlock(VideoMediaStorage, Block):
     """Add text overlay/caption to video."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         video_in: MediaFileType = SchemaField(

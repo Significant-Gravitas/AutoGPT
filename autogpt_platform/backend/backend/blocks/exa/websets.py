@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.blocks._platform_credentials import refuse_platform_credentials
 from backend.data.block import BlockInput
 from backend.sdk import (
@@ -75,6 +76,7 @@ class EnrichmentFormat(str, Enum):
 
 class ExaCreateWebsetBlock(ExaWebsetsBlockBase):
     refuses_platform_credentials = True
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

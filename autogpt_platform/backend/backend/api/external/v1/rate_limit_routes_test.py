@@ -8,7 +8,7 @@ from redis.exceptions import RedisError
 from backend.api.external import rate_limit
 from backend.api.external.v1 import routes
 from backend.api.external.v1.app import v1_app
-from backend.blocks._base import BlockType
+from backend.blocks._base import DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS, BlockType
 
 pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
 
@@ -81,7 +81,11 @@ async def test_execution_cap_blocks_work_without_consuming_the_read_budget(
         yield "result", "ok"
 
     block = MagicMock(
-        id="test-block", block_type=BlockType.STANDARD, disabled=False, execute=execute
+        id="test-block",
+        block_type=BlockType.STANDARD,
+        disabled=False,
+        execute=execute,
+        direct_run_timeout_seconds=DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS,
     )
     get_block = mocker.patch("backend.blocks.get_block", return_value=block)
     charge = mocker.patch.object(routes, "charge_for_direct_block_execution")

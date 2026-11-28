@@ -6,6 +6,7 @@ from typing import Literal
 from elevenlabs import ElevenLabs
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -30,6 +31,8 @@ from backend.util.file import MediaFileType, get_exec_file_path
 
 class VideoNarrationBlock(VideoMediaStorage, Block):
     """Generate AI narration and add to video."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: ElevenLabsCredentialsInput = CredentialsField(

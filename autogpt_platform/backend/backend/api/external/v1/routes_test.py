@@ -12,6 +12,7 @@ import backend.api.external.v1.routes as routes_mod
 import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.blocks._base import DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
@@ -59,6 +60,7 @@ def _stub_block(
     block.id = block_id
     block.name = name
     block.disabled = disabled
+    block.direct_run_timeout_seconds = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 
     async def _execute(_data, **kwargs):
         if capture is not None:
@@ -201,11 +203,8 @@ def test_execute_block_forwards_execution_context(
 def test_execute_block_past_the_time_budget_returns_504(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(
-        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
-        0.5,
-    )
     block = _stub_block(name="SlowBlock")
+    block.direct_run_timeout_seconds = 0.5
 
     async def _never_finishes(_data, **kwargs):
         await asyncio.Event().wait()

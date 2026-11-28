@@ -74,6 +74,7 @@ class ExaCreateResearchBlock(Block):
     execution_timeout_seconds: int | None = execution_timeout_for(
         MAX_RESEARCH_WAIT_SECONDS
     )
+    direct_run_timeout_seconds = execution_timeout_for(MAX_RESEARCH_WAIT_SECONDS)
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(

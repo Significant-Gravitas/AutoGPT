@@ -10,6 +10,7 @@ if typing.TYPE_CHECKING:
     from yt_dlp import _Params
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -27,6 +28,8 @@ from backend.util.request import validate_url_host
 
 class VideoDownloadBlock(VideoMediaStorage, Block):
     """Download video from URL using yt-dlp."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         url: str = SchemaField(

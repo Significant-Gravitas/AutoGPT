@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -33,6 +34,8 @@ class FalModel(str, Enum):
 
 
 class AIVideoGeneratorBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="Description of the video to generate.",

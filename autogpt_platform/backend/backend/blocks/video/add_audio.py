@@ -1,6 +1,7 @@
 """AddAudioToVideoBlock - Attach an audio track to a video file."""
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -17,6 +18,8 @@ from backend.util.file import MediaFileType, get_exec_file_path, store_media_fil
 
 class AddAudioToVideoBlock(Block):
     """Add (attach) an audio track to an existing video."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         video_in: MediaFileType = SchemaField(

@@ -8,6 +8,7 @@ from e2b import SandboxState
 from pydantic import SecretStr
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockOutput,
@@ -111,6 +112,8 @@ class ClaudeCodeBlock(Block):
     Claude Code can create files, install tools, run commands, and perform complex
     coding tasks autonomously within a secure sandbox environment.
     """
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     # Use base template - we'll install Claude Code ourselves for latest version
     DEFAULT_TEMPLATE = "base"

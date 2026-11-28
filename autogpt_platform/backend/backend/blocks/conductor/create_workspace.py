@@ -30,6 +30,7 @@ CREDENTIALS_DESCRIPTION = "Conductor API key from app.conductor.build/users/api-
 
 class ConductorCreateWorkspaceBlock(Block):
     execution_timeout_seconds: int | None = MAX_WAIT_SECONDS + 300
+    direct_run_timeout_seconds = MAX_WAIT_SECONDS + 300
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = conductor.credentials_field(
