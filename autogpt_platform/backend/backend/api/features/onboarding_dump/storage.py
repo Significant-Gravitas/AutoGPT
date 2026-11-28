@@ -59,7 +59,7 @@ RECORDING_MARKER_VALUE = "true"
 # How often the scheduler runs the sweep. It is its own job rather than part
 # of the generic file cleanup, which every scheduler start re-arms at start +
 # interval, so frequent deploys could postpone it past 48 hours. This job
-# keeps its next run across restarts (``Scheduler._register_recording_purge``).
+# keeps its next run across restarts (``keep_if_unchanged`` in its declaration).
 RECORDING_PURGE_INTERVAL = timedelta(hours=1)
 
 # A recording just short of the max age at one run goes at the next, once

@@ -21,9 +21,12 @@ from backend.executor.scheduler import (
     Scheduler,
     _build_trigger,
     _job_to_info,
+    config,
     execute_copilot_turn,
     execute_graph,
+    scheduler_system_jobs,
 )
+from backend.util.system_jobs import SystemJob
 
 STORE = Jobstores.EXECUTION.value
 USER = "user-1"
@@ -111,3 +114,9 @@ def resume(
         USER,
         only_if_paused_by_expert_archive=only_if_paused_by_expert_archive,
     )
+
+
+def declared_system_job(job_id: str) -> SystemJob:
+    """The system job a start registers under *job_id*."""
+    [job] = [job for job in scheduler_system_jobs(config) if job.id == job_id]
+    return job

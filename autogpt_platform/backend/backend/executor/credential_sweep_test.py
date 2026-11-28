@@ -10,6 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.scheduler import Scheduler, refresh_near_expiry_credentials
+from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
 
 JOB_ID = "refresh_near_expiry_credentials"
 
@@ -65,7 +66,7 @@ def test_persisted_idle_sweep_catches_up_once_after_restart(
     monkeypatch.setattr("backend.executor.scheduler.run_async", complete)
     restarted.add_listener(lambda event: executed.set(), EVENT_JOB_EXECUTED)
     try:
-        service._register_idle_credential_sweep()
+        service._register_after_start(declared_system_job(JOB_ID))
         job = restarted.get_job(JOB_ID, jobstore="execution")
         assert job is not None
         assert job.next_run_time == (None if paused else due)
@@ -99,7 +100,7 @@ def test_idle_sweep_installs_or_migrates_the_daily_job(tmp_path, previous):
                 ),
                 jobstore="execution",
             )
-        service._register_idle_credential_sweep()
+        service._register_after_start(declared_system_job(JOB_ID))
         job = scheduler.get_job(JOB_ID, jobstore="execution")
         assert job is not None
         expected = CronTrigger(hour=3, minute=0, timezone=timezone.utc)

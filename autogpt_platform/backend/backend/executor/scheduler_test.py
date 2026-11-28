@@ -27,11 +27,11 @@ from backend.executor.scheduler import (
     _build_trigger,
     _execute_graph,
     _memory_scope_may_fire,
-    _register_dream_pass_jobs,
     execute_dream_pass_reaper,
     execute_dream_pass_retention,
     execute_dream_pass_with_status,
     execute_skill_learning_sync,
+    scheduler_system_jobs,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
@@ -1345,24 +1345,22 @@ def _run_dream_wrapper(result, **kwargs) -> tuple[MagicMock, MagicMock]:
 
 class TestDreamPassReaperAndRetentionJobs:
     def test_both_are_registered_once_for_every_user_not_per_user(self) -> None:
-        scheduler = MagicMock()
-
-        _register_dream_pass_jobs(scheduler)
-
-        jobs = {c.kwargs["id"]: c for c in scheduler.add_job.call_args_list}
+        jobs = {
+            job.id: job
+            for job in scheduler_system_jobs(scheduler_module.config)
+            if job.id.startswith("dream_pass_")
+        }
         assert set(jobs) == {"dream_pass_reaper", "dream_pass_retention"}
         reaper = jobs["dream_pass_reaper"]
-        assert reaper.args[0] is execute_dream_pass_reaper
-        assert (reaper.kwargs["trigger"], reaper.kwargs["minutes"]) == ("interval", 10)
+        assert reaper.func is execute_dream_pass_reaper
+        assert reaper.trigger.interval == timedelta(minutes=10)
         retention = jobs["dream_pass_retention"]
-        assert retention.args[0] is execute_dream_pass_retention
-        trigger = repr(retention.args[1])
+        assert retention.func is execute_dream_pass_retention
+        trigger = repr(retention.trigger)
         assert "day_of_week='sun'" in trigger and "hour='5'" in trigger
         for job in jobs.values():
-            assert job.kwargs["max_instances"] == 1
-            assert job.kwargs["replace_existing"] is True
-            assert job.kwargs["jobstore"] == Jobstores.EXECUTION.value
-            assert "kwargs" not in job.kwargs
+            assert job.max_instances == 1
+            assert job.jobstore is Jobstores.EXECUTION
 
     def test_the_reaper_runs_on_the_shared_loop_bounded_by_its_budget(self) -> None:
         sentinel = object()

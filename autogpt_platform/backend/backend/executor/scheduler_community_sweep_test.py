@@ -28,6 +28,7 @@ from backend.copilot.dream.scheduling import NIGHTLY_BATCH_JOB_PREFIX, dream_sys
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor import scheduler as sm
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
+from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
 
 _EXECUTION = sm.Jobstores.EXECUTION.value
 _MEMORY = sm.Jobstores.MEMORY_CRON_RECONCILE.value
@@ -155,7 +156,7 @@ def test_the_sweep_runs_hourly_in_each_process_from_its_start(tmp_path):
     so a deploy removes the per-scope crons without waiting an hour."""
     with _scheduler(tmp_path) as service:
         before = datetime.now(UTC)
-        service._register_community_sweep()
+        service._register_after_start(declared_system_job(sm._COMMUNITY_SWEEP_JOB_ID))
 
         [job] = service.scheduler.get_jobs(jobstore=_MEMORY)
         assert job.func is sm.rebuild_due_communities_job

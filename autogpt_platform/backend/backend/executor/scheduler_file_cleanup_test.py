@@ -20,6 +20,7 @@ from backend.api.features.onboarding_dump.storage import RECORDING_PURGE_INTERVA
 # the mock.
 from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 from backend.executor import scheduler
+from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
 from backend.util.service import EXPOSED_FLAG
 
 
@@ -122,7 +123,9 @@ class TestRecordingPurgeRegistration:
         )
 
     def test_registers_the_purge_at_its_interval(self, sched):
-        sched._register_recording_purge()
+        sched._register_after_start(
+            declared_system_job(scheduler.RECORDING_PURGE_JOB_ID)
+        )
 
         job = self._job(sched)
         assert job.func is scheduler.purge_expired_recordings_job
@@ -130,7 +133,9 @@ class TestRecordingPurgeRegistration:
         assert job.trigger.interval == RECORDING_PURGE_INTERVAL
 
     def test_a_restart_does_not_postpone_an_overdue_purge(self, sched):
-        sched._register_recording_purge()
+        sched._register_after_start(
+            declared_system_job(scheduler.RECORDING_PURGE_JOB_ID)
+        )
         overdue = datetime.now(timezone.utc) - timedelta(minutes=30)
         sched.scheduler.modify_job(
             scheduler.RECORDING_PURGE_JOB_ID,
@@ -138,7 +143,9 @@ class TestRecordingPurgeRegistration:
             next_run_time=overdue,
         )
 
-        sched._register_recording_purge()
+        sched._register_after_start(
+            declared_system_job(scheduler.RECORDING_PURGE_JOB_ID)
+        )
 
         assert self._job(sched).next_run_time == overdue
 
@@ -151,7 +158,9 @@ class TestRecordingPurgeRegistration:
             jobstore=scheduler.Jobstores.EXECUTION.value,
         )
 
-        sched._register_recording_purge()
+        sched._register_after_start(
+            declared_system_job(scheduler.RECORDING_PURGE_JOB_ID)
+        )
 
         assert self._job(sched).trigger.interval == RECORDING_PURGE_INTERVAL
 
