@@ -1,5 +1,11 @@
 import sys
-from typing import Any
+from bisect import bisect_right
+from itertools import accumulate
+from typing import Any, Callable
+
+LIST_MAX = 2**12
+# A list's "… (omitted N items)…" item: 19 characters plus N's digits, quotes and ", ".
+_LIST_MARKER_COST = 23
 
 # ---------------------------------------------------------------------------
 #  String helpers
@@ -53,20 +59,15 @@ def _truncate_list_middle(lst: list[Any], str_lim: int, list_lim: int) -> list[A
     if len(lst) <= list_lim:
         return [_truncate_value(v, str_lim, list_lim) for v in lst]
 
-    # If the limit is very small (<3) fall back to head‑only + sentinel to avoid
-    # degenerate splits.
-    if list_lim < 3:
-        kept = [_truncate_value(v, str_lim, list_lim) for v in lst[:list_lim]]
-        kept.append(f"… (omitted {len(lst) - list_lim} items)…")
-        return kept
-
-    head_len = list_lim // 2
+    # Head and tail both grow with the limit, so a larger limit keeps every item a
+    # smaller one kept; `_price` relies on that.
+    head_len = max(1, list_lim // 2)
     tail_len = list_lim - head_len
 
     head = [_truncate_value(v, str_lim, list_lim) for v in lst[:head_len]]
-    tail = [_truncate_value(v, str_lim, list_lim) for v in lst[-tail_len:]]
+    tail = [_truncate_value(v, str_lim, list_lim) for v in lst[len(lst) - tail_len :]]
 
-    omitted = len(lst) - (head_len + tail_len)
+    omitted = len(lst) - list_lim
     sentinel = f"… (omitted {omitted} items)…"
     return head + [sentinel] + tail
 
@@ -94,14 +95,14 @@ def _truncate_value(value: Any, str_limit: int, list_limit: int) -> Any:
 def truncate(value: Any, size_limit: int) -> Any:
     """
     Truncate the given value (recursively) so that its string representation
-    does not exceed size_limit characters. Uses binary search to find the
-    largest str_limit and list_limit that fit.
+    does not exceed size_limit characters, keeping as many list items as fit
+    and then the longest strings that fit.
     """
 
     if size_limit < 0:
         raise ValueError("size_limit must be non-negative")
 
-    # Fast path: plain strings don't need the binary search machinery.
+    # Fast path: plain strings don't need the limits search.
     if isinstance(value, str):
         return _truncate_string_middle(value, size_limit)
 
@@ -111,50 +112,137 @@ def truncate(value: Any, size_limit: int) -> Any:
         except Exception:
             return sys.getsizeof(val)
 
-    # Reasonable bounds for string and list limits
-    STR_MIN, STR_MAX = min(8, size_limit), size_limit
-    LIST_MIN, LIST_MAX = 1, 2**12
-
-    # The search below converges on the maximal limits whenever they fit, so try them
-    # first; this still caps lists at LIST_MAX, which returning `value` would not.
-    maximal = _truncate_value(value, STR_MAX, LIST_MAX)
+    # Most payloads fit with the maximal limits; this still caps lists at LIST_MAX,
+    # which returning `value` would not.
+    maximal = _truncate_value(value, size_limit, LIST_MAX)
     if measure(maximal) <= size_limit:
         return maximal
 
-    # Binary search for the largest str_limit and list_limit that fit
-    best = None
+    if not isinstance(value, (list, dict)):
+        return value
 
-    # We'll search str_limit first, then list_limit, but can do both together
-    # For practical purposes, do a grid search with binary search on str_limit for each list_limit
-    # (since lists are usually the main source of bloat)
-    # We'll do binary search on list_limit, and for each, binary search on str_limit
+    return _truncate_to_fit(value, size_limit, measure)
 
-    # Outer binary search on list_limit
-    l_lo, l_hi = LIST_MIN, LIST_MAX
-    while l_lo <= l_hi:
-        l_mid = (l_lo + l_hi) // 2
 
-        # Inner binary search on str_limit
-        s_lo, s_hi = STR_MIN, STR_MAX
-        local_best = None
-        while s_lo <= s_hi:
-            s_mid = (s_lo + s_hi) // 2
-            truncated = _truncate_value(value, s_mid, l_mid)
-            size = measure(truncated)
-            if size <= size_limit:
-                local_best = truncated
-                s_lo = s_mid + 1  # try to increase str_limit
-            else:
-                s_hi = s_mid - 1  # decrease str_limit
+def _truncate_to_fit(
+    value: list | dict, size_limit: int, measure: Callable[[Any], int]
+) -> Any:
+    """Keep as many list items as fit with strings cut to their minimum, then
+    the longest strings that fit, as a search over both limits would, but
+    with one walk of *value* and a few builds instead of one build per probe.
+    """
+    str_min = min(8, size_limit)
+    added, strings = _price(value, str_min)
+    sizes = list(accumulate(added))  # sizes[n]: size with lists cut to n items
+    fitting = [n for n in range(1, LIST_MAX + 1) if sizes[n] <= size_limit]
+    if not fitting:
+        smallest = min(range(1, LIST_MAX + 1), key=lambda n: (sizes[n], -n))
+        return _truncate_value(value, str_min, smallest)
+    list_limit = fitting[-1]
 
-        if local_best is not None:
-            best = local_best
-            l_lo = l_mid + 1  # try to increase list_limit
+    kept = sorted((m, r, cut) for at, m, r, cut in strings if at <= list_limit)
+    lengths = [m for m, _, _ in kept]
+    rest = sizes[list_limit] - sum(cut for _, _, cut in kept)
+    whole = list(accumulate((r for _, r, _ in kept), initial=0))
+    density = list(accumulate(((r - m - 2) / m for m, r, _ in kept), initial=0.0))
+
+    def estimate(str_limit: int) -> float:
+        i = bisect_right(lengths, str_limit)
+        cut = len(kept) - i
+        escapes = str_limit * (density[-1] - density[i])
+        return rest + whole[i] + cut * (str_limit + 2) + escapes
+
+    lo, hi = str_min, size_limit
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if estimate(mid) <= size_limit:
+            lo = mid
         else:
-            l_hi = l_mid - 1  # decrease list_limit
+            hi = mid - 1
 
-    # If nothing fits, fall back to the most aggressive truncation
-    if best is None:
-        best = _truncate_value(value, STR_MIN, LIST_MIN)
+    # The estimate spreads each string's escapes evenly; correct it by measuring.
+    str_limit = lo
+    for _ in range(3):
+        if str_limit <= str_min:
+            break
+        result = _truncate_value(value, str_limit, list_limit)
+        over = measure(result) - size_limit
+        if over <= 0:
+            return result
+        cut = max(1, len(kept) - bisect_right(lengths, str_limit))
+        str_limit = max(str_min, str_limit - (over + cut - 1) // cut)
+    return _truncate_value(value, str_min, list_limit)
 
-    return best
+
+def _price(
+    value: list | dict, str_min: int
+) -> tuple[list[int], list[tuple[int, int, int, int]]]:
+    """Return what *value*'s size grows by at each list limit with strings cut to
+    *str_min*, and each string that can be cut as (the list limit that keeps it,
+    length, repr size, cut repr size).
+    """
+    added = [0] * (LIST_MAX + 1)
+    strings: list[tuple[int, int, int, int]] = []
+
+    def leaf(node: Any, kept_from: int) -> int:
+        if not isinstance(node, str):
+            return _repr_len(node)
+        size = len(repr(node))
+        if len(node) <= str_min:
+            return size
+        cut = len(repr(_truncate_string_middle(node, str_min)))
+        strings.append((kept_from, len(node), size, cut))
+        return cut
+
+    def walk(node: list | dict, kept_from: int) -> None:
+        if isinstance(node, dict):
+            size = 2 + 2 * max(len(node) - 1, 0)  # braces and ", " separators
+            for key, child in node.items():
+                size += _repr_len(key) + 2
+                if isinstance(child, (list, dict)):
+                    walk(child, kept_from)
+                else:
+                    size += leaf(child, kept_from)
+            added[kept_from] += size
+            return
+
+        n = len(node)
+        added[kept_from] += 2
+        # The marker shows while the limit is under n, and narrows by a character
+        # each time the count of omitted items loses a digit.
+        at = kept_from
+        while at < min(n, LIST_MAX + 1):
+            digits = len(str(n - at))
+            added[at] += _LIST_MARKER_COST + digits
+            narrower = n - 10 ** (digits - 1) + 1  # with one digit fewer, or none at n
+            if narrower <= LIST_MAX:
+                added[narrower] -= _LIST_MARKER_COST + digits
+            at = narrower
+        for i in _indices_ever_kept(n):
+            # Kept once its head or tail slot exists, or the whole list fits.
+            from_head = 1 if i == 0 else 2 * i + 2
+            from_tail = max(2, 2 * (n - 1 - i) + 1)
+            at = max(kept_from, min(n, from_head, from_tail))
+            child = node[i]
+            if isinstance(child, (list, dict)):
+                added[at] += 2 if i else 0
+                walk(child, at)
+            else:
+                added[at] += (2 if i else 0) + leaf(child, at)
+
+    walk(value, 1)
+    return added, strings
+
+
+def _indices_ever_kept(n: int) -> range | list[int]:
+    if n <= LIST_MAX:
+        return range(n)
+    half = LIST_MAX // 2
+    return [*range(half), *range(n - (LIST_MAX - half), n)]
+
+
+def _repr_len(value: Any) -> int:
+    try:
+        return len(repr(value))
+    except Exception:
+        return sys.getsizeof(value)
