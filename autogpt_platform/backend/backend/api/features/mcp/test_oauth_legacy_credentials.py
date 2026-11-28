@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.client import MAX_REPLY_BYTES
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import create_mcp_oauth_handler
@@ -117,4 +118,6 @@ async def test_rejected_revocation_does_not_report_success():
             side_effect=HTTPClientError("Revocation rejected", 401)
         )
         assert await handler.revoke_tokens(credentials) is False
-    requests.assert_called_once_with(raise_for_status=True)
+    requests.assert_called_once_with(
+        raise_for_status=True, max_response_bytes=MAX_REPLY_BYTES
+    )

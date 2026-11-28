@@ -29,6 +29,7 @@ from backend.api.features.mcp.oauth_registration import (
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
+    MAX_REPLY_BYTES,
     MCPClient,
     MCPClientError,
     normalize_mcp_authorization,
@@ -985,7 +986,9 @@ async def _register_mcp_client(
         }
         if scopes:
             payload["scope"] = " ".join(scopes)
-        response = await Requests(raise_for_status=True).post(
+        response = await Requests(
+            raise_for_status=True, max_response_bytes=MAX_REPLY_BYTES
+        ).post(
             registration_endpoint,
             json=payload,
         )
