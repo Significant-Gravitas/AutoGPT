@@ -13,14 +13,23 @@ Flow:
 7. App uses access token to call external API endpoints
 """
 
+import base64
 import io
 import logging
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional
-from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlsplit, urlunsplit
+from urllib.parse import (
+    parse_qsl,
+    unquote,
+    unquote_plus,
+    urlencode,
+    urlparse,
+    urlsplit,
+    urlunsplit,
+)
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -48,7 +57,9 @@ from backend.data.account_deletion import refuse_closed_account
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
+    OAuthAccessToken,
     OAuthApplicationInfo,
+    OAuthRefreshToken,
     RefreshTokenFamilyRevokedError,
     TokenIntrospectionResult,
     consume_authorization_code,
@@ -117,8 +128,10 @@ class TokenResponse(BaseModel):
     token_type: Literal["Bearer"] = "Bearer"
     access_token: str
     access_token_expires_at: datetime
+    expires_in: int = Field(description="Seconds until the access token expires")
     refresh_token: str
     refresh_token_expires_at: datetime
+    scope: str = Field(description="The granted scopes, space-separated")
     scopes: list[str]
 
 
@@ -477,13 +490,16 @@ def _redirect_url_with_params(redirect_uri: str, params: dict[str, str]) -> str:
 # ============================================================================
 
 
+_CLIENT_ID_DESCRIPTION = "Required unless the client authenticates with HTTP Basic"
+
+
 class TokenRequestByCode(BaseModel):
     grant_type: Literal["authorization_code"]
     code: str = Field(description="Authorization code")
     redirect_uri: str = Field(
         description="Redirect URI (must match authorization request)"
     )
-    client_id: str
+    client_id: str = Field(description=_CLIENT_ID_DESCRIPTION)
     client_secret: str = ""
     code_verifier: str = Field(max_length=128, description="PKCE code verifier")
 
@@ -491,7 +507,7 @@ class TokenRequestByCode(BaseModel):
 class TokenRequestByRefreshToken(BaseModel):
     grant_type: Literal["refresh_token"]
     refresh_token: str
-    client_id: str
+    client_id: str = Field(description=_CLIENT_ID_DESCRIPTION)
     client_secret: str = ""
 
 
@@ -500,13 +516,22 @@ OAuthTokenRequest = Annotated[
     Field(discriminator="grant_type"),
 ]
 _TOKEN_REQUEST_ADAPTER = TypeAdapter(OAuthTokenRequest)
+
+
+def _published_schema(model: type[BaseModel]) -> dict:
+    # HTTP Basic can carry the client id; the parser copies it in before validating.
+    schema = model.model_json_schema()
+    schema["required"] = [f for f in schema["required"] if f != "client_id"]
+    return schema
+
+
 _TOKEN_REQUEST_BODY_SCHEMA = {
     "content": {
         content_type: {
             "schema": {
                 "oneOf": [
-                    TokenRequestByCode.model_json_schema(),
-                    TokenRequestByRefreshToken.model_json_schema(),
+                    _published_schema(TokenRequestByCode),
+                    _published_schema(TokenRequestByRefreshToken),
                 ],
                 "discriminator": {"propertyName": "grant_type"},
             }
@@ -533,13 +558,19 @@ async def token(
 
     Exchanges authorization code or refresh token for access token.
 
+    Takes a form-encoded body, as RFC 6749 specifies, or a JSON body. The client
+    authenticates with `client_id` and `client_secret` in the body, or with HTTP
+    Basic.
+
     Grant Types:
     1. authorization_code: Exchange authorization code for tokens
-       - Required: grant_type, code, redirect_uri, client_id, code_verifier
+       - Required: grant_type, code, redirect_uri, code_verifier, and client_id
+         unless the client authenticates with HTTP Basic
        - client_secret is required only for confidential clients
 
     2. refresh_token: Exchange refresh token for new access token
-       - Required: grant_type, refresh_token, client_id
+       - Required: grant_type, refresh_token, and client_id unless the client
+         authenticates with HTTP Basic
        - client_secret is required only for confidential clients
 
     Returns:
@@ -547,7 +578,8 @@ async def token(
     - token_type: "Bearer"
     - expires_in: Seconds until access token expires
     - refresh_token: Token for refreshing access (30 days TTL)
-    - scopes: List of scopes
+    - scope: The granted scopes, space-separated
+    - scopes: The same scopes, as a list
     """
     request = await _parse_token_request(http_request)
 
@@ -627,14 +659,7 @@ async def token(
                 detail="Failed to generate tokens",
             )
 
-        return TokenResponse(
-            token_type="Bearer",
-            access_token=access_token.token.get_secret_value(),
-            access_token_expires_at=access_token.expires_at,
-            refresh_token=refresh_token.token.get_secret_value(),
-            refresh_token_expires_at=refresh_token.expires_at,
-            scopes=list(s.value for s in scopes),
-        )
+        return _token_response(access_token, refresh_token)
 
     # Handle refresh_token grant
     else:
@@ -666,18 +691,15 @@ async def token(
                 detail="Failed to generate tokens",
             )
 
-        return TokenResponse(
-            token_type="Bearer",
-            access_token=new_access_token.token.get_secret_value(),
-            access_token_expires_at=new_access_token.expires_at,
-            refresh_token=new_refresh_token.token.get_secret_value(),
-            refresh_token_expires_at=new_refresh_token.expires_at,
-            scopes=list(s.value for s in new_access_token.scopes),
-        )
+        return _token_response(new_access_token, new_refresh_token)
 
 
 async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
-    """Parse the OAuth token request from JSON or standard form encoding."""
+    """Parse the OAuth token request from JSON or standard form encoding.
+
+    The client authenticates in the body or with HTTP Basic (RFC 6749 §2.3.1),
+    which standard OAuth clients use by default.
+    """
     content_type = (
         http_request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     )
@@ -704,6 +726,20 @@ async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
             detail="Token requests must use JSON or application/x-www-form-urlencoded",
         )
 
+    credentials = _basic_credentials(http_request.headers.get("authorization"))
+    if credentials and isinstance(payload, dict):
+        client_id, client_secret = credentials
+        if (
+            "client_secret" in payload
+            or payload.get("client_id", client_id) != client_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Authenticate the client with HTTP Basic or in the body, "
+                "not both",
+            )
+        payload |= {"client_id": client_id, "client_secret": client_secret}
+
     try:
         return _TOKEN_REQUEST_ADAPTER.validate_python(payload)
     except ValidationError as exc:
@@ -716,6 +752,43 @@ async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
             for error in bounded_validation_errors(exc)
         ]
     raise RequestValidationError(safe_errors)
+
+
+def _basic_credentials(authorization: Optional[str]) -> Optional[tuple[str, str]]:
+    """The client id and secret from an HTTP Basic header, if there is one.
+
+    RFC 6749 §2.3.1 form-encodes both before they are joined and base64'd.
+    """
+    scheme, _, encoded = (authorization or "").partition(" ")
+    if scheme.lower() != "basic":
+        return None
+    try:
+        decoded = base64.b64decode(encoded.strip(), validate=True).decode()
+    except ValueError:  # bad base64, non-ASCII characters or non-UTF-8 bytes
+        decoded = ""
+    client_id, separator, client_secret = decoded.partition(":")
+    if not separator:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed HTTP Basic client credentials",
+        )
+    return unquote_plus(client_id), unquote_plus(client_secret)
+
+
+def _token_response(
+    access_token: OAuthAccessToken, refresh_token: OAuthRefreshToken
+) -> TokenResponse:
+    scopes = [s.value for s in access_token.scopes]
+    expires_in = access_token.expires_at - datetime.now(timezone.utc)
+    return TokenResponse(
+        access_token=access_token.token.get_secret_value(),
+        access_token_expires_at=access_token.expires_at,
+        expires_in=max(0, int(expires_in.total_seconds())),
+        refresh_token=refresh_token.token.get_secret_value(),
+        refresh_token_expires_at=refresh_token.expires_at,
+        scope=" ".join(scopes),
+        scopes=scopes,
+    )
 
 
 # ============================================================================
