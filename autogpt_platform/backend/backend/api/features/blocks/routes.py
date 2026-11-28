@@ -16,6 +16,7 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from starlette.status import (
+    HTTP_400_BAD_REQUEST,
     HTTP_402_PAYMENT_REQUIRED,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_503_SERVICE_UNAVAILABLE,
@@ -35,13 +36,15 @@ from backend.executor.direct_block_execution import (
     DirectBlockExecutionLimitError,
     DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
+    block_requires_graph_run,
     claim_direct_block_execution_slot,
     run_block_off_loop,
+    validate_direct_block_input,
 )
 from backend.monitoring.instrumentation import record_block_execution
 from backend.util.cache import cached
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import BlockInputError, InsufficientBalanceError
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -138,6 +141,11 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
+    if block_requires_graph_run(obj):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Block #{block_id} can only run inside a workflow.",
+        )
 
     user = await get_user_by_id(user_id)
     if not user:
@@ -165,6 +173,11 @@ async def _run_direct_block(
     user_timezone: str,
     slot: DirectBlockExecutionSlot,
 ) -> CompletedBlockOutput:
+    try:
+        validate_direct_block_input(obj, data)
+    except BlockInputError as e:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
     try:
         await execution_utils.charge_for_direct_block_execution(
             user_id=user_id, block=obj, input_data=data, source="internal"

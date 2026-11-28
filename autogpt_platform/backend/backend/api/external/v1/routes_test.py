@@ -13,9 +13,11 @@ import backend.api.external.v1.routes as routes_mod
 import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.executor.direct_block_execution import block_requires_graph_run
 from backend.util.exceptions import InsufficientBalanceError
 
 app = fastapi.FastAPI()
@@ -298,7 +300,7 @@ def test_registry_blocks_needing_a_workflow_are_refused(
     outcomes: dict[str, tuple[int, str]] = {}
     for block_id, block_cls in backend.blocks.get_blocks().items():
         block = block_cls()
-        if block.disabled or not is_graph_only_block(block):
+        if block.disabled or not block_requires_graph_run(block):
             continue
         monkeypatch.setattr(block_cls, "execute", _record_run)
         response = client.post(f"/blocks/{block_id}/execute", json={})
@@ -309,11 +311,63 @@ def test_registry_blocks_needing_a_workflow_are_refused(
         for name, outcome in outcomes.items()
         if outcome[0] != 403 or "inside a workflow" not in str(outcome[1])
     } == {}
-    assert {"AgentExecutorBlock", "AutoPilotBlock", "OrchestratorBlock"} <= set(
-        outcomes
+    assert {
+        "AgentExecutorBlock",
+        "AutoPilotBlock",
+        "OrchestratorBlock",
+        "AddMemoryBlock",
+        "SearchMemoryBlock",
+        "GetAllMemoriesBlock",
+        "GetLatestMemoryBlock",
+        "PersistInformationBlock",
+        "RetrieveInformationBlock",
+        "VideoClipBlock",
+        "VideoConcatBlock",
+        "VideoNarrationBlock",
+    } <= set(outcomes)
+    assert all(
+        name in outcomes
+        for block_cls in backend.blocks.get_blocks().values()
+        if not (b := block_cls()).disabled and is_graph_only_block(b)
+        for name in (b.name,)
     )
     charge_mock.assert_not_awaited()
     assert not ran
+
+
+def test_execute_block_validates_input_before_charging(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Invalid input must be rejected with 400 before credits are charged."""
+
+    class _StrictInputBlock(Block):
+        class Input(BlockSchemaInput):
+            required_text: str
+
+        class Output(BlockSchemaOutput):
+            out: str
+
+        def __init__(self):
+            super().__init__(
+                id="00000000-0000-0000-0000-000000000099",
+                description="Block requiring a string input",
+                input_schema=_StrictInputBlock.Input,
+                output_schema=_StrictInputBlock.Output,
+            )
+
+        async def run(self, input_data: Input, **_kwargs):
+            yield "out", input_data.required_text
+
+    block = _StrictInputBlock()
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    charge_mock = AsyncMock()
+    monkeypatch.setattr(routes_mod, "charge_for_direct_block_execution", charge_mock)
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 400, f"got {response.status_code}: {response.text}"
+    assert "invalid input data" in response.json()["detail"].lower()
+    charge_mock.assert_not_awaited()
 
 
 def test_execute_block_context_carries_key_org_and_team(

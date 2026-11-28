@@ -16,6 +16,9 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.blocks import get_blocks
+from backend.blocks._base import Block, BlockSchemaInput, BlockSchemaOutput
+from backend.executor.direct_block_execution import block_requires_graph_run
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -379,6 +382,84 @@ def test_execute_graph_block_not_found(
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+def test_execute_graph_block_refuses_blocks_requiring_a_workflow(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Internal direct execute applies the same workflow-only gate as v1."""
+    charge_mock = mocker.patch(
+        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution",
+        new_callable=AsyncMock,
+    )
+    outcomes: dict[str, tuple[int, str]] = {}
+    for block_id, block_cls in get_blocks().items():
+        block = block_cls()
+        if block.disabled or not block_requires_graph_run(block):
+            continue
+        response = client.post(f"/blocks/{block_id}/execute", json={})
+        outcomes[block.name] = (response.status_code, response.json().get("detail"))
+
+    assert {
+        name: outcome
+        for name, outcome in outcomes.items()
+        if outcome[0] != 403 or "inside a workflow" not in str(outcome[1])
+    } == {}
+    assert {
+        "AgentExecutorBlock",
+        "AutoPilotBlock",
+        "OrchestratorBlock",
+        "AddMemoryBlock",
+        "PersistInformationBlock",
+        "RetrieveInformationBlock",
+        "VideoClipBlock",
+        "VideoConcatBlock",
+        "VideoNarrationBlock",
+    } <= set(outcomes)
+    charge_mock.assert_not_awaited()
+
+
+def test_execute_graph_block_validates_input_before_charging(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Invalid input returns 400 without charging credits."""
+
+    class _StrictInputBlock(Block):
+        class Input(BlockSchemaInput):
+            required_text: str
+
+        class Output(BlockSchemaOutput):
+            out: str
+
+        def __init__(self):
+            super().__init__(
+                id="00000000-0000-0000-0000-000000000098",
+                description="Block requiring a string input",
+                input_schema=_StrictInputBlock.Input,
+                output_schema=_StrictInputBlock.Output,
+            )
+
+        async def run(self, input_data: Input, **_kwargs):
+            yield "out", input_data.required_text
+
+    block = _StrictInputBlock()
+    mocker.patch("backend.api.features.blocks.routes.get_block", return_value=block)
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+    mocker.patch(
+        "backend.api.features.blocks.routes.get_user_by_id",
+        return_value=mock_user,
+    )
+    charge_mock = mocker.patch(
+        "backend.api.features.blocks.routes.execution_utils.charge_for_direct_block_execution",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 400
+    assert "invalid input data" in response.json()["detail"].lower()
+    charge_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

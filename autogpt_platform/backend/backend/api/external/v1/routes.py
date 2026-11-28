@@ -18,7 +18,6 @@ from backend.api.external.middleware import (
 )
 from backend.api.external.rate_limit import EXECUTION_LIMIT, READ_LIMIT
 from backend.blocks._base import AnyBlockSchema
-from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError, enforce_payment_paywall
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
@@ -32,15 +31,17 @@ from backend.executor.direct_block_execution import (
     DirectBlockExecutionLimitError,
     DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
+    block_requires_graph_run,
     claim_direct_block_execution_slot,
     run_block_off_loop,
+    validate_direct_block_input,
 )
 from backend.executor.utils import (
     add_graph_execution,
     charge_for_direct_block_execution,
 )
 from backend.integrations.webhooks.graph_lifecycle_hooks import before_graph_activate
-from backend.util.exceptions import InsufficientBalanceError
+from backend.util.exceptions import BlockInputError, InsufficientBalanceError
 from backend.util.models import MAX_PAGE
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
@@ -134,9 +135,8 @@ async def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
     if obj.disabled:
         raise HTTPException(status_code=403, detail=f"Block #{block_id} is disabled.")
-    # The blocks CoPilot won't run standalone need a workflow around them here too;
-    # one shared predicate keeps the two boundaries from drifting apart.
-    if is_graph_only_block(obj):
+    # Refuse graph-only blocks and blocks whose run() requires graph/execution IDs.
+    if block_requires_graph_run(obj):
         raise HTTPException(
             status_code=403,
             detail=f"Block #{block_id} can only run inside a workflow.",
@@ -168,6 +168,13 @@ async def _run_direct_block(
     user_timezone: str,
     slot: DirectBlockExecutionSlot,
 ) -> CompletedBlockOutput:
+    try:
+        validate_direct_block_input(obj, data)
+    except BlockInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
     try:
         await charge_for_direct_block_execution(
             user_id=auth.user_id, block=obj, input_data=data, source="external"
