@@ -5,6 +5,7 @@ export const PROTECTED_PAGES = [
   "/account-closed",
   "/auth/authorize",
   "/auth/integrations",
+  "/collections",
   "/copilot",
   "/home",
   "/monitor",

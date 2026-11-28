@@ -294,6 +294,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Composing a page",
     done: "Composed a page",
   },
+  collections: {
+    category: "info",
+    running: "Working on a collection",
+    done: "Worked on a collection",
+  },
   request_work_check: {
     category: "question",
     running: "Asking how the task went",

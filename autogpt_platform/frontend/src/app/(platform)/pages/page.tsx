@@ -7,17 +7,58 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { stashCopilotPrompt } from "@/services/copilot/prompt-handoff";
-import { Flag } from "@/services/feature-flags/use-get-flag";
+import { CollectionsList } from "@/app/(platform)/collections/components/CollectionsList/CollectionsList";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 import { formatDate } from "@/lib/utils/time";
 import NextLink from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const ASK_PROMPT = "Make me a page that ";
 
 function PagesListPage() {
-  const query = useListPages({ query: { select: okData } });
+  const collectionsEnabled = Boolean(useGetFlag(Flag.COLLECTIONS));
+  const tab = useSearchParams().get("tab");
   const router = useRouter();
+  if (!collectionsEnabled) return <PagesTab router={router} />;
+  return (
+    <TabsLine
+      value={tab === "collections" ? "collections" : "pages"}
+      onValueChange={(value) =>
+        router.replace(
+          value === "collections" ? "/pages?tab=collections" : "/pages",
+        )
+      }
+    >
+      <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6">
+        <TabsLineList>
+          <TabsLineTrigger value="pages">Pages</TabsLineTrigger>
+          <TabsLineTrigger value="collections">Collections</TabsLineTrigger>
+        </TabsLineList>
+      </div>
+      <TabsLineContent value="pages">
+        <PagesTab router={router} />
+      </TabsLineContent>
+      <TabsLineContent value="collections">
+        <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-6">
+          <Text variant="h2" as="h1">
+            Collections
+          </Text>
+          <CollectionsList />
+        </main>
+      </TabsLineContent>
+    </TabsLine>
+  );
+}
+
+function PagesTab({ router }: { router: ReturnType<typeof useRouter> }) {
+  const query = useListPages({ query: { select: okData } });
   const pages = query.data?.pages ?? [];
 
   function askOtto() {

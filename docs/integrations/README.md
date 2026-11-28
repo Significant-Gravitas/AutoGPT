@@ -95,6 +95,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Add To Collection](block-integrations/data.md#add-to-collection) | Adds a row to a collection, or with "match on key" updates the row with that key and adds it otherwise |
 | [Airtable Create Base](block-integrations/airtable/bases.md#airtable-create-base) | Create or find a base in Airtable |
 | [Airtable Create Field](block-integrations/airtable/schema.md#airtable-create-field) | Add a new field to an Airtable table |
 | [Airtable Create Records](block-integrations/airtable/records.md#airtable-create-records) | Create records in an Airtable table |
@@ -110,10 +111,12 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Airtable Webhook Trigger](block-integrations/airtable/triggers.md#airtable-webhook-trigger) | Starts a flow whenever Airtable emits a webhook event |
 | [Baas Bot Delete Recording](block-integrations/baas/bots.md#baas-bot-delete-recording) | Permanently delete a meeting's recorded data |
 | [Baas Bot Fetch Meeting Data](block-integrations/baas/bots.md#baas-bot-fetch-meeting-data) | Retrieve recorded meeting data |
+| [Create Collection](block-integrations/data.md#create-collection) | Declares a collection's fields and key up front, for when types inferred from the first write are not wanted |
 | [Create Dictionary](block-integrations/data.md#create-dictionary) | Creates a dictionary with the specified key-value pairs |
 | [Create List](block-integrations/data.md#create-list) | Creates a list with the specified values |
 | [Data For Seo Keyword Suggestions](block-integrations/dataforseo/keyword_suggestions.md#data-for-seo-keyword-suggestions) | Get keyword suggestions from DataForSEO Labs Google API |
 | [Data For Seo Related Keywords](block-integrations/dataforseo/related_keywords.md#data-for-seo-related-keywords) | Get related keywords from DataForSEO Labs Google API |
+| [Delete Collection Row](block-integrations/data.md#delete-collection-row) | Deletes one row of a collection by its key or id |
 | [Exa Create Import](block-integrations/exa/websets_import_export.md#exa-create-import) | Import CSV data to use with websets for targeted searches |
 | [Exa Delete Import](block-integrations/exa/websets_import_export.md#exa-delete-import) | Delete an import |
 | [Exa Export Webset](block-integrations/exa/websets_import_export.md#exa-export-webset) | Export webset data in JSON, CSV, or JSON Lines format |
@@ -122,8 +125,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa List Imports](block-integrations/exa/websets_import_export.md#exa-list-imports) | List all imports with pagination support |
 | [Exa Update Import](block-integrations/exa/websets_import_update.md#exa-update-import) | Update the title or metadata of an Exa Websets import |
 | [File Read](block-integrations/data.md#file-read) | Reads a file and returns its content as a string, with optional chunking by delimiter and size limits |
+| [Find Collection Rows](block-integrations/data.md#find-collection-rows) | Finds rows in a collection that meet up to three conditions, sorted, up to a limit; gives the rows as a list, each row on its own, and a count |
 | [Firecrawl Find Data Tools](block-integrations/firecrawl/alexandria.md#firecrawl-find-data-tools) | Finds structured-data tools in Firecrawl Alexandria, free of charge: people and company search and enrichment (work emails, job titles, firmographics via Apollo, People Data Labs, FullEnrich), jobs, finance and filings, public records, places, retail and thousands more |
 | [Firecrawl Run Data Tool](block-integrations/firecrawl/alexandria.md#firecrawl-run-data-tool) | Runs a Firecrawl Alexandria data tool and returns its typed, sourced records: find people by title and company, get verified work emails, enrich a company from its domain, and thousands more |
+| [Get Collection Row](block-integrations/data.md#get-collection-row) | Reads one row of a collection by its key or id |
 | [Google Calendar Read Events](block-integrations/google/calendar.md#google-calendar-read-events) | Retrieves upcoming events from a Google Calendar with filtering options |
 | [Google Docs Append Markdown](block-integrations/google/docs.md#google-docs-append-markdown) | Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output |
 | [Google Docs Append Plain Text](block-integrations/google/docs.md#google-docs-append-plain-text) | Append plain text to the end of a Google Doc (no formatting applied) |
@@ -219,6 +224,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stripe Link Retrieve Card](block-integrations/stripe_link/spend_request.md#stripe-link-retrieve-card) | Get the one-time virtual card number and CVC for an approved spend request, to type into a normal checkout form |
 | [Stripe Subscription Trigger](block-integrations/stripe/triggers.md#stripe-subscription-trigger) | Triggers on Stripe subscription events (new, upgrade, cancel) |
 | [Treg Extract Structured Data](block-integrations/treg/pages.md#treg-extract-structured-data) | Pull typed data out of a web page, described by a JSON schema or a plain-English instruction, through Treg |
+| [Update Collection Row](block-integrations/data.md#update-collection-row) | Changes the named fields of one row in a collection, found by its key or id |
 
 ## Text Processing
 

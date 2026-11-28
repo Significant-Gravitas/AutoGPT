@@ -8,7 +8,7 @@ model writes is a URL or markup.
 from datetime import date
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from backend.copilot.tools.render_ui_models import (
     ChartBlock,
@@ -22,6 +22,15 @@ from backend.copilot.tools.render_ui_models import (
     WorkflowDiagramBlock,
 )
 
+from .collection_design import (
+    MAX_COLLECTIONS_PER_PAGE,
+    CollectionSection,
+    collection_problems,
+    section_collection,
+)
+from .design_base import Ref
+from .design_base import Strict as _Strict
+
 if TYPE_CHECKING:
     from .sources import PageSources
 
@@ -30,15 +39,8 @@ MAX_WORKFLOWS = 6
 MAX_EXPERTS = 4
 MAX_FORM_GROUPS = 3
 
-Ref = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 IOName = Annotated[str, StringConstraints(min_length=1, max_length=100)]
 Body = Annotated[str, StringConstraints(min_length=1, max_length=600)]
-
-
-class _Strict(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", str_strip_whitespace=True, allow_inf_nan=False
-    )
 
 
 class _OnWorkflow(_Strict):
@@ -246,7 +248,12 @@ ExpertSection = (
     | ExpertActivitySection
 )
 Section = Annotated[
-    TextSection | CardsSection | WorkflowSection | ExpertSection | WaitingSection,
+    TextSection
+    | CardsSection
+    | WorkflowSection
+    | ExpertSection
+    | WaitingSection
+    | CollectionSection,
     Field(discriminator="kind"),
 ]
 
@@ -261,6 +268,10 @@ class PageDesign(_Strict):
             raise ValueError(f"a page draws on at most {MAX_WORKFLOWS} workflows")
         if len(self.expert_ids()) > MAX_EXPERTS:
             raise ValueError(f"a page draws on at most {MAX_EXPERTS} experts")
+        if len(self.collection_ids()) > MAX_COLLECTIONS_PER_PAGE:
+            raise ValueError(
+                f"a page draws on at most {MAX_COLLECTIONS_PER_PAGE} collections"
+            )
         return self
 
     def workflow_ids(self) -> list[str]:
@@ -268,6 +279,9 @@ class PageDesign(_Strict):
 
     def expert_ids(self) -> list[str]:
         return _distinct(section_expert(s) for s in self.sections)
+
+    def collection_ids(self) -> list[str]:
+        return _distinct(section_collection(s) for s in self.sections)
 
 
 def section_workflow(section: Any) -> str | None:
@@ -319,6 +333,13 @@ def _section_problems(
         return [f"its workflow is {UNAVAILABLE}"]
     if expert and expert not in sources.failed and not sources.experts.get(expert):
         return [f"its expert is {UNAVAILABLE}"]
+    if collection := section_collection(section):
+        found = sources.collections.get(collection)
+        if collection in sources.failed:
+            return []
+        if found is None:
+            return [f"its collection is {UNAVAILABLE}"]
+        return collection_problems(section, found)
     agent = sources.workflows.get(workflow or "")
     if agent is None:
         return []

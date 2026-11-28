@@ -29,6 +29,12 @@ from backend.copilot.tools.render_ui_models import (
 from backend.data.db_accessors import execution_db, experts_db, library_db, review_db
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
 
+from .collection_design import (
+    CollectionNumbersSection,
+    CollectionTableSection,
+    section_collection,
+)
+from .collection_resolve import resolve_numbers, resolve_table
 from .design import (
     UNAVAILABLE,
     Card,
@@ -84,6 +90,7 @@ from .resolved import (
     RowRun,
     WorkItem,
 )
+from .row_sources import CollectionRowSource
 from .sources import PageSources
 
 logger = logging.getLogger(__name__)
@@ -141,12 +148,15 @@ async def _guarded(
     reader: "_Reader",
 ) -> PageSection:
     workflow, expert = section_workflow(section), section_expert(section)
-    if (workflow and workflow in sources.failed) or (
-        expert and expert in sources.failed
-    ):
+    collection = section_collection(section)
+    if any(ref and ref in sources.failed for ref in (workflow, expert, collection)):
         return _notice(index, section, "failed", COULD_NOT_LOAD)
     if index in stale:
-        source = "expert" if expert and not workflow else "workflow"
+        source = (
+            "collection"
+            if collection
+            else "expert" if expert and not workflow else "workflow"
+        )
         message = GONE if UNAVAILABLE in stale[index] else STALE
         return _notice(index, section, "stale", message.format(source=source))
     try:
@@ -200,6 +210,17 @@ async def _resolve(
         )
     if isinstance(section, WaitingSection):
         return await _waiting(index, section, sources, reader)
+    if collection := section_collection(section):
+        info = sources.collections[collection]
+        assert info is not None
+        if isinstance(section, CollectionTableSection):
+            return await resolve_table(
+                index, section, CollectionRowSource(info), reader.user_id
+            )
+        assert isinstance(section, CollectionNumbersSection)
+        return await resolve_numbers(
+            index, section, CollectionRowSource(info), reader.user_id
+        )
     workflow, expert = section_workflow(section), section_expert(section)
     if workflow:
         agent = sources.workflows[workflow]

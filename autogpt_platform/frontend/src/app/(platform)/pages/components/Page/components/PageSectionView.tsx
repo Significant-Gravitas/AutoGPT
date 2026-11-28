@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { type PageSection, sectionTitle } from "../helpers";
 import type { PageEditing, PageLive } from "../Page";
 import { CardsSection } from "./CardsSection";
+import { CollectionSection } from "./CollectionSection";
 import { ExpertSection } from "./ExpertSection";
 import { LatestResultSection } from "./LatestResultSection";
 import { NoticeSection } from "./NoticeSection";
@@ -80,6 +81,9 @@ function SectionBody({
       return <ExpertSection section={section} />;
     case "waiting":
       return <WaitingSection section={section} live={live} />;
+    case "collection_table":
+    case "collection_numbers":
+      return <CollectionSection section={section} canEdit={Boolean(live)} />;
     case "notice":
       return <NoticeSection section={section} editing={editing} />;
   }

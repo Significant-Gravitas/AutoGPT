@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from backend.api.features.pages.design import MAX_SECTIONS, PageDesign
 from backend.api.features.pages.resolve import resolve_page
 from backend.api.features.pages.resolved import (
+    PageCollectionNumbers,
+    PageCollectionTable,
     PageExpertLearned,
     PageExpertWork,
     PageLatestResult,
@@ -233,6 +235,9 @@ def catalogue() -> dict[str, Any]:
             "A row button or a from_output field names a workflow that has its own "
             "section on the page.",
             "'cards' holds fixed content you write; everything else is read live.",
+            "collection_table and collection_numbers show one of the user's "
+            "collections (the collections tool lists them): source "
+            "{type: 'collection', id}, naming its fields exactly.",
         ],
         "page": compact_schema(PageDesign),
     }
@@ -263,6 +268,10 @@ def _outside_parts(page: ResolvedPage) -> list[Any]:
             parts.append([fact.fact for fact in s.facts])
         elif isinstance(s, PageWaiting):
             parts.append([review.payload for review in s.reviews])
+        elif isinstance(s, PageCollectionTable):
+            parts.append([[row.values, row.pending] for row in s.rows])
+        elif isinstance(s, PageCollectionNumbers):
+            parts.append(s.block)
     return parts
 
 

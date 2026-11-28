@@ -3,6 +3,74 @@
 Blocks for creating, reading, and manipulating data structures including lists, dictionaries, spreadsheets, and persistent storage.
 <!-- END MANUAL -->
 
+## Add To Collection
+
+### What it is
+Adds a row to a collection, or with "match on key" updates the row with that key and adds it otherwise. A field the collection lacks is added.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The row is checked against the collection's fields: a value is converted where nothing is lost (the text "42" into a number) and the whole row is refused otherwise. A field the collection does not have yet is added, its type read from the value. With match on key, an existing row with the same key is updated field by field: a field is only changed when this value differs from the one the workflow wrote last time, and a cell someone edited by hand keeps their value, with yours offered to them on the page. The block runs only in workflows you made.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| collection | The collection's name; one is made on the first write. | str | Yes |
+| row | Field name to value. | Dict[str, Any] | Yes |
+| match_on_key | Update the row whose key field holds this row's key. | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| row | The row as stored, with _id. | Dict[str, Any] |
+| row_id | The row's id. | str |
+| added | True for a new row, False for an update. | bool |
+| kept_fields | Fields where a person's edit was kept over this value. | List[str] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+A keyword workflow adds each idea to "Content ideas" with match on key, so running it again adds new ideas and keeps the old ones, their drafts and their status.
+<!-- END MANUAL -->
+
+---
+
+## Create Collection
+
+### What it is
+Declares a collection's fields and key up front, for when types inferred from the first write are not wanted. An existing collection is left as it is.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Makes the collection with the fields and types you list and, optionally, a key field whose value names one row. If a collection by that name already exists, it is left as it is and its id is returned.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| name | The collection's name. | str | Yes |
+| fields | Each field's name and type: text, number, date, select, multi_select, checkbox, url or email. | List[FieldSpec] | Yes |
+| key_field | A field whose value identifies one row. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| collection_id | The collection's id. | str |
+| created | False when it already existed. | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+Declare an invoice ledger with a number field for amounts and a select for status before the first invoice arrives, so the first write cannot infer a field as text.
+<!-- END MANUAL -->
+
+---
+
 ## Create Dictionary
 
 ### What it is
@@ -77,6 +145,38 @@ This batching capability is particularly useful when processing large datasets t
 
 ---
 
+## Delete Collection Row
+
+### What it is
+Deletes one row of a collection by its key or id.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Finds the row by its key or its id and deletes it. Deleting a row that is not there is not an error: the output says nothing was deleted.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| collection | The collection's name. | str | Yes |
+| key | The row's value in the key field. | str | No |
+| row_id | Or the row's id. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| deleted | False when no row matched. | bool |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+Remove a product from a stock list once it is discontinued.
+<!-- END MANUAL -->
+
+---
+
 ## File Read
 
 ### What it is
@@ -114,6 +214,75 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 **Large Document Analysis**: Read large text files in chunks for summarization or analysis without memory issues.
 
 **Data Import**: Read text-based data files and process them row by row for database import.
+<!-- END MANUAL -->
+
+---
+
+## Find Collection Rows
+
+### What it is
+Finds rows in a collection that meet up to three conditions, sorted, up to a limit; gives the rows as a list, each row on its own, and a count.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Reads the rows that meet up to three conditions (is, is not, contains, greater or less than, empty, not empty), sorted on one field, up to a limit of 200. It gives the rows as a list, then each row on its own, and how many rows met the conditions in all.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| collection | The collection's name. | str | Yes |
+| conditions | All must hold: is, is_not, contains, gt, lt, gte, lte, empty or not_empty. | List[Condition] | No |
+| sort_by | A field to sort on. | str | No |
+| sort_direction | Smallest first, or largest first. | "asc" \| "desc" | No |
+| limit | At most this many rows. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| rows | The rows, with _id. | List[Dict[str, Any]] |
+| row | Each row, one at a time. | Dict[str, Any] |
+| count | How many rows meet the conditions. | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+A morning workflow finds the follow-ups due today that are not done and drafts a message for each.
+<!-- END MANUAL -->
+
+---
+
+## Get Collection Row
+
+### What it is
+Reads one row of a collection by its key or id.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Reads one row by its key or its id. When no row matches, the not found output is set instead of row, so the workflow can branch on it.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| collection | The collection's name. | str | Yes |
+| key | The row's value in the key field. | str | No |
+| row_id | Or the row's id. | str | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| row | The row, with _id. | Dict[str, Any] |
+| not_found | Set when no row matches. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+Before screening a candidate, look up their profile link to see whether they were screened before.
 <!-- END MANUAL -->
 
 ---
@@ -408,6 +577,40 @@ Optional features include blocking ads, cookie banners, and chat widgets for cle
 **Competitive Monitoring**: Regularly screenshot competitor websites to track design and content changes.
 
 **Visual Testing**: Capture page renders for visual regression testing or design verification workflows.
+<!-- END MANUAL -->
+
+---
+
+## Update Collection Row
+
+### What it is
+Changes the named fields of one row in a collection, found by its key or id.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+Changes only the fields you name on the row found by its key or its id, and leaves the others. As with adding, a cell someone edited by hand keeps their value when yours differs from what the workflow wrote last.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| collection | The collection's name. | str | Yes |
+| key | The row's value in the key field. | str | No |
+| row_id | Or the row's id. | str | No |
+| values | Field name to new value. | Dict[str, Any] | Yes |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| row | The row as stored, with _id. | Dict[str, Any] |
+| row_id | The row's id. | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+After a post goes out, set its status to Posted and record the date on that keyword's row.
 <!-- END MANUAL -->
 
 ---

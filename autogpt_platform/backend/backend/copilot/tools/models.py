@@ -154,6 +154,7 @@ class ResponseType(str, Enum):
     EXPERT_ONBOARDING = "expert_onboarding"
     UI_BLOCKS = "ui_blocks"
     PAGE = "page"
+    COLLECTIONS = "collections"
     FEEDBACK_PROMPT = "feedback_prompt"
     TEAM_CONSULT = "team_consult"
     SESSION_LIST = "session_list"

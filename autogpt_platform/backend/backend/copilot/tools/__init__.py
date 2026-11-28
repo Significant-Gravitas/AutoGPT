@@ -24,6 +24,7 @@ from .chat_platform import (
     ListChatPlatformChannelsTool,
     PostToChatPlatformTool,
 )
+from .collections_tool import CollectionsTool, collections_disabled_tools
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .connect_integration import ConnectIntegrationTool
 from .consult_teammate import ConsultTeammateTool
@@ -117,6 +118,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "ask_question": AskQuestionTool(),
     "render_ui": RenderUITool(),
     "design_page": DesignPageTool(),
+    "collections": CollectionsTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
@@ -368,7 +370,11 @@ def origin_disabled_tools(origin: "ChatSessionOrigin | None") -> frozenset[str]:
 
 async def flag_disabled_tools(session: "ChatSession") -> frozenset[str]:
     """Tools a per-user flag keeps out of this turn; both engines hide them."""
-    return await render_ui_disabled_tools(session) | await pages_disabled_tools(session)
+    return (
+        await render_ui_disabled_tools(session)
+        | await pages_disabled_tools(session)
+        | await collections_disabled_tools(session)
+    )
 
 
 def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:

@@ -113,6 +113,10 @@ class Flag(str, Enum):
     # its library view. Off: no tool, the routes answer 404. Default off.
     PAGES = "pages"
 
+    # Collections: tables of the user's own that workflows, experts and Otto
+    # write and pages show. Off: no tool, routes answer 404, blocks refuse.
+    COLLECTIONS = "collections"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively
