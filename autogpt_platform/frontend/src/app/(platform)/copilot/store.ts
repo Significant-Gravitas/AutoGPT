@@ -70,6 +70,7 @@ export interface DesktopStreamRef {
   url: string;
   sandbox_id: string;
   provider: string;
+  requires_auth?: boolean;
 }
 
 /** Which face the side panel shows: the artifact preview or the computer. */

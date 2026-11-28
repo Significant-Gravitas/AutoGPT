@@ -8,7 +8,10 @@ import {
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { desktopStreamRenderer } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
+import {
+  DesktopStreamPreview,
+  isDesktopStream,
+} from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
@@ -66,6 +69,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
             url: next.url,
             sandbox_id: next.sandbox_id,
             provider: next.provider ?? "e2b",
+            requires_auth: next.requires_auth,
           });
         }
         queryClient.invalidateQueries({
@@ -91,6 +95,7 @@ export function ComputerPanelContent({ sessionId }: Props) {
       : "Suspended";
   const machineTone = !box ? "none" : box.state === "running" ? "on" : "off";
   const screenOn = computer?.screen_on === true;
+  const streamValue = stream ? { kind: "desktop_stream", ...stream } : null;
   const actionLabel = stream
     ? "Refresh"
     : screenOn
@@ -126,7 +131,13 @@ export function ComputerPanelContent({ sessionId }: Props) {
 
       {stream ? (
         <div data-testid="session-desktop-stream">
-          {desktopStreamRenderer.render({ kind: "desktop_stream", ...stream })}
+          {isDesktopStream(streamValue) && (
+            <DesktopStreamPreview
+              value={streamValue}
+              onReconnect={() => startDesktop({ sessionId })}
+              reconnecting={isPending}
+            />
+          )}
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-base p-6 text-center">
