@@ -52,7 +52,9 @@ _CONDITIONAL_RE = re.compile(
     r"\b(if|whether|once|when|assuming|suppose|in case|should)\b", re.IGNORECASE
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?\n])\s+|\n+")
-_QUOTED_RE = re.compile(r"(\"[^\"\n]*\"|'[^'\n]*'|`[^`\n]*`|“[^”\n]*”)")
+# An unclosed curly quotation runs to the end of the line, so no scan can
+# fail and restart at the next opening mark.
+_QUOTED_RE = re.compile(r"(\"[^\"\n]*\"|'[^'\n]*'|`[^`\n]*`|“[^”\n]*”?)")
 
 
 def message_ref(message: ChatMessage) -> str:
