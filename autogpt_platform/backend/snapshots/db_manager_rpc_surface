@@ -1,0 +1,3531 @@
+{
+ "async_client": {
+  "abandon_publication": "abandon_publication",
+  "active_expert_ids": "active_expert_ids",
+  "add_chat_message": "add_chat_message",
+  "add_chat_messages_batch": "add_chat_messages_batch",
+  "add_dream_narrative": "add_dream_narrative",
+  "add_expert_skill_name": "add_expert_skill_name",
+  "add_expert_skill_names": "add_expert_skill_names",
+  "add_store_agent_to_library": "add_store_agent_to_library",
+  "add_suppression": "add_suppression",
+  "admit_chat_session_turn": "admit_chat_session_turn",
+  "advance_source_cursor": "advance_source_cursor",
+  "append_expert_run_message": "append_expert_run_message",
+  "append_plain_session_message": "append_plain_session_message",
+  "append_session_message": "append_session_message",
+  "background_child_result": "background_child_result",
+  "blank_dream_narratives": "blank_dream_narratives",
+  "bulk_move_agents_to_folder": "bulk_move_agents_to_folder",
+  "cancel_background_tasks": "cancel_background_tasks",
+  "cancel_orphaned_background_tasks": "cancel_orphaned_background_tasks",
+  "cancel_pending_reviews_for_execution": "cancel_pending_reviews_for_execution",
+  "cancel_queued_background_followup": "cancel_queued_background_followup",
+  "check_approval": "check_approval",
+  "check_private_expert": "check_private_expert",
+  "checkpoint_review_usage": "checkpoint_review_usage",
+  "claim_approved_review": "claim_approved_review",
+  "claim_background_turn": "claim_background_turn",
+  "claim_feedback_prompt": "claim_feedback_prompt",
+  "claim_scope_schedule": "claim_scope_schedule",
+  "claim_welcome_email": "claim_welcome_email",
+  "cleanup_expired_oauth_tokens": "cleanup_expired_oauth_tokens",
+  "cleanup_expired_platform_link_tokens": "cleanup_expired_platform_link_tokens",
+  "cleanup_failed_push_subscriptions": "cleanup_failed_push_subscriptions",
+  "clear_brain_dump_audio_paths": "clear_brain_dump_audio_paths",
+  "clear_session_pending_question": "clear_session_pending_question",
+  "commit_version_safe": "commit_version_safe",
+  "complete_background_task": "complete_background_task",
+  "complete_publication": "complete_publication",
+  "confirm_server_link": "confirm_server_link",
+  "confirm_user_link": "confirm_user_link",
+  "count_active_agents": "count_active_agents",
+  "count_active_experts": "count_active_experts",
+  "count_alerts_sent_since": "count_alerts_sent_since",
+  "count_chat_sessions_by_status": "count_chat_sessions_by_status",
+  "count_feedback_prompts": "count_feedback_prompts",
+  "count_raised_experts": "count_raised_experts",
+  "count_scheduled_agents": "count_scheduled_agents",
+  "count_workspace_files": "count_workspace_files",
+  "create_activity_event": "create_activity_event",
+  "create_background_task": "create_background_task",
+  "create_briefing": "create_briefing",
+  "create_chat_session": "create_chat_session",
+  "create_dream_pass": "create_dream_pass",
+  "create_folder": "create_folder",
+  "create_graph_execution": "create_graph_execution",
+  "create_graph_in_library": "create_graph_in_library",
+  "create_library_agent": "create_library_agent",
+  "create_preset": "create_preset",
+  "create_raised_expert": "create_raised_expert",
+  "create_routine": "create_routine",
+  "create_server_link_token": "create_server_link_token",
+  "create_user_link_token": "create_user_link_token",
+  "create_version": "create_version",
+  "create_workspace_file": "create_workspace_file",
+  "delete_chat_session": "delete_chat_session",
+  "delete_content_embedding": "delete_content_embedding",
+  "delete_expired_ip_events": "delete_expired_ip_events",
+  "delete_folder": "delete_folder",
+  "delete_old_dream_passes": "delete_old_dream_passes",
+  "delete_preset_with_webhook_cleanup": "delete_preset_with_webhook_cleanup",
+  "delete_push_subscription": "delete_push_subscription",
+  "delete_review_as_read": "delete_review_as_read",
+  "delete_review_by_node_exec_id": "delete_review_by_node_exec_id",
+  "delete_server_link": "delete_server_link",
+  "delete_user_link": "delete_user_link",
+  "disable_routine": "disable_routine",
+  "enable_routine": "enable_routine",
+  "enforce_expert_run_budget": "enforce_expert_run_budget",
+  "enqueue_background_followup": "enqueue_background_followup",
+  "ensure_head": "ensure_head",
+  "erase_dream_passes": "erase_dream_passes",
+  "existing_user_ids": "existing_user_ids",
+  "expert_allowed_credential_ids": "expert_allowed_credential_ids",
+  "expert_row_exists": "expert_row_exists",
+  "expert_setup_status": "expert_setup_status",
+  "fetch_workspace_artifact": "fetch_workspace_artifact",
+  "find_server_link_owner": "find_server_link_owner",
+  "find_suppression": "find_suppression",
+  "find_user_link_owner": "find_user_link_owner",
+  "find_version_by_hash": "find_version_by_hash",
+  "finish_background_turn": "finish_background_turn",
+  "forget_scheduled_chat": "forget_scheduled_chat",
+  "forget_scope_job": "forget_scope_job",
+  "get_active_user_ids_in_timerange": "get_active_user_ids_in_timerange",
+  "get_active_versions": "get_active_versions",
+  "get_agent": "get_agent",
+  "get_agent_period_stats": "get_agent_period_stats",
+  "get_auth_user_flag_fields": "get_auth_user_flag_fields",
+  "get_autopilot_mode": "get_autopilot_mode",
+  "get_available_graph": "get_available_graph",
+  "get_background_task": "get_background_task",
+  "get_billing_email_recipient": "get_billing_email_recipient",
+  "get_blocks_needing_optimization": "get_blocks_needing_optimization",
+  "get_bot_install": "get_bot_install",
+  "get_briefing_alert_conditions": "get_briefing_alert_conditions",
+  "get_briefing_candidate": "get_briefing_candidate",
+  "get_briefing_candidates": "get_briefing_candidates",
+  "get_briefing_credit_balance": "get_briefing_credit_balance",
+  "get_briefing_for_date": "get_briefing_for_date",
+  "get_business_understanding": "get_business_understanding",
+  "get_chat_messages_by_ids": "get_chat_messages_by_ids",
+  "get_chat_messages_paginated": "get_chat_messages_paginated",
+  "get_chat_session_metadata": "get_chat_session_metadata",
+  "get_chat_session_status": "get_chat_session_status",
+  "get_child_graph_executions": "get_child_graph_executions",
+  "get_connected_output_nodes": "get_connected_output_nodes",
+  "get_content_embedding": "get_content_embedding",
+  "get_copied_graph_ids": "get_copied_graph_ids",
+  "get_credits": "get_credits",
+  "get_dream_pass": "get_dream_pass",
+  "get_dream_pass_for_user": "get_dream_pass_for_user",
+  "get_execution_kv_data": "get_execution_kv_data",
+  "get_execution_outputs_by_node_exec_id": "get_execution_outputs_by_node_exec_id",
+  "get_expert": "get_expert",
+  "get_folder": "get_folder",
+  "get_folder_agents_map": "get_folder_agents_map",
+  "get_folder_tree": "get_folder_tree",
+  "get_graph": "get_graph",
+  "get_graph_execution": "get_graph_execution",
+  "get_graph_execution_meta": "get_graph_execution_meta",
+  "get_graph_executions": "get_graph_executions",
+  "get_graph_metadata": "get_graph_metadata",
+  "get_graph_settings": "get_graph_settings",
+  "get_head": "get_head",
+  "get_latest_briefings": "get_latest_briefings",
+  "get_latest_node_execution": "get_latest_node_execution",
+  "get_latest_user_message_in_session": "get_latest_user_message_in_session",
+  "get_library_agent": "get_library_agent",
+  "get_library_agent_by_graph_id": "get_library_agent_by_graph_id",
+  "get_library_agent_id_by_graph_id": "get_library_agent_id_by_graph_id",
+  "get_library_agent_refs_by_graph_ids": "get_library_agent_refs_by_graph_ids",
+  "get_link_token_info": "get_link_token_info",
+  "get_link_token_status": "get_link_token_status",
+  "get_near_expiry_oauth_credentials": "get_near_expiry_oauth_credentials",
+  "get_next_sequence": "get_next_sequence",
+  "get_node": "get_node",
+  "get_node_execution": "get_node_execution",
+  "get_node_executions": "get_node_executions",
+  "get_or_create_human_review": "get_or_create_human_review",
+  "get_or_create_workspace": "get_or_create_workspace",
+  "get_org_credits": "get_org_credits",
+  "get_pending_alert_conditions": "get_pending_alert_conditions",
+  "get_pending_publication_for_skill": "get_pending_publication_for_skill",
+  "get_pending_reviews_for_chat_session": "get_pending_reviews_for_chat_session",
+  "get_pending_reviews_for_execution": "get_pending_reviews_for_execution",
+  "get_pending_reviews_for_user": "get_pending_reviews_for_user",
+  "get_personal_org_owner": "get_personal_org_owner",
+  "get_preset": "get_preset",
+  "get_product_mail_standing": "get_product_mail_standing",
+  "get_recent_daily_spend": "get_recent_daily_spend",
+  "get_review": "get_review",
+  "get_review_for_revision": "get_review_for_revision",
+  "get_reviews_by_node_exec_ids": "get_reviews_by_node_exec_ids",
+  "get_root_agent_summaries": "get_root_agent_summaries",
+  "get_routine": "get_routine",
+  "get_scope_schedule": "get_scope_schedule",
+  "get_session_background_state": "get_session_background_state",
+  "get_sessions_with_pending_question": "get_sessions_with_pending_question",
+  "get_source": "get_source",
+  "get_source_by_ref": "get_source_by_ref",
+  "get_store_agent_by_version_id": "get_store_agent_by_version_id",
+  "get_store_agent_details": "get_store_agent_details",
+  "get_store_agents": "get_store_agents",
+  "get_store_listed_graphs": "get_store_listed_graphs",
+  "get_subscription_trial": "get_subscription_trial",
+  "get_template": "get_template",
+  "get_top_scored_runs": "get_top_scored_runs",
+  "get_usage_activation_state": "get_usage_activation_state",
+  "get_user_by_id": "get_user_by_id",
+  "get_user_chat_session_groups": "get_user_chat_session_groups",
+  "get_user_chat_sessions": "get_user_chat_sessions",
+  "get_user_credentials": "get_user_credentials",
+  "get_user_default_chat_route": "get_user_default_chat_route",
+  "get_user_default_team": "get_user_default_team",
+  "get_user_email_by_id": "get_user_email_by_id",
+  "get_user_email_verification": "get_user_email_verification",
+  "get_user_integrations": "get_user_integrations",
+  "get_user_notification_preference": "get_user_notification_preference",
+  "get_user_push_subscriptions": "get_user_push_subscriptions",
+  "get_user_session_count": "get_user_session_count",
+  "get_user_subscription_tier": "get_user_subscription_tier",
+  "get_users_with_matured_alerts": "get_users_with_matured_alerts",
+  "get_version": "get_version",
+  "get_version_packages": "get_version_packages",
+  "get_workflow_label": "get_workflow_label",
+  "get_workspace_file": "get_workspace_file",
+  "get_workspace_file_by_path": "get_workspace_file_by_path",
+  "get_workspace_total_size": "get_workspace_total_size",
+  "grant_expert_credentials": "grant_expert_credentials",
+  "has_open_handoffs": "has_open_handoffs",
+  "heal_orphaned_auth_identities": "heal_orphaned_auth_identities",
+  "hire_expert": "hire_expert",
+  "increment_onboarding_runs": "increment_onboarding_runs",
+  "increment_push_fail_count": "increment_push_fail_count",
+  "install_workflow": "install_workflow",
+  "invalidate_source_versions": "invalidate_source_versions",
+  "is_account_closed": "is_account_closed",
+  "is_active_member": "is_active_member",
+  "is_auth_session_active": "is_auth_session_active",
+  "is_auth_user_banned": "is_auth_user_banned",
+  "is_graph_version_owner": "is_graph_version_owner",
+  "is_install_revoked": "is_install_revoked",
+  "is_marketing_opted_out": "is_marketing_opted_out",
+  "latest_independent_version_id": "latest_independent_version_id",
+  "link_new_execution_to_chat_share": "link_new_execution_to_chat_share",
+  "list_background_tasks": "list_background_tasks",
+  "list_chat_sessions_by_status": "list_chat_sessions_by_status",
+  "list_dream_pass_cleanups": "list_dream_pass_cleanups",
+  "list_dream_passes": "list_dream_passes",
+  "list_due_community_scopes": "list_due_community_scopes",
+  "list_expert_credentials": "list_expert_credentials",
+  "list_expert_identities": "list_expert_identities",
+  "list_experts": "list_experts",
+  "list_expired_dream_passes": "list_expired_dream_passes",
+  "list_folders": "list_folders",
+  "list_heads": "list_heads",
+  "list_library_agents": "list_library_agents",
+  "list_open_decisions": "list_open_decisions",
+  "list_open_dream_passes": "list_open_dream_passes",
+  "list_pending_owner_keys": "list_pending_owner_keys",
+  "list_pending_publications": "list_pending_publications",
+  "list_pending_sources": "list_pending_sources",
+  "list_presets": "list_presets",
+  "list_recent_chat_sessions": "list_recent_chat_sessions",
+  "list_recent_versions": "list_recent_versions",
+  "list_reviews": "list_reviews",
+  "list_routines": "list_routines",
+  "list_scope_schedules": "list_scope_schedules",
+  "list_server_links": "list_server_links",
+  "list_suppressions": "list_suppressions",
+  "list_templates": "list_templates",
+  "list_trials_ending_unrenewed": "list_trials_ending_unrenewed",
+  "list_trigger_agents": "list_trigger_agents",
+  "list_use_events": "list_use_events",
+  "list_use_paused_skill_names": "list_use_paused_skill_names",
+  "list_user_links": "list_user_links",
+  "list_user_scope_schedules": "list_user_scope_schedules",
+  "list_versions": "list_versions",
+  "list_versions_in_states": "list_versions_in_states",
+  "list_workspace_files": "list_workspace_files",
+  "list_workspace_folders": "list_workspace_folders",
+  "log_platform_cost": "log_platform_cost",
+  "mark_alert_conditions_briefed": "mark_alert_conditions_briefed",
+  "mark_alert_conditions_deferred": "mark_alert_conditions_deferred",
+  "mark_alert_conditions_sent": "mark_alert_conditions_sent",
+  "mark_briefing_delivered": "mark_briefing_delivered",
+  "mark_guild_left": "mark_guild_left",
+  "mark_node_executions_moderated": "mark_node_executions_moderated",
+  "mark_routine_unscheduled": "mark_routine_unscheduled",
+  "mark_source_attempted": "mark_source_attempted",
+  "move_folder": "move_folder",
+  "open_chat_spend_review": "open_chat_spend_review",
+  "owns_active_expert": "owns_active_expert",
+  "park_execution_for_spend_approval": "park_execution_for_spend_approval",
+  "parked_spend_decision": "parked_spend_decision",
+  "pause_use_if_current": "pause_use_if_current",
+  "process_all_reviews_for_execution": "process_all_reviews_for_execution",
+  "publish_version_if_current": "publish_version_if_current",
+  "publish_workspace_skill_file": "publish_workspace_skill_file",
+  "raise_alert_condition": "raise_alert_condition",
+  "reconcile_all_stripe_tiers": "reconcile_all_stripe_tiers",
+  "reconcile_stripe_tier_for_user": "reconcile_stripe_tier_for_user",
+  "record_bot_event": "record_bot_event",
+  "record_chat_session_turn": "record_chat_session_turn",
+  "record_gate_approval": "record_gate_approval",
+  "record_guild_joined": "record_guild_joined",
+  "record_routine_fired": "record_routine_fired",
+  "record_routine_thread": "record_routine_thread",
+  "record_scheduled_run": "record_scheduled_run",
+  "record_scope_jobs": "record_scope_jobs",
+  "record_scope_run": "record_scope_run",
+  "record_skill_deletion": "record_skill_deletion",
+  "record_subscription_trial_cost": "record_subscription_trial_cost",
+  "record_use_event": "record_use_event",
+  "refresh_server_link_name": "refresh_server_link_name",
+  "release_abandoned_background_turn": "release_abandoned_background_turn",
+  "release_deleted_background_turn": "release_deleted_background_turn",
+  "release_review_claim": "release_review_claim",
+  "release_welcome_email": "release_welcome_email",
+  "remove_expert_skill_name": "remove_expert_skill_name",
+  "remove_workflow": "remove_workflow",
+  "reopen_review": "reopen_review",
+  "request_posthog_lifecycle_sync": "request_posthog_lifecycle_sync",
+  "require_owned_source": "require_owned_source",
+  "reserve_model_review": "reserve_model_review",
+  "resolve_alert_condition": "resolve_alert_condition",
+  "resolve_attributable_expert": "resolve_attributable_expert",
+  "resolve_default_tenancy": "resolve_default_tenancy",
+  "resolve_expert_workspace_scope": "resolve_expert_workspace_scope",
+  "resolve_member_tenancy": "resolve_member_tenancy",
+  "resolve_private_expert_tenancy": "resolve_private_expert_tenancy",
+  "resolve_server_link": "resolve_server_link",
+  "resolve_user_link": "resolve_user_link",
+  "revoke_bot_install": "revoke_bot_install",
+  "revoke_expert_credential": "revoke_expert_credential",
+  "seeded_expert_credential_ids": "seeded_expert_credential_ids",
+  "send_trial_last_calls": "send_trial_last_calls",
+  "set_execution_kv_data": "set_execution_kv_data",
+  "set_expert_learning_paused": "set_expert_learning_paused",
+  "set_last_briefing_at": "set_last_briefing_at",
+  "set_review_replay": "set_review_replay",
+  "set_scope_state": "set_scope_state",
+  "set_session_pending_question": "set_session_pending_question",
+  "set_source_approval": "set_source_approval",
+  "set_source_eligibility": "set_source_eligibility",
+  "set_turn_duration": "set_turn_duration",
+  "set_user_credentials": "set_user_credentials",
+  "set_version_state": "set_version_state",
+  "settle_credential_seed": "settle_credential_seed",
+  "setup_triggered_preset": "setup_triggered_preset",
+  "skill_root_has_room": "skill_root_has_room",
+  "soft_delete_workspace_file": "soft_delete_workspace_file",
+  "spend_approval_required": "spend_approval_required",
+  "spend_credits": "spend_credits",
+  "spend_org_credits": "spend_org_credits",
+  "start_account_erasure_sweep": "start_account_erasure_sweep",
+  "start_expert_kickoff": "start_expert_kickoff",
+  "start_posthog_lifecycle_sweep": "start_posthog_lifecycle_sweep",
+  "store_content_embedding": "store_content_embedding",
+  "summarize_learning": "summarize_learning",
+  "suppress_background_followup": "suppress_background_followup",
+  "sync_guild_presence": "sync_guild_presence",
+  "sync_subscription_from_stripe": "sync_subscription_from_stripe",
+  "unified_hybrid_search": "unified_hybrid_search",
+  "update_briefing_content": "update_briefing_content",
+  "update_chat_message_stamps": "update_chat_message_stamps",
+  "update_chat_message_tool_calls": "update_chat_message_tool_calls",
+  "update_chat_session": "update_chat_session",
+  "update_chat_session_autopilot_mode": "update_chat_session_autopilot_mode",
+  "update_chat_session_llm_route": "update_chat_session_llm_route",
+  "update_chat_session_pinned": "update_chat_session_pinned",
+  "update_chat_session_status": "update_chat_session_status",
+  "update_chat_session_title": "update_chat_session_title",
+  "update_dream_pass": "update_dream_pass",
+  "update_folder": "update_folder",
+  "update_graph_execution_stats": "update_graph_execution_stats",
+  "update_graph_in_library": "update_graph_in_library",
+  "update_head_policy": "update_head_policy",
+  "update_library_agent": "update_library_agent",
+  "update_message_content_by_sequence": "update_message_content_by_sequence",
+  "update_node_execution_status": "update_node_execution_status",
+  "update_node_execution_status_batch": "update_node_execution_status_batch",
+  "update_review_processed_status": "update_review_processed_status",
+  "update_soul": "update_soul",
+  "update_soul_fields": "update_soul_fields",
+  "update_soul_fields_if_current": "update_soul_fields_if_current",
+  "update_soul_if_current": "update_soul_if_current",
+  "update_tool_message_content": "update_tool_message_content",
+  "update_triggered_preset": "update_triggered_preset",
+  "update_user_integrations": "update_user_integrations",
+  "upsert_bot_install": "upsert_bot_install",
+  "upsert_business_understanding": "upsert_business_understanding",
+  "upsert_execution_input": "upsert_execution_input",
+  "upsert_execution_output": "upsert_execution_output",
+  "upsert_review": "upsert_review",
+  "upsert_source_revision": "upsert_source_revision",
+  "validate_graph_execution_permissions": "validate_graph_execution_permissions",
+  "with_bundled_skills": "with_bundled_skills"
+ },
+ "routes": {
+  "abandon_publication": {
+   "params": [
+    "user_id: str",
+    "*, version_id: str",
+    "*, review_id: str | None",
+    "*, reason: str",
+    "*, disposition: str = 'conflict'"
+   ],
+   "returns": "None"
+  },
+  "active_expert_ids": {
+   "params": [
+    "user_id: str",
+    "expert_ids: set[str]"
+   ],
+   "returns": "set[str]"
+  },
+  "add_chat_message": {
+   "params": [
+    "session_id: str",
+    "role: str",
+    "sequence: int",
+    "content: str | None = None",
+    "name: str | None = None",
+    "tool_call_id: str | None = None",
+    "refusal: str | None = None",
+    "tool_calls: list[dict[str, typing.Any]] | None = None",
+    "function_call: dict[str, typing.Any] | None = None",
+    "*, message_id: str | None = None",
+    "*, metadata: dict[str, typing.Any] | None = None"
+   ],
+   "returns": "backend.copilot.model.ChatMessage"
+  },
+  "add_chat_messages_batch": {
+   "params": [
+    "session_id: str",
+    "messages: list[dict[str, typing.Any]]",
+    "start_sequence: int",
+    "session_fields: backend.copilot.model.ChatSessionSaveFields | None = None"
+   ],
+   "returns": "int"
+  },
+  "add_dream_narrative": {
+   "params": [
+    "session_id: str",
+    "pass_id: str",
+    "content: str",
+    "erased: str"
+   ],
+   "returns": "bool"
+  },
+  "add_expert_skill_name": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "name: str"
+   ],
+   "returns": "None"
+  },
+  "add_expert_skill_names": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "names: list[str]"
+   ],
+   "returns": "None"
+  },
+  "add_store_agent_to_library": {
+   "params": [
+    "store_listing_version_id: str",
+    "user_id: str",
+    "*, track_listing_added: bool = True",
+    "*, organization_id: str | None = None",
+    "*, team_id: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgent"
+  },
+  "add_suppression": {
+   "params": [
+    "user_id: str",
+    "*, expert_id: str | None",
+    "*, skill_name: str",
+    "*, behavior_fingerprint: str",
+    "*, behavior_tokens: list[str]",
+    "*, evidence_fingerprints: list[str]",
+    "*, actor_user_id: str | None",
+    "*, reason: str"
+   ],
+   "returns": "backend.data.skill_use.SkillSuppressionRecord"
+  },
+  "admit_chat_session_turn": {
+   "params": [
+    "*, session_id: str",
+    "*, user_id: str",
+    "*, expect_status: str",
+    "*, capacity: int"
+   ],
+   "returns": "Literal['admitted', 'full', 'busy']"
+  },
+  "advance_source_cursor": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "revision: str"
+   ],
+   "returns": "bool"
+  },
+  "append_expert_run_message": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "content: str",
+    "message_id: str",
+    "metadata: dict[str, typing.Any] | None = None"
+   ],
+   "returns": "str | None"
+  },
+  "append_plain_session_message": {
+   "params": [
+    "user_id: str",
+    "content: str",
+    "message_id: str",
+    "metadata: dict[str, typing.Any] | None = None",
+    "title: str | None = None"
+   ],
+   "returns": "str | None"
+  },
+  "append_session_message": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "content: str",
+    "message_id: str",
+    "metadata: dict[str, typing.Any] | None = None"
+   ],
+   "returns": "bool"
+  },
+  "backfill_missing_embeddings": {
+   "params": [
+    "batch_size: int = 10"
+   ],
+   "returns": "dict[str, typing.Any]"
+  },
+  "background_child_result": {
+   "params": [
+    "session_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.copilot.background_task.BackgroundChildResult | None"
+  },
+  "blank_dream_narratives": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None",
+    "pass_ids: list[str]",
+    "reached: list[str]",
+    "placeholder: str"
+   ],
+   "returns": "int"
+  },
+  "bulk_move_agents_to_folder": {
+   "params": [
+    "agent_ids: list[str]",
+    "folder_id: str | None",
+    "user_id: str",
+    "organization_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryAgent]"
+  },
+  "cancel_background_tasks": {
+   "params": [
+    "user_id: str",
+    "session_id: str",
+    "launch_turn_id: str | None = None"
+   ],
+   "returns": "list[backend.copilot.background_task.BackgroundTask]"
+  },
+  "cancel_orphaned_background_tasks": {
+   "params": [
+    "user_id: str",
+    "session_id: str",
+    "expected_updated_at: datetime.datetime"
+   ],
+   "returns": "list[backend.copilot.background_task.BackgroundTask] | None"
+  },
+  "cancel_pending_reviews_for_execution": {
+   "params": [
+    "graph_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "cancel_queued_background_followup": {
+   "params": [
+    "user_id: str",
+    "session_id: str"
+   ],
+   "returns": "bool"
+  },
+  "check_approval": {
+   "params": [
+    "node_exec_id: str",
+    "node_id: str",
+    "user_id: str",
+    "input_data: dict[str, typing.Any] | list[typing.Any] | str | int | float | bool | None = None",
+    "graph_exec_id: str | None = None",
+    "chat_session_id: str | None = None"
+   ],
+   "returns": "backend.data.human_review.ReviewResult | None"
+  },
+  "check_private_expert": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "backend.api.features.experts.models.CheckedExpert"
+  },
+  "checkpoint_review_usage": {
+   "params": [
+    "user_id: str",
+    "review_id: str",
+    "run_id: str",
+    "*, model: str | None",
+    "*, input_tokens: int",
+    "*, output_tokens: int",
+    "*, cost_microdollars: int | None"
+   ],
+   "returns": "bool"
+  },
+  "claim_approved_review": {
+   "params": [
+    "node_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "claim_background_turn": {
+   "params": [
+    "task_id: str",
+    "user_id: str",
+    "session_id: str",
+    "turn_id: str",
+    "stage: Literal['child', 'followup']"
+   ],
+   "returns": "bool"
+  },
+  "claim_feedback_prompt": {
+   "params": [
+    "*, user_id: str",
+    "*, kind: Literal['trial_cancel', 'upgrade_checkout', 'work_check', 'otto_mistake', 'top_up', 'nps']",
+    "*, session_id: str | None = None",
+    "*, message_id: str | None = None",
+    "*, now: datetime.datetime | None = None"
+   ],
+   "returns": "str | None"
+  },
+  "claim_scope_schedule": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "expert_id: str | None",
+    "user_timezone: str",
+    "state: prisma.enums.MemoryScopeScheduleState = <MemoryScopeScheduleState.ACTIVE: 'ACTIVE'>"
+   ],
+   "returns": "backend.data.memory_schedule.MemoryScopeSchedule"
+  },
+  "claim_welcome_email": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "cleanup_expired_oauth_tokens": {
+   "params": [],
+   "returns": "dict[str, int]"
+  },
+  "cleanup_expired_platform_link_tokens": {
+   "params": [],
+   "returns": "int"
+  },
+  "cleanup_failed_push_subscriptions": {
+   "params": [
+    "max_failures: int = 5"
+   ],
+   "returns": "int"
+  },
+  "cleanup_orphaned_embeddings": {
+   "params": [],
+   "returns": "dict[str, typing.Any]"
+  },
+  "clear_brain_dump_audio_paths": {
+   "params": [
+    "audio_paths: list[str]"
+   ],
+   "returns": "int"
+  },
+  "clear_session_pending_question": {
+   "params": [
+    "session_id: str",
+    "user_id: str"
+   ],
+   "returns": "None"
+  },
+  "commit_version_safe": {
+   "params": [
+    "user_id: str",
+    "*, head: backend.data.skill_versions.SkillHeadRecord",
+    "*, draft: backend.data.skill_publication.VersionDraft",
+    "*, expected_current_version: int",
+    "*, review: backend.data.skill_publication.ReviewStamp | None = None",
+    "*, auto_improve: bool | None = None"
+   ],
+   "returns": "backend.data.skill_publication.CommitResult"
+  },
+  "complete_background_task": {
+   "params": [
+    "task_id: str",
+    "user_id: str",
+    "outcome: Literal['completed', 'failed', 'cancelled', 'timed_out']",
+    "result_sequence: int | None = None"
+   ],
+   "returns": "None"
+  },
+  "complete_publication": {
+   "params": [
+    "user_id: str",
+    "*, version_id: str",
+    "*, review_id: str | None",
+    "*, reason: str = ''"
+   ],
+   "returns": "None"
+  },
+  "confirm_server_link": {
+   "params": [
+    "token: str",
+    "user_id: str",
+    "verified_platform_user_id: str | None = None"
+   ],
+   "returns": "backend.platform_linking.models.ConfirmLinkResponse"
+  },
+  "confirm_user_link": {
+   "params": [
+    "token: str",
+    "user_id: str",
+    "verified_platform_user_id: str | None = None"
+   ],
+   "returns": "backend.platform_linking.models.ConfirmUserLinkResponse"
+  },
+  "count_active_agents": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "count_active_experts": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "count_alerts_sent_since": {
+   "params": [
+    "user_id: str",
+    "since: datetime.datetime"
+   ],
+   "returns": "int"
+  },
+  "count_chat_sessions_by_status": {
+   "params": [
+    "*, user_id: str",
+    "*, status: str"
+   ],
+   "returns": "int"
+  },
+  "count_feedback_prompts": {
+   "params": [
+    "*, user_id: str",
+    "*, kind: Literal['trial_cancel', 'upgrade_checkout', 'work_check', 'otto_mistake', 'top_up', 'nps']"
+   ],
+   "returns": "int"
+  },
+  "count_raised_experts": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "count_scheduled_agents": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "count_workspace_files": {
+   "params": [
+    "workspace_id: str",
+    "path_prefix: str | None = None",
+    "include_deleted: bool = False",
+    "folder_id: str | None = None",
+    "folder_ids: list[str] | None = None",
+    "root_only: bool = False",
+    "allowed_path_prefixes: list[str] | None = None",
+    "include_user_files: bool = False",
+    "include_internal: bool = True"
+   ],
+   "returns": "int"
+  },
+  "create_activity_event": {
+   "params": [
+    "user_id: str",
+    "draft: backend.data.activity_event.ActivityEventDraft"
+   ],
+   "returns": "backend.data.activity_event.ActivityEvent"
+  },
+  "create_background_task": {
+   "params": [
+    "task: backend.copilot.background_task.BackgroundTask",
+    "prompt: str",
+    "metadata: dict[str, typing.Any]"
+   ],
+   "returns": "None"
+  },
+  "create_briefing": {
+   "params": [
+    "user_id: str",
+    "briefing_date: datetime.date",
+    "content: dict[str, typing.Any]"
+   ],
+   "returns": "backend.data.briefing.BriefingRecord"
+  },
+  "create_chat_session": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "*, organization_id: str | None = None",
+    "*, team_id: str | None = None",
+    "*, metadata: backend.copilot.model.ChatSessionMetadata | None = None",
+    "*, expert_id: str | None = None"
+   ],
+   "returns": "backend.copilot.model.ChatSessionInfo"
+  },
+  "create_dream_pass": {
+   "params": [
+    "draft: backend.data.dream_pass_models.DreamPassDraft"
+   ],
+   "returns": "backend.data.dream_pass_models.DreamPassRecord"
+  },
+  "create_folder": {
+   "params": [
+    "user_id: str",
+    "name: str",
+    "parent_id: str | None = None",
+    "icon: str | None = None",
+    "color: str | None = None",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryFolder"
+  },
+  "create_graph_execution": {
+   "params": [
+    "graph_id: str",
+    "graph_version: int",
+    "starting_nodes_input: list[tuple[str, dict[str, typing.Any]]]",
+    "inputs: collections.abc.Mapping[str, JsonValue]",
+    "user_id: str",
+    "preset_id: str | None = None",
+    "credential_inputs: collections.abc.Mapping[str, backend.data.model.CredentialsMetaInput] | None = None",
+    "nodes_input_masks: collections.abc.Mapping[str, collections.abc.Mapping[str, JsonValue]] | None = None",
+    "parent_graph_exec_id: str | None = None",
+    "is_dry_run: bool = False",
+    "organization_id: str | None = None",
+    "team_id: str | None = None",
+    "expert_id: str | None = None",
+    "trigger_source: backend.data.execution.ExecutionTrigger | None = None",
+    "trigger_ref: str | None = None",
+    "schedule_id: str | None = None",
+    "webhook_id: str | None = None"
+   ],
+   "returns": "backend.data.execution.GraphExecutionWithNodes"
+  },
+  "create_graph_in_library": {
+   "params": [
+    "graph: backend.data.graph.Graph",
+    "user_id: str",
+    "folder_id: str | None = None",
+    "is_hidden: bool = False",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "tuple[backend.data.graph.GraphModel, backend.api.features.library.model.LibraryAgent]"
+  },
+  "create_library_agent": {
+   "params": [
+    "graph: backend.data.graph.GraphModel",
+    "user_id: str",
+    "hitl_safe_mode: bool = True",
+    "sensitive_action_safe_mode: bool = False",
+    "create_library_agents_for_sub_graphs: bool = True",
+    "folder_id: str | None = None",
+    "is_hidden: bool = False",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryAgent]"
+  },
+  "create_preset": {
+   "params": [
+    "user_id: str",
+    "preset: backend.api.features.library.model.LibraryAgentPresetCreatable",
+    "*, webhook_id: str | None = None",
+    "*, expert_id: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentPreset"
+  },
+  "create_raised_expert": {
+   "params": [
+    "user_id: str",
+    "name: str",
+    "role: str | None",
+    "voice_preferences: str | None",
+    "*, job_title: str | None = None",
+    "*, avatar_url: str | None = None",
+    "*, color: str | None = None",
+    "*, tagline: str | None = None",
+    "*, about: str | None = None",
+    "*, boundaries: str | None = None",
+    "*, weekly_budget: int | None = None",
+    "*, attachments: list[backend.api.features.experts.models.RaiseAttachment] | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.RaiseResult"
+  },
+  "create_routine": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None",
+    "*, title: str",
+    "*, prompt: str",
+    "*, crons: list[str] | None = None",
+    "*, run_at: datetime.datetime | None = None",
+    "*, session_mode: str | None = None",
+    "*, session_id: str | None = None",
+    "*, grants_credentials: bool = True",
+    "*, credential_pins: dict[str, backend.copilot.credential_selection.CredentialPin] | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertRoutine"
+  },
+  "create_server_link_token": {
+   "params": [
+    "request: backend.platform_linking.models.CreateLinkTokenRequest"
+   ],
+   "returns": "backend.platform_linking.models.LinkTokenResponse"
+  },
+  "create_user_link_token": {
+   "params": [
+    "request: backend.platform_linking.models.CreateUserLinkTokenRequest"
+   ],
+   "returns": "backend.platform_linking.models.LinkTokenResponse"
+  },
+  "create_version": {
+   "params": [
+    "user_id: str",
+    "*, head: backend.data.skill_versions.SkillHeadRecord",
+    "*, content: str",
+    "*, description: str",
+    "*, triggers: list[str]",
+    "*, origin: str",
+    "*, summary: str = ''",
+    "*, state: str = 'ready'",
+    "*, state_reason: str = ''",
+    "*, actor_user_id: str | None = None",
+    "*, base_version_id: str | None = None",
+    "*, restored_from_version_id: str | None = None",
+    "*, review_id: str | None = None",
+    "*, sources: list[dict[str, typing.Any]] | None = None",
+    "*, evidence: list[dict[str, typing.Any]] | None = None",
+    "*, limits: list[str] | None = None",
+    "*, blocked_pattern_class: str | None = None",
+    "*, blocked_step: str | None = None",
+    "*, files: list[backend.data.skill_version_files.SkillVersionFile] | None = None",
+    "*, content_approvals: list[backend.data.skill_content_approvals.SkillContentApproval] | None = None"
+   ],
+   "returns": "backend.data.skill_versions.SkillVersionRecord"
+  },
+  "create_workspace_file": {
+   "params": [
+    "workspace_id: str",
+    "file_id: str",
+    "name: str",
+    "path: str",
+    "storage_path: str",
+    "mime_type: str",
+    "size_bytes: int",
+    "checksum: str | None = None",
+    "metadata: dict | None = None",
+    "is_internal: bool = False",
+    "storage_limit_bytes: int = 0",
+    "replacing_file_id: str | None = None"
+   ],
+   "returns": "backend.data.workspace.WorkspaceFile"
+  },
+  "delete_chat_session": {
+   "params": [
+    "session_id: str",
+    "user_id: str | None = None",
+    "organization_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "delete_content_embedding": {
+   "params": [
+    "content_type: prisma.enums.ContentType",
+    "content_id: str",
+    "user_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "delete_expired_ip_events": {
+   "params": [
+    "retention_days: int"
+   ],
+   "returns": "int"
+  },
+  "delete_folder": {
+   "params": [
+    "folder_id: str",
+    "user_id: str",
+    "soft_delete: bool = True"
+   ],
+   "returns": "None"
+  },
+  "delete_old_dream_passes": {
+   "params": [
+    "created_before: datetime.datetime",
+    "limit: int = 1000"
+   ],
+   "returns": "int"
+  },
+  "delete_preset_with_webhook_cleanup": {
+   "params": [
+    "*, user_id: str",
+    "*, preset_id: str"
+   ],
+   "returns": "None"
+  },
+  "delete_push_subscription": {
+   "params": [
+    "user_id: str",
+    "endpoint: str"
+   ],
+   "returns": "None"
+  },
+  "delete_review_as_read": {
+   "params": [
+    "node_exec_id: str",
+    "user_id: str",
+    "status: prisma.enums.ReviewStatus",
+    "created_at: datetime.datetime"
+   ],
+   "returns": "int"
+  },
+  "delete_review_by_node_exec_id": {
+   "params": [
+    "node_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "delete_server_link": {
+   "params": [
+    "link_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.platform_linking.models.DeleteLinkResponse"
+  },
+  "delete_user_link": {
+   "params": [
+    "link_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.platform_linking.models.DeleteLinkResponse"
+  },
+  "disable_routine": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None",
+    "routine_id: str"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertRoutine"
+  },
+  "enable_routine": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None",
+    "routine_id: str",
+    "*, prompt: str | None = None",
+    "*, crons: list[str] | None = None",
+    "*, run_at: datetime.datetime | None = None",
+    "*, session_mode: str | None = None",
+    "*, pinned_session_id: str | None = None",
+    "*, grants_credentials: bool | None = None",
+    "*, credential_pins: dict[str, backend.copilot.credential_selection.CredentialPin] | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertRoutine"
+  },
+  "enforce_expert_run_budget": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "None"
+  },
+  "enqueue_background_followup": {
+   "params": [
+    "task_id: str",
+    "user_id: str",
+    "message: str",
+    "metadata: dict[str, typing.Any]",
+    "terminal: bool = False"
+   ],
+   "returns": "Literal['queued', 'busy', 'closed', 'delivered']"
+  },
+  "ensure_head": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None",
+    "skill_name: str"
+   ],
+   "returns": "backend.data.skill_versions.SkillHeadRecord"
+  },
+  "erase_dream_passes": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "*, reached: list[str]",
+    "*, named: list[str]"
+   ],
+   "returns": "list[str]"
+  },
+  "existing_user_ids": {
+   "params": [
+    "user_ids: list[str]"
+   ],
+   "returns": "set[str]"
+  },
+  "expert_allowed_credential_ids": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "list[str]"
+  },
+  "expert_row_exists": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "bool"
+  },
+  "expert_setup_status": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "Literal['installing', 'ready', 'failed']"
+  },
+  "fetch_workspace_artifact": {
+   "params": [
+    "session_id: str",
+    "file_id: str",
+    "max_bytes: int"
+   ],
+   "returns": "backend.platform_linking.models.WorkspaceArtifact | None"
+  },
+  "find_server_link_owner": {
+   "params": [
+    "platform: str",
+    "platform_server_id: str",
+    "*, open_only: bool = False"
+   ],
+   "returns": "str | None"
+  },
+  "find_suppression": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str",
+    "behavior_fingerprint: str"
+   ],
+   "returns": "backend.data.skill_use.SkillSuppressionRecord | None"
+  },
+  "find_user_link_owner": {
+   "params": [
+    "platform: str",
+    "platform_user_id: str",
+    "*, open_only: bool = False"
+   ],
+   "returns": "str | None"
+  },
+  "find_version_by_hash": {
+   "params": [
+    "listing_id: str",
+    "package_sha256: str"
+   ],
+   "returns": "str | None"
+  },
+  "finish_background_turn": {
+   "params": [
+    "user_id: str",
+    "session_id: str",
+    "turn_id: str",
+    "error: str | None",
+    "*, turn_held: bool = False"
+   ],
+   "returns": "None"
+  },
+  "forget_scheduled_chat": {
+   "params": [
+    "user_id: str",
+    "schedule_key: str"
+   ],
+   "returns": "None"
+  },
+  "forget_scope_job": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "job_id: str"
+   ],
+   "returns": "bool"
+  },
+  "get_accuracy_trends_and_alerts": {
+   "params": [
+    "graph_id: str",
+    "days_back: int = 30",
+    "user_id: str | None = None",
+    "drop_threshold: float = 10.0",
+    "include_historical: bool = False"
+   ],
+   "returns": "backend.data.analytics.AccuracyTrendsResponse"
+  },
+  "get_active_user_ids_in_timerange": {
+   "params": [
+    "start_time: str",
+    "end_time: str"
+   ],
+   "returns": "list[str]"
+  },
+  "get_active_versions": {
+   "params": [
+    "slugs: list[str]"
+   ],
+   "returns": "dict[str, backend.api.features.store.skill_model.ActiveSkillVersion]"
+  },
+  "get_agent": {
+   "params": [
+    "store_listing_version_id: str"
+   ],
+   "returns": "backend.data.graph.GraphModel"
+  },
+  "get_agent_period_stats": {
+   "params": [
+    "user_id: str",
+    "start: datetime.datetime",
+    "end: datetime.datetime"
+   ],
+   "returns": "list[backend.data.briefing_data.AgentPeriodStats]"
+  },
+  "get_auth_user_flag_fields": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.user.AuthUserFlagFields | None"
+  },
+  "get_autopilot_mode": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "Literal['ask_first', 'auto', 'unsupervised'] | None"
+  },
+  "get_available_graph": {
+   "params": [
+    "store_listing_version_id: str",
+    "hide_nodes: bool = True",
+    "include_subgraphs: bool = False"
+   ],
+   "returns": "backend.data.graph.GraphModelWithoutNodes | backend.data.graph.GraphModel"
+  },
+  "get_background_task": {
+   "params": [
+    "task_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.copilot.background_task.BackgroundTask | None"
+  },
+  "get_billing_email_recipient": {
+   "params": [
+    "stripe_customer_id: str"
+   ],
+   "returns": "backend.data.user.BillingEmailRecipient | None"
+  },
+  "get_block_error_stats": {
+   "params": [
+    "start_time: datetime.datetime",
+    "end_time: datetime.datetime"
+   ],
+   "returns": "list[backend.data.execution.BlockErrorStats]"
+  },
+  "get_blocks_needing_optimization": {
+   "params": [],
+   "returns": "list[dict[str, str]]"
+  },
+  "get_bot_install": {
+   "params": [
+    "platform: backend.platform_linking.models.Platform",
+    "team_id: str"
+   ],
+   "returns": "backend.data.bot_installs.BotInstallCredentials | None"
+  },
+  "get_briefing_alert_conditions": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.data.alerts.AlertConditionDTO]"
+  },
+  "get_briefing_candidate": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.user.BriefingCandidate | None"
+  },
+  "get_briefing_candidates": {
+   "params": [
+    "timezones: list[str]",
+    "after_id: str | None",
+    "limit: int"
+   ],
+   "returns": "list[backend.data.user.BriefingCandidate]"
+  },
+  "get_briefing_credit_balance": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "float"
+  },
+  "get_briefing_for_date": {
+   "params": [
+    "user_id: str",
+    "briefing_date: datetime.date"
+   ],
+   "returns": "backend.data.briefing.BriefingRecord | None"
+  },
+  "get_business_understanding": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.understanding.BusinessUnderstanding | None"
+  },
+  "get_chat_messages_by_ids": {
+   "params": [
+    "session_id: str",
+    "message_ids: list[str]"
+   ],
+   "returns": "list[backend.copilot.model.ChatMessage]"
+  },
+  "get_chat_messages_paginated": {
+   "params": [
+    "session_id: str",
+    "limit: int = 50",
+    "before_sequence: int | None = None",
+    "user_id: str | None = None",
+    "organization_id: str | None = None",
+    "*, after_sequence: int | None = None",
+    "*, message_sequences: list[int] | None = None"
+   ],
+   "returns": "backend.copilot.db.PaginatedMessages | None"
+  },
+  "get_chat_session_metadata": {
+   "params": [
+    "session_id: str"
+   ],
+   "returns": "backend.copilot.model.ChatSessionInfo | None"
+  },
+  "get_chat_session_status": {
+   "params": [
+    "session_id: str"
+   ],
+   "returns": "str | None"
+  },
+  "get_child_graph_executions": {
+   "params": [
+    "parent_exec_id: str"
+   ],
+   "returns": "list[backend.data.execution.GraphExecutionMeta]"
+  },
+  "get_connected_output_nodes": {
+   "params": [
+    "node_id: str"
+   ],
+   "returns": "list[tuple[backend.data.graph.Link, backend.data.graph.Node]]"
+  },
+  "get_content_embedding": {
+   "params": [
+    "content_type: prisma.enums.ContentType",
+    "content_id: str",
+    "user_id: str | None = None"
+   ],
+   "returns": "dict[str, typing.Any] | None"
+  },
+  "get_copied_graph_ids": {
+   "params": [
+    "graph_ids: list[str]"
+   ],
+   "returns": "list[str]"
+  },
+  "get_credits": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "get_dream_pass": {
+   "params": [
+    "pass_id: str"
+   ],
+   "returns": "backend.data.dream_pass_models.DreamPassRecord | None"
+  },
+  "get_dream_pass_for_user": {
+   "params": [
+    "pass_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.data.dream_pass_models.DreamPassRecord | None"
+  },
+  "get_embedding_stats": {
+   "params": [],
+   "returns": "dict[str, typing.Any]"
+  },
+  "get_execution_kv_data": {
+   "params": [
+    "user_id: str",
+    "key: str"
+   ],
+   "returns": "typing.Any | None"
+  },
+  "get_execution_outputs_by_node_exec_id": {
+   "params": [
+    "node_exec_id: str"
+   ],
+   "returns": "dict[str, list[typing.Any]]"
+  },
+  "get_expert": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "*, include_workflows: bool = True",
+    "*, include_archived: bool = False",
+    "*, include_credentials: bool = False"
+   ],
+   "returns": "backend.api.features.experts.models.Expert | None"
+  },
+  "get_folder": {
+   "params": [
+    "folder_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.api.features.library.model.LibraryFolder"
+  },
+  "get_folder_agents_map": {
+   "params": [
+    "user_id: str",
+    "folder_ids: list[str]",
+    "organization_id: str | None = None"
+   ],
+   "returns": "dict[str, list[dict[str, str | None]]]"
+  },
+  "get_folder_tree": {
+   "params": [
+    "user_id: str",
+    "organization_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryFolderTree]"
+  },
+  "get_frequently_executed_graphs": {
+   "params": [
+    "days_back: int = 30",
+    "min_executions: int = 10"
+   ],
+   "returns": "list[dict]"
+  },
+  "get_graph": {
+   "params": [
+    "graph_id: str",
+    "version: int | None",
+    "user_id: str | None",
+    "*, for_export: bool = False",
+    "*, include_subgraphs: bool = False",
+    "*, skip_access_check: bool = False",
+    "*, team_id: str | None = None",
+    "*, organization_id: str | None = None"
+   ],
+   "returns": "backend.data.graph.GraphModel | None"
+  },
+  "get_graph_execution": {
+   "params": [
+    "user_id: str",
+    "execution_id: str",
+    "include_node_executions: bool = False",
+    "organization_id: str | None = None"
+   ],
+   "returns": "backend.data.execution.GraphExecution | backend.data.execution.GraphExecutionWithNodes | None"
+  },
+  "get_graph_execution_meta": {
+   "params": [
+    "user_id: str",
+    "execution_id: str",
+    "organization_id: str | None = None"
+   ],
+   "returns": "backend.data.execution.GraphExecutionMeta | None"
+  },
+  "get_graph_executions": {
+   "params": [
+    "graph_exec_id: str | None = None",
+    "execution_ids: list[str] | None = None",
+    "graph_id: str | None = None",
+    "graph_version: int | None = None",
+    "user_id: str | None = None",
+    "statuses: list[prisma.enums.AgentExecutionStatus] | None = None",
+    "created_time_gte: datetime.datetime | None = None",
+    "created_time_lte: datetime.datetime | None = None",
+    "started_time_gte: datetime.datetime | None = None",
+    "started_time_lte: datetime.datetime | None = None",
+    "limit: int | None = None",
+    "team_id: str | None = None",
+    "offset: int | None = None",
+    "order_by: Literal['createdAt', 'startedAt', 'updatedAt'] = 'createdAt'",
+    "order_direction: Literal['asc', 'desc'] = 'desc'",
+    "expert_id: str | None = None",
+    "organization_id: str | None = None",
+    "deleted: bool = False"
+   ],
+   "returns": "list[backend.data.execution.GraphExecutionMeta]"
+  },
+  "get_graph_executions_count": {
+   "params": [
+    "user_id: str | None = None",
+    "graph_id: str | None = None",
+    "statuses: list[prisma.enums.AgentExecutionStatus] | None = None",
+    "created_time_gte: datetime.datetime | None = None",
+    "created_time_lte: datetime.datetime | None = None",
+    "started_time_gte: datetime.datetime | None = None",
+    "started_time_lte: datetime.datetime | None = None",
+    "updated_time_gte: datetime.datetime | None = None",
+    "updated_time_lte: datetime.datetime | None = None",
+    "ended_time_gte: datetime.datetime | None = None"
+   ],
+   "returns": "int"
+  },
+  "get_graph_metadata": {
+   "params": [
+    "graph_id: str",
+    "version: int | None = None"
+   ],
+   "returns": "backend.data.graph.Graph | None"
+  },
+  "get_graph_settings": {
+   "params": [
+    "user_id: str",
+    "graph_id: str",
+    "graph_version: int | None = None"
+   ],
+   "returns": "backend.data.graph.GraphSettings"
+  },
+  "get_head": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str"
+   ],
+   "returns": "backend.data.skill_versions.SkillHeadRecord | None"
+  },
+  "get_latest_briefings": {
+   "params": [
+    "user_id: str",
+    "limit: int = 5"
+   ],
+   "returns": "list[backend.data.briefing.BriefingRecord]"
+  },
+  "get_latest_node_execution": {
+   "params": [
+    "node_id: str",
+    "graph_eid: str"
+   ],
+   "returns": "backend.data.execution.NodeExecutionResult | None"
+  },
+  "get_latest_user_message_in_session": {
+   "params": [
+    "session_id: str"
+   ],
+   "returns": "backend.copilot.model.ChatMessage | None"
+  },
+  "get_library_agent": {
+   "params": [
+    "id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgent"
+  },
+  "get_library_agent_by_graph_id": {
+   "params": [
+    "user_id: str",
+    "graph_id: str",
+    "graph_version: int | None = None",
+    "include_archived: bool = False"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgent | None"
+  },
+  "get_library_agent_id_by_graph_id": {
+   "params": [
+    "user_id: str",
+    "graph_id: str"
+   ],
+   "returns": "str | None"
+  },
+  "get_library_agent_refs_by_graph_ids": {
+   "params": [
+    "user_id: str",
+    "graph_ids: list[str]",
+    "*, include_deleted: bool = False"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryAgentRef]"
+  },
+  "get_link_token_info": {
+   "params": [
+    "token: str"
+   ],
+   "returns": "backend.platform_linking.models.LinkTokenInfoResponse"
+  },
+  "get_link_token_status": {
+   "params": [
+    "token: str"
+   ],
+   "returns": "backend.platform_linking.models.LinkTokenStatusResponse"
+  },
+  "get_marketplace_graphs_for_monitoring": {
+   "params": [
+    "days_back: int = 30",
+    "min_executions: int = 10"
+   ],
+   "returns": "list[backend.data.analytics.MarketplaceGraphData]"
+  },
+  "get_near_expiry_oauth_credentials": {
+   "params": [
+    "refresh_before: int"
+   ],
+   "returns": "list[tuple[str, backend.data.model.OAuth2Credentials]]"
+  },
+  "get_next_sequence": {
+   "params": [
+    "session_id: str"
+   ],
+   "returns": "int"
+  },
+  "get_node": {
+   "params": [
+    "node_id: str"
+   ],
+   "returns": "backend.data.graph.NodeModel"
+  },
+  "get_node_execution": {
+   "params": [
+    "node_exec_id: str"
+   ],
+   "returns": "backend.data.execution.NodeExecutionResult | None"
+  },
+  "get_node_executions": {
+   "params": [
+    "graph_exec_id: str | None = None",
+    "node_id: str | None = None",
+    "block_ids: list[str] | None = None",
+    "statuses: list[prisma.enums.AgentExecutionStatus] | None = None",
+    "limit: int | None = None",
+    "created_time_gte: datetime.datetime | None = None",
+    "created_time_lte: datetime.datetime | None = None",
+    "include_exec_data: bool = True"
+   ],
+   "returns": "list[backend.data.execution.NodeExecutionResult]"
+  },
+  "get_or_create_human_review": {
+   "params": [
+    "user_id: str",
+    "node_exec_id: str",
+    "input_data: dict[str, typing.Any] | list[typing.Any] | str | int | float | bool | None",
+    "message: str",
+    "editable: bool",
+    "graph_exec_id: str | None = None",
+    "graph_id: str | None = None",
+    "graph_version: int | None = None",
+    "chat_session_id: str | None = None",
+    "organization_id: str | None = None",
+    "team_id: str | None = None",
+    "alert: bool = True"
+   ],
+   "returns": "backend.data.human_review.ReviewResult | None"
+  },
+  "get_or_create_workspace": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.workspace.Workspace"
+  },
+  "get_org_credits": {
+   "params": [
+    "org_id: str"
+   ],
+   "returns": "int"
+  },
+  "get_pending_alert_conditions": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.data.alerts.AlertConditionDTO]"
+  },
+  "get_pending_publication_for_skill": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str"
+   ],
+   "returns": "backend.data.skill_versions.SkillVersionRecord | None"
+  },
+  "get_pending_reviews_for_chat_session": {
+   "params": [
+    "chat_session_id: str",
+    "user_id: str"
+   ],
+   "returns": "list[backend.api.features.graph_executions.review.model.PendingHumanReviewModel]"
+  },
+  "get_pending_reviews_for_execution": {
+   "params": [
+    "graph_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "list[backend.api.features.graph_executions.review.model.PendingHumanReviewModel]"
+  },
+  "get_pending_reviews_for_user": {
+   "params": [
+    "user_id: str",
+    "page: int = 1",
+    "page_size: int = 25"
+   ],
+   "returns": "list[backend.api.features.graph_executions.review.model.PendingHumanReviewModel]"
+  },
+  "get_personal_org_owner": {
+   "params": [
+    "org_id: str"
+   ],
+   "returns": "str | None"
+  },
+  "get_preset": {
+   "params": [
+    "user_id: str",
+    "preset_id: str"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentPreset | None"
+  },
+  "get_product_mail_standing": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.product_mail_audience.ProductMailStanding | None"
+  },
+  "get_recent_daily_spend": {
+   "params": [
+    "user_id: str",
+    "days: int = 7"
+   ],
+   "returns": "float"
+  },
+  "get_review": {
+   "params": [
+    "user_id: str",
+    "review_id: str"
+   ],
+   "returns": "backend.data.skill_reviews.LearningReviewRecord | None"
+  },
+  "get_review_for_revision": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "source_revision: str",
+    "policy_version: int"
+   ],
+   "returns": "backend.data.skill_reviews.LearningReviewRecord | None"
+  },
+  "get_reviews_by_node_exec_ids": {
+   "params": [
+    "node_exec_ids: list[str]",
+    "user_id: str"
+   ],
+   "returns": "dict[str, backend.api.features.graph_executions.review.model.PendingHumanReviewModel]"
+  },
+  "get_root_agent_summaries": {
+   "params": [
+    "user_id: str",
+    "organization_id: str | None = None"
+   ],
+   "returns": "list[dict[str, str | None]]"
+  },
+  "get_routine": {
+   "params": [
+    "routine_id: str"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertRoutine | None"
+  },
+  "get_scope_schedule": {
+   "params": [
+    "user_id: str",
+    "scope_key: str"
+   ],
+   "returns": "backend.data.memory_schedule.MemoryScopeSchedule | None"
+  },
+  "get_session_background_state": {
+   "params": [
+    "session_id: str",
+    "user_id: str"
+   ],
+   "returns": "backend.copilot.background_task.BackgroundSessionState"
+  },
+  "get_sessions_with_pending_question": {
+   "params": [
+    "user_id: str",
+    "limit: int = 10"
+   ],
+   "returns": "list[backend.copilot.model.ChatSessionInfo]"
+  },
+  "get_source": {
+   "params": [
+    "user_id: str",
+    "source_id: str"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord | None"
+  },
+  "get_source_by_ref": {
+   "params": [
+    "user_id: str",
+    "source_kind: str",
+    "source_ref: str"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord | None"
+  },
+  "get_store_agent_by_version_id": {
+   "params": [
+    "store_listing_version_id: str"
+   ],
+   "returns": "backend.api.features.store.model.StoreAgentDetails"
+  },
+  "get_store_agent_details": {
+   "params": [
+    "username: str",
+    "agent_name: str",
+    "include_changelog: bool = False"
+   ],
+   "returns": "backend.api.features.store.model.StoreAgentDetails"
+  },
+  "get_store_agents": {
+   "params": [
+    "featured: bool = False",
+    "creators: list[str] | None = None",
+    "sorted_by: backend.api.features.store.db.StoreAgentsSortOptions | None = None",
+    "search_query: str | None = None",
+    "category: str | None = None",
+    "page: int = 1",
+    "page_size: int = 20",
+    "public_search: bool = False"
+   ],
+   "returns": "backend.api.features.store.model.StoreAgentsResponse"
+  },
+  "get_store_listed_graphs": {
+   "params": [
+    "graph_ids: list[str]"
+   ],
+   "returns": "dict[str, backend.data.graph.GraphModel]"
+  },
+  "get_subscription_trial": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.subscription_trial.TrialState | None"
+  },
+  "get_template": {
+   "params": [
+    "template_id: str"
+   ],
+   "returns": "backend.api.features.experts.models.Expert | None"
+  },
+  "get_top_scored_runs": {
+   "params": [
+    "user_id: str",
+    "start: datetime.datetime",
+    "end: datetime.datetime",
+    "limit: int"
+   ],
+   "returns": "list[backend.data.briefing_data.ScoredRun]"
+  },
+  "get_usage_activation_state": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.pro_activation.UsageActivationState"
+  },
+  "get_user_by_id": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.model.User"
+  },
+  "get_user_chat_session_groups": {
+   "params": [
+    "user_id: str",
+    "min_per_group: int",
+    "fill_to: int",
+    "organization_id: str | None = None",
+    "pinned: bool | None = None"
+   ],
+   "returns": "list[backend.copilot.model.ChatSessionGroup]"
+  },
+  "get_user_chat_sessions": {
+   "params": [
+    "user_id: str",
+    "limit: int = 50",
+    "offset: int = 0",
+    "organization_id: str | None = None",
+    "title_contains: str | None = None",
+    "expert_id: str | None = None",
+    "autopilot_only: bool = False",
+    "experts_only: bool = False",
+    "pinned_first: bool = True",
+    "pinned: bool | None = None"
+   ],
+   "returns": "list[backend.copilot.model.ChatSessionInfo]"
+  },
+  "get_user_credentials": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[Annotated[backend.data.model.OAuth2Credentials | backend.data.model.APIKeyCredentials | backend.data.model.UserPasswordCredentials | backend.data.model.HostScopedCredentials, ...]]"
+  },
+  "get_user_default_chat_route": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "tuple[str | None, str | None]"
+  },
+  "get_user_default_team": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "tuple[str | None, str | None]"
+  },
+  "get_user_email_by_id": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "str | None"
+  },
+  "get_user_email_verification": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "get_user_integrations": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.model.UserIntegrations"
+  },
+  "get_user_notification_preference": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.notifications.NotificationPreference"
+  },
+  "get_user_push_subscriptions": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.data.push_subscription.PushSubscriptionDTO]"
+  },
+  "get_user_session_count": {
+   "params": [
+    "user_id: str",
+    "organization_id: str | None = None",
+    "expert_id: str | None = None",
+    "autopilot_only: bool = False",
+    "pinned: bool | None = None"
+   ],
+   "returns": "int"
+  },
+  "get_user_subscription_tier": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "prisma.enums.SubscriptionTier"
+  },
+  "get_users_with_matured_alerts": {
+   "params": [
+    "matured_before: datetime.datetime",
+    "after_user_id: str | None = None",
+    "limit: int = 1000"
+   ],
+   "returns": "backend.data.alerts.MaturedAlertPage"
+  },
+  "get_version": {
+   "params": [
+    "user_id: str",
+    "version_id: str"
+   ],
+   "returns": "backend.data.skill_versions.SkillVersionRecord | None"
+  },
+  "get_version_packages": {
+   "params": [
+    "version_ids: list[str]"
+   ],
+   "returns": "dict[str, backend.api.features.store.skill_model.SkillVersionPackage]"
+  },
+  "get_workflow_label": {
+   "params": [
+    "user_id: str",
+    "workflow_id: str"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertWorkflowLabel | None"
+  },
+  "get_workspace_file": {
+   "params": [
+    "file_id: str",
+    "workspace_id: str"
+   ],
+   "returns": "backend.data.workspace.WorkspaceFile | None"
+  },
+  "get_workspace_file_by_path": {
+   "params": [
+    "workspace_id: str",
+    "path: str"
+   ],
+   "returns": "backend.data.workspace.WorkspaceFile | None"
+  },
+  "get_workspace_total_size": {
+   "params": [
+    "workspace_id: str"
+   ],
+   "returns": "int"
+  },
+  "grant_expert_credentials": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "credential_ids: list[str]"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertCredentialRef]"
+  },
+  "has_open_handoffs": {
+   "params": [
+    "user_id: str",
+    "session_id: str"
+   ],
+   "returns": "bool"
+  },
+  "has_pending_reviews_for_graph_exec": {
+   "params": [
+    "graph_exec_id: str"
+   ],
+   "returns": "bool"
+  },
+  "heal_orphaned_auth_identities": {
+   "params": [
+    "grace_secs: int = 300",
+    "limit: int = 100"
+   ],
+   "returns": "backend.data.user.OrphanedAuthIdentityReport"
+  },
+  "hire_expert": {
+   "params": [
+    "user_id: str",
+    "template_id: str",
+    "name: str | None",
+    "surface: Literal['onboarding', 'expert_page', 'copilot'] | None = None",
+    "via: Literal['plan'] | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.HireResult"
+  },
+  "increment_onboarding_runs": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "<unannotated>"
+  },
+  "increment_push_fail_count": {
+   "params": [
+    "user_id: str",
+    "endpoint: str"
+   ],
+   "returns": "None"
+  },
+  "install_workflow": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "*, store_listing_version_id: str | None = None",
+    "*, library_agent_id: str | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.ExpertWorkflowRef"
+  },
+  "invalidate_source_versions": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "reason: str"
+   ],
+   "returns": "list[backend.data.skill_revocations.RevokedVersion]"
+  },
+  "is_account_closed": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "is_active_member": {
+   "params": [
+    "user_id: str",
+    "organization_id: str",
+    "team_id: str | None"
+   ],
+   "returns": "bool"
+  },
+  "is_auth_session_active": {
+   "params": [
+    "session_id: str",
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "is_auth_user_banned": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "is_graph_version_owner": {
+   "params": [
+    "graph_id: str",
+    "version: int",
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "is_install_revoked": {
+   "params": [
+    "platform: backend.platform_linking.models.Platform",
+    "team_id: str"
+   ],
+   "returns": "bool"
+  },
+  "is_marketing_opted_out": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "latest_independent_version_id": {
+   "params": [
+    "user_id: str",
+    "head_id: str"
+   ],
+   "returns": "str | None"
+  },
+  "link_new_execution_to_chat_share": {
+   "params": [
+    "session_id: str",
+    "execution_id: str"
+   ],
+   "returns": "None"
+  },
+  "list_background_tasks": {
+   "params": [],
+   "returns": "list[backend.copilot.background_task.BackgroundTask]"
+  },
+  "list_chat_sessions_by_status": {
+   "params": [
+    "*, user_id: str",
+    "*, status: str"
+   ],
+   "returns": "list[backend.copilot.model.ChatSessionInfo]"
+  },
+  "list_dream_pass_cleanups": {
+   "params": [
+    "due_before: datetime.datetime",
+    "limit: int = 100",
+    "marked_through: datetime.datetime | None = None",
+    "after_mark: datetime.datetime | None = None",
+    "after_id: str | None = None"
+   ],
+   "returns": "list[backend.data.dream_pass_models.DreamPassRecord]"
+  },
+  "list_dream_passes": {
+   "params": [
+    "user_id: str",
+    "limit: int = 20",
+    "open_only: bool = False"
+   ],
+   "returns": "list[backend.data.dream_pass_models.DreamPassRecord]"
+  },
+  "list_due_community_scopes": {
+   "params": [
+    "*, due_before: datetime.datetime",
+    "*, limit: int"
+   ],
+   "returns": "list[backend.data.memory_schedule.MemoryScopeSchedule]"
+  },
+  "list_expert_credentials": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertCredentialRef]"
+  },
+  "list_expert_identities": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertIdentity]"
+  },
+  "list_experts": {
+   "params": [
+    "user_id: str",
+    "*, with_metrics: bool = True"
+   ],
+   "returns": "list[backend.api.features.experts.models.Expert]"
+  },
+  "list_expired_dream_passes": {
+   "params": [
+    "expired_before: datetime.datetime",
+    "limit: int = 100",
+    "after_lapse: datetime.datetime | None = None",
+    "after_id: str | None = None"
+   ],
+   "returns": "list[backend.data.dream_pass_models.DreamPassRecord]"
+  },
+  "list_folders": {
+   "params": [
+    "user_id: str",
+    "parent_id: str | None = None",
+    "include_relations: bool = True",
+    "organization_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryFolder]"
+  },
+  "list_heads": {
+   "params": [
+    "user_id: str",
+    "owner_key: str | None = None"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillHeadRecord]"
+  },
+  "list_library_agents": {
+   "params": [
+    "user_id: str",
+    "search_term: str | None = None",
+    "published: bool | None = None",
+    "favorite: bool | None = None",
+    "sort_by: backend.api.features.library.model.LibraryAgentSort = <LibraryAgentSort.UPDATED_AT: 'updatedAt'>",
+    "page: int = 1",
+    "page_size: int = 50",
+    "include_executions: bool = False",
+    "folder_id: str | None = None",
+    "include_root_only: bool = False",
+    "is_hidden: bool | None = None",
+    "organization_id: str | None = None",
+    "include_nodes: bool = False",
+    "folder_ids: list[str] | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentResponse"
+  },
+  "list_open_decisions": {
+   "params": [
+    "user_id: str",
+    "owner_key: str | None = None"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillVersionRecord]"
+  },
+  "list_open_dream_passes": {
+   "params": [
+    "scope_key: str",
+    "limit: int | None = None"
+   ],
+   "returns": "list[backend.data.dream_pass_models.DreamPassRecord]"
+  },
+  "list_pending_owner_keys": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[str]"
+  },
+  "list_pending_publications": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillVersionRecord]"
+  },
+  "list_pending_sources": {
+   "params": [
+    "user_id: str",
+    "*, limit: int = 100",
+    "*, owner_key: str | None = None"
+   ],
+   "returns": "list[backend.data.skill_learning.LearningSourceRecord]"
+  },
+  "list_presets": {
+   "params": [
+    "user_id: str",
+    "page: int",
+    "page_size: int",
+    "graph_id: str | None = None",
+    "expert_id: str | None = None",
+    "filter_by_expert: bool = False",
+    "organization_id: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentPresetResponse"
+  },
+  "list_recent_chat_sessions": {
+   "params": [
+    "*, user_id: str",
+    "*, organization_id: str | None",
+    "*, expert_id: str | None = None",
+    "*, status: str | None = None",
+    "*, limit: int = 50",
+    "*, skip: int = 0"
+   ],
+   "returns": "list[backend.copilot.model.ChatSessionInfo]"
+  },
+  "list_recent_versions": {
+   "params": [
+    "user_id: str",
+    "*, owner_key: str | None = None",
+    "*, origin: str | None = None",
+    "*, state: str | None = None",
+    "*, limit: int = 50"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillVersionRecord]"
+  },
+  "list_reviews": {
+   "params": [
+    "user_id: str",
+    "*, owner_key: str | None = None",
+    "*, disposition: str | None = None",
+    "*, limit: int = 50"
+   ],
+   "returns": "list[backend.data.skill_reviews.LearningReviewRecord]"
+  },
+  "list_routines": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertRoutine]"
+  },
+  "list_scope_schedules": {
+   "params": [
+    "*, after: str | None = None",
+    "*, limit: int = 500"
+   ],
+   "returns": "list[backend.data.memory_schedule.MemoryScopeSchedule]"
+  },
+  "list_server_links": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.platform_linking.models.PlatformLinkInfo]"
+  },
+  "list_suppressions": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str"
+   ],
+   "returns": "list[backend.data.skill_use.SkillSuppressionRecord]"
+  },
+  "list_templates": {
+   "params": [
+    "search_query: str | None = None",
+    "category: str | None = None"
+   ],
+   "returns": "list[backend.api.features.experts.models.Expert]"
+  },
+  "list_trials_ending_unrenewed": {
+   "params": [
+    "after: datetime.datetime",
+    "until: datetime.datetime"
+   ],
+   "returns": "list[backend.data.subscription_trial.TrialState]"
+  },
+  "list_trigger_agents": {
+   "params": [
+    "user_id: str",
+    "library_agent_id: str",
+    "*, parent_graph_id: str | None = None"
+   ],
+   "returns": "list[backend.api.features.library.model.LibraryAgent]"
+  },
+  "list_use_events": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str",
+    "*, limit: int = 200"
+   ],
+   "returns": "list[backend.data.skill_use.SkillUseEventRecord]"
+  },
+  "list_use_paused_skill_names": {
+   "params": [
+    "user_id: str",
+    "owner_key: str"
+   ],
+   "returns": "list[str]"
+  },
+  "list_user_links": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.platform_linking.models.PlatformUserLinkInfo]"
+  },
+  "list_user_scope_schedules": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "list[backend.data.memory_schedule.MemoryScopeSchedule]"
+  },
+  "list_versions": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str",
+    "*, limit: int = 50"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillVersionRecord]"
+  },
+  "list_versions_in_states": {
+   "params": [
+    "user_id: str",
+    "states: list[str]",
+    "*, limit: int = 500"
+   ],
+   "returns": "list[backend.data.skill_versions.SkillVersionRecord]"
+  },
+  "list_workspace_files": {
+   "params": [
+    "workspace_id: str",
+    "path_prefix: str | None = None",
+    "path_not_starts_with: str | None = None",
+    "include_deleted: bool = False",
+    "limit: int | None = None",
+    "offset: int = 0",
+    "name_contains: str | None = None",
+    "metadata_equals: dict | None = None",
+    "metadata_not_equals: dict | None = None",
+    "folder_id: str | None = None",
+    "folder_ids: list[str] | None = None",
+    "root_only: bool = False",
+    "allowed_path_prefixes: list[str] | None = None",
+    "include_user_files: bool = False",
+    "include_internal: bool = True",
+    "created_after: datetime.datetime | None = None",
+    "created_before: datetime.datetime | None = None"
+   ],
+   "returns": "list[backend.data.workspace.WorkspaceFile]"
+  },
+  "list_workspace_folders": {
+   "params": [
+    "workspace_id: str"
+   ],
+   "returns": "list[backend.data.workspace_folder.WorkspaceFolder]"
+  },
+  "log_platform_cost": {
+   "params": [
+    "entry: backend.data.platform_cost.PlatformCostEntry"
+   ],
+   "returns": "None"
+  },
+  "mark_alert_conditions_briefed": {
+   "params": [
+    "condition_ids: list[str]"
+   ],
+   "returns": "None"
+  },
+  "mark_alert_conditions_deferred": {
+   "params": [
+    "condition_ids: list[str]"
+   ],
+   "returns": "None"
+  },
+  "mark_alert_conditions_sent": {
+   "params": [
+    "condition_ids: list[str]"
+   ],
+   "returns": "None"
+  },
+  "mark_briefing_delivered": {
+   "params": [
+    "user_id: str",
+    "briefing_id: str"
+   ],
+   "returns": "None"
+  },
+  "mark_guild_left": {
+   "params": [
+    "platform: backend.platform_linking.models.Platform",
+    "server_id: str"
+   ],
+   "returns": "None"
+  },
+  "mark_node_executions_moderated": {
+   "params": [
+    "graph_exec_id: str",
+    "stats_patches: dict[str, dict[str, typing.Any]]",
+    "from_statuses: list[prisma.enums.AgentExecutionStatus]"
+   ],
+   "returns": "list[backend.data.execution.NodeExecutionResult]"
+  },
+  "mark_routine_unscheduled": {
+   "params": [
+    "routine_id: str",
+    "schedule_id: str"
+   ],
+   "returns": "None"
+  },
+  "mark_source_attempted": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "revision: str"
+   ],
+   "returns": "bool"
+  },
+  "move_folder": {
+   "params": [
+    "folder_id: str",
+    "user_id: str",
+    "target_parent_id: str | None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryFolder"
+  },
+  "open_chat_spend_review": {
+   "params": [
+    "user_id: str",
+    "session_id: str",
+    "needed: backend.api.features.experts.spend_approval.SpendApprovalNeeded",
+    "block_name: str",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "str"
+  },
+  "owns_active_expert": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "bool"
+  },
+  "park_execution_for_spend_approval": {
+   "params": [
+    "user_id: str",
+    "graph_exec_id: str",
+    "graph_id: str",
+    "graph_version: int",
+    "needed: backend.api.features.experts.spend_approval.SpendApprovalNeeded",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "None"
+  },
+  "parked_spend_decision": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "graph_exec_id: str"
+   ],
+   "returns": "prisma.enums.ReviewStatus | None"
+  },
+  "pause_use_if_current": {
+   "params": [
+    "user_id: str",
+    "head_id: str",
+    "version_id: str"
+   ],
+   "returns": "bool"
+  },
+  "process_all_reviews_for_execution": {
+   "params": [
+    "user_id: str",
+    "review_decisions: dict[str, tuple[prisma.enums.ReviewStatus, dict[str, typing.Any] | list[typing.Any] | str | int | float | bool | None, str | None]]"
+   ],
+   "returns": "dict[str, backend.api.features.graph_executions.review.model.PendingHumanReviewModel]"
+  },
+  "publish_version_if_current": {
+   "params": [
+    "user_id: str",
+    "head_id: str",
+    "*, expected_current_version: int",
+    "*, version_id: str",
+    "*, version_number: int",
+    "*, new_content_hash: str"
+   ],
+   "returns": "bool"
+  },
+  "publish_workspace_skill_file": {
+   "params": [
+    "write: backend.data.workspace_skill.WorkspaceSkillWrite"
+   ],
+   "returns": "backend.data.workspace_skill.WorkspaceSkillPublication"
+  },
+  "raise_alert_condition": {
+   "params": [
+    "user_id: str",
+    "cause: prisma.enums.AlertCause",
+    "cause_key: str",
+    "data: dict"
+   ],
+   "returns": "backend.data.alerts.AlertConditionDTO"
+  },
+  "reconcile_all_stripe_tiers": {
+   "params": [],
+   "returns": "backend.data.stripe_reconciliation.ReconciliationSummary"
+  },
+  "reconcile_stripe_tier_for_user": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "bool"
+  },
+  "record_bot_event": {
+   "params": [
+    "event: backend.platform_linking.models.BotEventInput"
+   ],
+   "returns": "None"
+  },
+  "record_chat_session_turn": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "turn_id: str"
+   ],
+   "returns": "bool"
+  },
+  "record_gate_approval": {
+   "params": [
+    "user_id: str",
+    "node_exec_id: str",
+    "graph_exec_id: str",
+    "graph_id: str",
+    "graph_version: int",
+    "input_data: dict[str, typing.Any] | list[typing.Any] | str | int | float | bool | None",
+    "block_name: str",
+    "message: str",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "backend.data.human_review.ReviewResult | None"
+  },
+  "record_guild_joined": {
+   "params": [
+    "guild: backend.platform_linking.models.BotGuildInput"
+   ],
+   "returns": "None"
+  },
+  "record_routine_fired": {
+   "params": [
+    "routine_id: str"
+   ],
+   "returns": "None"
+  },
+  "record_routine_thread": {
+   "params": [
+    "routine_id: str",
+    "session_id: str"
+   ],
+   "returns": "None"
+  },
+  "record_scheduled_run": {
+   "params": [
+    "run: backend.copilot.scheduled_chats.service.ScheduledRun"
+   ],
+   "returns": "None"
+  },
+  "record_scope_jobs": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "*, user_timezone: str",
+    "*, nightly_job_id: str | None",
+    "*, learning_job_id: str | None"
+   ],
+   "returns": "bool"
+  },
+  "record_scope_run": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "kind: Literal['nightly', 'community']"
+   ],
+   "returns": "bool"
+  },
+  "record_skill_deletion": {
+   "params": [
+    "user_id: str",
+    "*, expert_id: str | None",
+    "*, skill_name: str",
+    "*, expected_current_version_id: str | None",
+    "*, behaviors: list[backend.data.skill_deletion.DeletedBehavior]",
+    "*, actor_user_id: str | None"
+   ],
+   "returns": "backend.data.skill_deletion.SkillDeletion"
+  },
+  "record_subscription_trial_cost": {
+   "params": [
+    "user_id: str",
+    "cost_microdollars: int",
+    "trial_id: str | None = None"
+   ],
+   "returns": "None"
+  },
+  "record_use_event": {
+   "params": [
+    "user_id: str",
+    "*, expert_id: str | None",
+    "*, skill_name: str",
+    "*, kind: str",
+    "*, version_id: str | None = None",
+    "*, session_id: str | None = None",
+    "*, detail: str = ''",
+    "*, actor_user_id: str | None = None"
+   ],
+   "returns": "backend.data.skill_use.SkillUseEventRecord"
+  },
+  "refresh_server_link_name": {
+   "params": [
+    "platform: str",
+    "platform_server_id: str",
+    "server_name: str"
+   ],
+   "returns": "None"
+  },
+  "release_abandoned_background_turn": {
+   "params": [
+    "task: backend.copilot.background_task.BackgroundTask",
+    "session_id: str",
+    "turn_id: str",
+    "before: datetime.datetime"
+   ],
+   "returns": "bool"
+  },
+  "release_deleted_background_turn": {
+   "params": [
+    "task_id: str",
+    "user_id: str",
+    "session_id: str",
+    "turn_id: str"
+   ],
+   "returns": "bool"
+  },
+  "release_review_claim": {
+   "params": [
+    "node_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "release_welcome_email": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "None"
+  },
+  "remove_expert_skill_name": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "name: str"
+   ],
+   "returns": "None"
+  },
+  "remove_workflow": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "workflow_id: str"
+   ],
+   "returns": "list[str]"
+  },
+  "reopen_review": {
+   "params": [
+    "node_exec_id: str",
+    "user_id: str"
+   ],
+   "returns": "int"
+  },
+  "request_posthog_lifecycle_sync": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "None"
+  },
+  "require_owned_source": {
+   "params": [
+    "user_id: str",
+    "source_id: str"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord"
+  },
+  "reserve_model_review": {
+   "params": [
+    "user_id: str",
+    "*, source_id: str",
+    "*, source_revision: str",
+    "*, policy_version: int",
+    "*, run_id: str",
+    "*, max_attempts: int",
+    "*, expected_epoch: int",
+    "*, live_seconds: int = 480"
+   ],
+   "returns": "backend.data.skill_reviews.LearningReviewRecord | None"
+  },
+  "resolve_alert_condition": {
+   "params": [
+    "user_id: str",
+    "cause_key: str"
+   ],
+   "returns": "bool"
+  },
+  "resolve_attributable_expert": {
+   "params": [
+    "user_id: str",
+    "expert_id: str | None"
+   ],
+   "returns": "str | None"
+  },
+  "resolve_default_tenancy": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "tuple[str | None, str | None]"
+  },
+  "resolve_expert_workspace_scope": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "backend.data.workspace_scope.WorkspaceScope"
+  },
+  "resolve_member_tenancy": {
+   "params": [
+    "user_id: str",
+    "organization_id: str | None",
+    "team_id: str | None"
+   ],
+   "returns": "tuple[str | None, str | None]"
+  },
+  "resolve_private_expert_tenancy": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "tuple[str, str | None]"
+  },
+  "resolve_server_link": {
+   "params": [
+    "platform: str",
+    "platform_server_id: str"
+   ],
+   "returns": "backend.platform_linking.models.ResolveResponse"
+  },
+  "resolve_user_link": {
+   "params": [
+    "platform: str",
+    "platform_user_id: str",
+    "include_account: bool = False"
+   ],
+   "returns": "backend.platform_linking.models.ResolveResponse"
+  },
+  "revoke_bot_install": {
+   "params": [
+    "platform: backend.platform_linking.models.Platform",
+    "team_id: str"
+   ],
+   "returns": "None"
+  },
+  "revoke_expert_credential": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "credential_id: str"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertCredentialRef]"
+  },
+  "seeded_expert_credential_ids": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "list[str] | None"
+  },
+  "send_trial_last_calls": {
+   "params": [],
+   "returns": "int"
+  },
+  "set_execution_kv_data": {
+   "params": [
+    "user_id: str",
+    "node_exec_id: str",
+    "key: str",
+    "data: typing.Any"
+   ],
+   "returns": "typing.Any | None"
+  },
+  "set_expert_learning_paused": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "paused: bool"
+   ],
+   "returns": "backend.api.features.experts.models.Expert | None"
+  },
+  "set_last_briefing_at": {
+   "params": [
+    "user_id: str",
+    "sent_at: datetime.datetime"
+   ],
+   "returns": "None"
+  },
+  "set_review_replay": {
+   "params": [
+    "user_id: str",
+    "review_id: str",
+    "run_id: str",
+    "replay: dict[str, typing.Any] | None"
+   ],
+   "returns": "bool"
+  },
+  "set_scope_state": {
+   "params": [
+    "user_id: str",
+    "scope_key: str",
+    "state: prisma.enums.MemoryScopeScheduleState",
+    "*, only_from: collections.abc.Sequence[prisma.enums.MemoryScopeScheduleState] | None = None"
+   ],
+   "returns": "bool"
+  },
+  "set_session_pending_question": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "text: str",
+    "asked_at: datetime.datetime"
+   ],
+   "returns": "None"
+  },
+  "set_source_approval": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "*, approval_event_id: str | None",
+    "*, approval_actor_id: str | None",
+    "*, approved_revision: str | None",
+    "*, eligibility: str"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord | None"
+  },
+  "set_source_eligibility": {
+   "params": [
+    "user_id: str",
+    "source_id: str",
+    "eligibility: str",
+    "*, excluded_by_user_id: str | None = None"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord | None"
+  },
+  "set_turn_duration": {
+   "params": [
+    "session_id: str",
+    "duration_ms: int"
+   ],
+   "returns": "None"
+  },
+  "set_user_credentials": {
+   "params": [
+    "user_id: str",
+    "credentials: list[Annotated[backend.data.model.OAuth2Credentials | backend.data.model.APIKeyCredentials | backend.data.model.UserPasswordCredentials | backend.data.model.HostScopedCredentials, ...]]"
+   ],
+   "returns": "None"
+  },
+  "set_version_state": {
+   "params": [
+    "user_id: str",
+    "version_id: str",
+    "state: str",
+    "reason: str = ''"
+   ],
+   "returns": "None"
+  },
+  "settle_credential_seed": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "None"
+  },
+  "setup_triggered_preset": {
+   "params": [
+    "*, user_id: str",
+    "*, graph_id: str",
+    "*, graph_version: int",
+    "*, name: str",
+    "*, description: str",
+    "*, trigger_config: dict[str, typing.Any]",
+    "*, agent_credentials: dict[str, backend.data.model.CredentialsMetaInput]",
+    "*, constant_inputs: dict[str, typing.Any] | None = None",
+    "*, expert_id: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentPreset"
+  },
+  "skill_root_has_room": {
+   "params": [
+    "workspace_id: str",
+    "path: str",
+    "origin: str"
+   ],
+   "returns": "bool"
+  },
+  "soft_delete_workspace_file": {
+   "params": [
+    "file_id: str",
+    "workspace_id: str"
+   ],
+   "returns": "backend.data.workspace.WorkspaceFile | None"
+  },
+  "spend_approval_required": {
+   "params": [
+    "user_id: str",
+    "expert_id: str"
+   ],
+   "returns": "backend.api.features.experts.spend_approval.SpendApprovalNeeded | None"
+  },
+  "spend_credits": {
+   "params": [
+    "user_id: str",
+    "cost: int",
+    "metadata: backend.data.credit.UsageTransactionMetadata",
+    "fail_insufficient_credits: bool = True"
+   ],
+   "returns": "int"
+  },
+  "spend_org_credits": {
+   "params": [
+    "org_id: str",
+    "user_id: str",
+    "cost: int",
+    "metadata: backend.data.credit.UsageTransactionMetadata",
+    "team_id: str | None = None",
+    "fail_insufficient_credits: bool = True"
+   ],
+   "returns": "int"
+  },
+  "stalled_account_erasures": {
+   "params": [
+    "*, older_than_secs: int",
+    "*, now: datetime.datetime | None = None"
+   ],
+   "returns": "list[str]"
+  },
+  "start_account_erasure_sweep": {
+   "params": [],
+   "returns": "bool"
+  },
+  "start_expert_kickoff": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "*, organization_id: str | None = None",
+    "*, team_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "start_posthog_lifecycle_sweep": {
+   "params": [],
+   "returns": "bool"
+  },
+  "store_content_embedding": {
+   "params": [
+    "content_type: prisma.enums.ContentType",
+    "content_id: str",
+    "embedding: list[float]",
+    "searchable_text: str",
+    "metadata: dict | None = None",
+    "user_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "summarize_learning": {
+   "params": [
+    "user_id: str"
+   ],
+   "returns": "backend.data.skill_reviews.LearningRunSummary"
+  },
+  "suppress_background_followup": {
+   "params": [
+    "task_id: str",
+    "user_id: str"
+   ],
+   "returns": "None"
+  },
+  "sync_guild_presence": {
+   "params": [
+    "platform: backend.platform_linking.models.Platform",
+    "guilds: list[backend.platform_linking.models.BotGuildInput]"
+   ],
+   "returns": "None"
+  },
+  "sync_subscription_from_stripe": {
+   "params": [
+    "stripe_subscription: dict",
+    "*, track_lifecycle: bool = True"
+   ],
+   "returns": "None"
+  },
+  "unified_hybrid_search": {
+   "params": [
+    "query: str",
+    "content_types: list[prisma.enums.ContentType] | None = None",
+    "category: str | None = None",
+    "page: int = 1",
+    "page_size: int = 20",
+    "weights: backend.api.features.search.hybrid_search.UnifiedSearchWeights | None = None",
+    "min_score: float | None = None",
+    "user_id: str | None = None",
+    "lexical_query: str | None = None",
+    "prefix_match: bool = False",
+    "public_search: bool = False"
+   ],
+   "returns": "tuple[list[backend.api.features.search.hybrid_search.HybridSearchRow], int]"
+  },
+  "update_block_optimized_description": {
+   "params": [
+    "block_id: str",
+    "optimized_description: str"
+   ],
+   "returns": "None"
+  },
+  "update_briefing_content": {
+   "params": [
+    "user_id: str",
+    "briefing_id: str",
+    "content: dict[str, typing.Any]"
+   ],
+   "returns": "None"
+  },
+  "update_chat_message_stamps": {
+   "params": [
+    "session_id: str",
+    "sequence: int",
+    "model: str | None",
+    "routing_source: str | None",
+    "llm_auth_provider: str | None = None",
+    "llm_credential_id: str | None = None",
+    "trace_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_message_tool_calls": {
+   "params": [
+    "session_id: str",
+    "sequence: int",
+    "tool_calls: list[dict[str, typing.Any]]"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_session": {
+   "params": [
+    "session_id: str",
+    "credentials: dict[str, typing.Any] | None = None",
+    "successful_agent_runs: dict[str, typing.Any] | None = None",
+    "successful_agent_schedules: dict[str, typing.Any] | None = None",
+    "total_prompt_tokens: int | None = None",
+    "total_completion_tokens: int | None = None",
+    "title: str | None = None",
+    "organization_id: str | None = None",
+    "team_id: str | None = None",
+    "update_tenancy: bool = False"
+   ],
+   "returns": "backend.copilot.model.ChatSessionInfo | None"
+  },
+  "update_chat_session_autopilot_mode": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "mode: str"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_session_llm_route": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "llm_auth_provider: str",
+    "llm_credential_id: str | None"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_session_pinned": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "is_pinned: bool"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_session_status": {
+   "params": [
+    "*, session_id: str",
+    "*, status: str",
+    "*, expect_status: str | None = None",
+    "*, user_id: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "update_chat_session_title": {
+   "params": [
+    "session_id: str",
+    "user_id: str",
+    "title: str",
+    "*, only_if_empty: bool = False"
+   ],
+   "returns": "bool"
+  },
+  "update_dream_pass": {
+   "params": [
+    "pass_id: str",
+    "update: backend.data.dream_pass_models.DreamPassUpdate"
+   ],
+   "returns": "bool"
+  },
+  "update_folder": {
+   "params": [
+    "folder_id: str",
+    "user_id: str",
+    "name: str | None = None",
+    "icon: str | None = None",
+    "color: str | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryFolder"
+  },
+  "update_graph_execution_start_time": {
+   "params": [
+    "graph_exec_id: str"
+   ],
+   "returns": "backend.data.execution.GraphExecution | None"
+  },
+  "update_graph_execution_stats": {
+   "params": [
+    "graph_exec_id: str",
+    "status: prisma.enums.AgentExecutionStatus | None = None",
+    "stats: backend.data.model.GraphExecutionStats | None = None",
+    "cascade_running_children: bool = True",
+    "update_tenancy: bool = False",
+    "organization_id: str | None = None",
+    "team_id: str | None = None"
+   ],
+   "returns": "backend.data.execution.GraphExecution | None"
+  },
+  "update_graph_in_library": {
+   "params": [
+    "graph: backend.data.graph.Graph",
+    "user_id: str",
+    "organization_id: str | None = None",
+    "team_id: str | None = None",
+    "move_webhook_presets: bool = True"
+   ],
+   "returns": "tuple[backend.data.graph.GraphModel, backend.api.features.library.model.LibraryAgent]"
+  },
+  "update_head_policy": {
+   "params": [
+    "user_id: str",
+    "owner_key: str",
+    "skill_name: str",
+    "*, auto_improve: bool | None = None",
+    "*, learning_paused: bool | None = None",
+    "*, use_paused: bool | None = None"
+   ],
+   "returns": "backend.data.skill_versions.SkillHeadRecord | None"
+  },
+  "update_library_agent": {
+   "params": [
+    "library_agent_id: str",
+    "user_id: str",
+    "auto_update_version: bool | None = None",
+    "graph_version: int | None = None",
+    "is_favorite: bool | None = None",
+    "is_archived: bool | None = None",
+    "is_hidden: bool | None = None",
+    "is_deleted: Literal[False] | None = None",
+    "settings: backend.data.graph.GraphSettings | None = None",
+    "folder_id: str | None = None",
+    "organization_ids: frozenset[str | None] | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgent"
+  },
+  "update_message_content_by_sequence": {
+   "params": [
+    "session_id: str",
+    "sequence: int",
+    "new_content: str"
+   ],
+   "returns": "bool"
+  },
+  "update_node_execution_status": {
+   "params": [
+    "node_exec_id: str",
+    "status: prisma.enums.AgentExecutionStatus",
+    "execution_data: dict[str, typing.Any] | None = None",
+    "stats: dict[str, typing.Any] | None = None"
+   ],
+   "returns": "backend.data.execution.NodeExecutionResult"
+  },
+  "update_node_execution_status_batch": {
+   "params": [
+    "node_exec_ids: list[str]",
+    "status: prisma.enums.AgentExecutionStatus",
+    "stats: dict[str, typing.Any] | None = None"
+   ],
+   "returns": "int"
+  },
+  "update_review_processed_status": {
+   "params": [
+    "node_exec_id: str",
+    "processed: bool"
+   ],
+   "returns": "None"
+  },
+  "update_soul": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "soul: backend.api.features.experts.models.ExpertSoulUpdate"
+   ],
+   "returns": "backend.api.features.experts.models.Expert"
+  },
+  "update_soul_fields": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "*, identity: str | None = None",
+    "*, voice_preferences: str | None = None",
+    "*, boundaries: str | None = None"
+   ],
+   "returns": "backend.api.features.experts.models.Expert"
+  },
+  "update_soul_fields_if_current": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "*, identity: str | None = None",
+    "*, voice_preferences: str | None = None",
+    "*, boundaries: str | None = None",
+    "*, expected_identity: str | None = None",
+    "*, expected_voice_preferences: str | None = None",
+    "*, expected_boundaries: str | None = None"
+   ],
+   "returns": "bool"
+  },
+  "update_soul_if_current": {
+   "params": [
+    "user_id: str",
+    "expert_id: str",
+    "soul: backend.api.features.experts.models.ExpertSoulUpdate",
+    "*, expected_name: str",
+    "*, expected_identity: str",
+    "*, expected_voice_preferences: str",
+    "*, expected_boundaries: str"
+   ],
+   "returns": "backend.api.features.experts.models.Expert | None"
+  },
+  "update_tool_message_content": {
+   "params": [
+    "session_id: str",
+    "tool_call_id: str",
+    "new_content: str"
+   ],
+   "returns": "bool"
+  },
+  "update_triggered_preset": {
+   "params": [
+    "*, user_id: str",
+    "*, preset_id: str",
+    "*, inputs: dict[str, typing.Any] | None = None",
+    "*, credentials: dict[str, backend.data.model.CredentialsMetaInput] | None = None",
+    "*, name: str | None = None",
+    "*, description: str | None = None",
+    "*, is_active: bool | None = None"
+   ],
+   "returns": "backend.api.features.library.model.LibraryAgentPreset"
+  },
+  "update_user_integrations": {
+   "params": [
+    "user_id: str",
+    "data: backend.data.model.UserIntegrations"
+   ],
+   "returns": "<unannotated>"
+  },
+  "upsert_bot_install": {
+   "params": [
+    "*, platform: backend.platform_linking.models.Platform",
+    "*, team_id: str",
+    "*, bot_token: str",
+    "*, bot_user_id: str | None = None",
+    "*, app_id: str | None = None",
+    "*, name: str | None = None"
+   ],
+   "returns": "None"
+  },
+  "upsert_business_understanding": {
+   "params": [
+    "user_id: str",
+    "input_data: backend.data.understanding.BusinessUnderstandingInput"
+   ],
+   "returns": "backend.data.understanding.BusinessUnderstanding"
+  },
+  "upsert_execution_input": {
+   "params": [
+    "node_id: str",
+    "graph_exec_id: str",
+    "input_name: str",
+    "input_data: JsonValue",
+    "node_exec_id: str | None = None"
+   ],
+   "returns": "tuple[backend.data.execution.NodeExecutionResult, dict[str, typing.Any]]"
+  },
+  "upsert_execution_output": {
+   "params": [
+    "node_exec_id: str",
+    "output_name: str",
+    "output_data: typing.Any | None"
+   ],
+   "returns": "None"
+  },
+  "upsert_review": {
+   "params": [
+    "user_id: str",
+    "*, source_id: str",
+    "*, source_revision: str",
+    "*, policy_version: int",
+    "*, run_id: str",
+    "*, disposition: str",
+    "*, reason: str = ''",
+    "*, change_fingerprint: str | None = None",
+    "*, skill_name: str | None = None",
+    "*, applied_version_id: str | None = None",
+    "*, model: str | None = None",
+    "*, input_tokens: int = 0",
+    "*, output_tokens: int = 0",
+    "*, cost_microdollars: int | None = None",
+    "*, completed: bool = True",
+    "*, expected_run_id: str | None = None",
+    "*, live_seconds: int = 480"
+   ],
+   "returns": "backend.data.skill_reviews.LearningReviewRecord"
+  },
+  "upsert_source_revision": {
+   "params": [
+    "user_id: str",
+    "*, expert_id: str | None",
+    "*, source_kind: str",
+    "*, source_id: str",
+    "*, revision: str",
+    "*, evidence_refs: list[dict[str, typing.Any]]",
+    "*, outcome_signals: list[dict[str, typing.Any]]",
+    "*, origin: str = 'ordinary'"
+   ],
+   "returns": "backend.data.skill_learning.LearningSourceRecord"
+  },
+  "validate_graph_execution_permissions": {
+   "params": [
+    "user_id: str",
+    "graph_id: str",
+    "graph_version: int",
+    "parent_graph_exec_id: str | None = None",
+    "is_sub_graph: bool = False"
+   ],
+   "returns": "None"
+  },
+  "with_bundled_skills": {
+   "params": [
+    "templates: list[backend.api.features.experts.models.Expert]",
+    "user_id: str | None"
+   ],
+   "returns": "list[backend.api.features.experts.models.ExpertTemplate]"
+  }
+ },
+ "sync_client": {
+  "add_store_agent_to_library": "add_store_agent_to_library",
+  "append_expert_run_message": "append_expert_run_message",
+  "append_plain_session_message": "append_plain_session_message",
+  "backfill_missing_embeddings": "backfill_missing_embeddings",
+  "cleanup_orphaned_embeddings": "cleanup_orphaned_embeddings",
+  "count_scheduled_agents": "count_scheduled_agents",
+  "create_activity_event": "create_activity_event",
+  "create_briefing": "create_briefing",
+  "get_accuracy_trends_and_alerts": "get_accuracy_trends_and_alerts",
+  "get_block_error_stats": "get_block_error_stats",
+  "get_blocks_needing_optimization": "get_blocks_needing_optimization",
+  "get_briefing_for_date": "get_briefing_for_date",
+  "get_credits": "get_credits",
+  "get_embedding_stats": "get_embedding_stats",
+  "get_frequently_executed_graphs": "get_frequently_executed_graphs",
+  "get_graph_execution": "get_graph_execution",
+  "get_graph_execution_meta": "get_graph_execution_meta",
+  "get_graph_executions": "get_graph_executions",
+  "get_graph_executions_count": "get_graph_executions_count",
+  "get_graph_metadata": "get_graph_metadata",
+  "get_latest_briefings": "get_latest_briefings",
+  "get_library_agent_id_by_graph_id": "get_library_agent_id_by_graph_id",
+  "get_library_agent_refs_by_graph_ids": "get_library_agent_refs_by_graph_ids",
+  "get_marketplace_graphs_for_monitoring": "get_marketplace_graphs_for_monitoring",
+  "get_node": "get_node",
+  "get_node_executions": "get_node_executions",
+  "get_org_credits": "get_org_credits",
+  "get_personal_org_owner": "get_personal_org_owner",
+  "get_recent_daily_spend": "get_recent_daily_spend",
+  "get_store_agent_details": "get_store_agent_details",
+  "get_store_agents": "get_store_agents",
+  "get_user_email_by_id": "get_user_email_by_id",
+  "has_pending_reviews_for_graph_exec": "has_pending_reviews_for_graph_exec",
+  "heal_orphaned_auth_identities": "heal_orphaned_auth_identities",
+  "list_library_agents": "list_library_agents",
+  "mark_briefing_delivered": "mark_briefing_delivered",
+  "raise_alert_condition": "raise_alert_condition",
+  "resolve_alert_condition": "resolve_alert_condition",
+  "resolve_member_tenancy": "resolve_member_tenancy",
+  "spend_credits": "spend_credits",
+  "spend_org_credits": "spend_org_credits",
+  "stalled_account_erasures": "stalled_account_erasures",
+  "update_block_optimized_description": "update_block_optimized_description",
+  "update_briefing_content": "update_briefing_content",
+  "update_graph_execution_start_time": "update_graph_execution_start_time",
+  "update_graph_execution_stats": "update_graph_execution_stats",
+  "update_node_execution_status": "update_node_execution_status",
+  "upsert_execution_output": "upsert_execution_output",
+  "validate_graph_execution_permissions": "validate_graph_execution_permissions"
+ }
+}
