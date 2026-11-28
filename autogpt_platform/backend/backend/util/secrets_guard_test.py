@@ -55,14 +55,18 @@ def test_generated_secrets_pass():
     check_secrets(_settings(_fresh_key()))
 
 
-def test_missing_encryption_key_is_refused_with_bootstrap_hint():
-    with pytest.raises(ValueError, match="make init-env"):
-        check_secrets(_settings(""))
-
-
-def test_blank_unsubscribe_key_only_warns(caplog):
-    check_secrets(_settings(_fresh_key(), ""))
-    assert "UNSUBSCRIBE_SECRET_KEY" in caplog.text
+@pytest.mark.parametrize(
+    "name, build_settings",
+    [
+        ("ENCRYPTION_KEY", lambda: _settings("")),
+        ("UNSUBSCRIBE_SECRET_KEY", lambda: _settings(_fresh_key(), "")),
+    ],
+)
+def test_missing_key_is_refused_with_bootstrap_hint(name, build_settings):
+    with pytest.raises(
+        ValueError, match=f"{name} is not set.*`{name}=`.*make init-env"
+    ):
+        check_secrets(build_settings())
 
 
 @pytest.mark.parametrize(
