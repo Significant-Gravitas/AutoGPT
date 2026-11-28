@@ -65,6 +65,7 @@ from backend.copilot.credential_selection import (
     remember_selection,
 )
 from backend.copilot.db import (
+    PaginatedMessages,
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
 )
@@ -1940,10 +1941,6 @@ async def get_session(
     if page.session.archived_at is not None:
         raise await chat_removed_error(page.session)
 
-    messages = [
-        _strip_injected_context(message.model_dump()) for message in page.messages
-    ]
-
     # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
     background = BackgroundSessionState()
@@ -1953,6 +1950,10 @@ async def get_session(
             background_task_db().get_session_background_state(session_id, user_id),
         )
         if active_session:
+            if active_session.checkpoint:
+                page = await _with_checkpointed_rows(
+                    page, active_session.checkpoint, user_id, ctx.org_id
+                )
             active_stream_info = ActiveStreamInfo(
                 turn_id=active_session.turn_id,
                 last_message_id=last_message_id,
@@ -1966,6 +1967,10 @@ async def get_session(
             # cleanup so an in-flight ``dispatch_turn`` isn't stomped.
             if await _try_release_orphan_running(session_id, user_id):
                 page.session.chat_status = CHAT_STATUS_IDLE
+
+    messages = [
+        _strip_injected_context(message.model_dump()) for message in page.messages
+    ]
 
     # Skip session metadata on "load more" — frontend only needs messages
     if before_sequence is not None:
@@ -2003,6 +2008,46 @@ async def get_session(
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
         background_pending=background.pending,
+    )
+
+
+async def _with_checkpointed_rows(
+    page: PaginatedMessages,
+    checkpoint: stream_registry.TurnCheckpoint,
+    user_id: str,
+    organization_id: str | None,
+) -> PaginatedMessages:
+    """Widen ``page`` to hold every row the running turn's checkpoint counts.
+
+    The client seeds the turn from those rows and checks them against the next
+    checkpoint's digest; a turn longer than the page would seed short.
+    """
+    first = checkpoint.sequence
+    oldest = page.oldest_sequence if page.oldest_sequence is not None else first
+    held = {message.sequence for message in page.messages}
+    upper = max(first + checkpoint.rows, oldest)
+    if oldest <= first and upper - 1 in held:
+        return page
+    turn = await get_chat_messages_paginated(
+        page.session.session_id,
+        upper - first,
+        upper,
+        user_id=user_id,
+        organization_id=organization_id,
+        after_sequence=first,
+    )
+    if turn is None:
+        return page
+    rows = [
+        *(m for m in page.messages if (m.sequence or 0) < first),
+        *turn.messages,
+        *(m for m in page.messages if (m.sequence or 0) >= upper),
+    ]
+    return PaginatedMessages(
+        messages=rows,
+        has_more=page.has_more,
+        oldest_sequence=rows[0].sequence if rows else page.oldest_sequence,
+        session=page.session,
     )
 
 
