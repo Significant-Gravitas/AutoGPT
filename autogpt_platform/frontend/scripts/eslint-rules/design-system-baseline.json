@@ -194,7 +194,7 @@
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ToolAccordion/AccordionContent.tsx": {
-    "no-restyle": 7
+    "no-restyle": 5
   },
   "src/app/(platform)/copilot/components/ToolAccordion/ToolAccordion.tsx": {
     "no-inline-styles": 1
