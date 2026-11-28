@@ -1,5 +1,4 @@
 import asyncio
-import threading
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,10 +12,14 @@ import backend.api.external.v1.routes as routes_mod
 import backend.blocks
 from backend.api.external.middleware import require_auth
 from backend.api.external.v1.routes import v1_router
+from backend.blocks._base import DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 from backend.copilot.capabilities.block_meta import is_graph_only_block
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.executor.direct_block_execution import DirectBlockExecutionBusyError
 from backend.util.exceptions import InsufficientBalanceError
+
+pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
@@ -58,6 +61,7 @@ def _stub_block(
     block.id = block_id
     block.name = name
     block.disabled = disabled
+    block.direct_run_timeout_seconds = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 
     async def _execute(_data, **kwargs):
         if capture is not None:
@@ -197,18 +201,13 @@ def test_execute_block_forwards_execution_context(
     assert ctx.user_timezone == "Europe/Amsterdam"
 
 
-def test_execute_block_runs_off_the_server_loop_under_the_time_budget(
+def test_execute_block_past_the_time_budget_returns_504(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(
-        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS",
-        0.5,
-    )
-    thread_names: list[str] = []
     block = _stub_block(name="SlowBlock")
+    block.direct_run_timeout_seconds = 0.5
 
     async def _never_finishes(_data, **kwargs):
-        thread_names.append(threading.current_thread().name)
         await asyncio.Event().wait()
         yield "result", "unreachable"
 
@@ -222,8 +221,25 @@ def test_execute_block_runs_off_the_server_loop_under_the_time_budget(
 
     assert response.status_code == 504, f"got {response.status_code}: {response.text}"
     assert "did not finish within 0.5 seconds" in response.json()["detail"]
-    assert len(thread_names) == 1
-    assert thread_names[0].startswith("direct-block-execution")
+
+
+def test_execute_block_with_the_run_parent_lost_after_the_claim_returns_503(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    block = _stub_block(name="UnstartedBlock")
+    monkeypatch.setattr("backend.blocks.get_block", lambda _: block)
+    monkeypatch.setattr(
+        "backend.executor.utils.block_usage_cost", lambda *_a, **_k: (0, {})
+    )
+    monkeypatch.setattr(
+        "backend.api.external.v1.routes.run_block_in_child",
+        AsyncMock(side_effect=DirectBlockExecutionBusyError()),
+    )
+
+    response = client.post(f"/blocks/{block.id}/execute", json={})
+
+    assert response.status_code == 503, f"got {response.status_code}: {response.text}"
+    assert "temporarily unavailable" in response.json()["detail"]
 
 
 def test_execute_block_over_the_run_cap_returns_429_before_charging(
@@ -247,12 +263,11 @@ def test_execute_block_over_the_run_cap_returns_429_before_charging(
     charge.assert_not_awaited()
 
 
-def test_execute_block_at_the_retired_worker_cap_returns_503_before_charging(
+def test_execute_block_at_the_server_run_cap_returns_503_before_charging(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RETIRED_WORKERS",
-        0,
+        "backend.executor.direct_block_execution.DIRECT_BLOCK_EXECUTION_MAX_RUNS", 0
     )
     block = _stub_block(name="UnavailableBlock")
     monkeypatch.setattr("backend.blocks.get_block", lambda _: block)

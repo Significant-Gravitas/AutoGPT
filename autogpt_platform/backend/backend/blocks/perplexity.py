@@ -7,6 +7,7 @@ import openai
 from pydantic import SecretStr, field_validator
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -78,6 +79,8 @@ def PerplexityCredentialsField() -> PerplexityCredentials:
 
 
 class PerplexityBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="The query to send to the Perplexity model.",

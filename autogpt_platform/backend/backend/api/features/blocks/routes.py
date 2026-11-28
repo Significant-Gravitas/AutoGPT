@@ -33,10 +33,9 @@ from backend.executor import utils as execution_utils
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
-    DirectBlockExecutionSlot,
     DirectBlockExecutionTimeoutError,
     claim_direct_block_execution_slot,
-    run_block_off_loop,
+    run_block_in_child,
 )
 from backend.monitoring.instrumentation import record_block_execution
 from backend.util.cache import cached
@@ -155,7 +154,7 @@ async def execute_graph_block(
         ) from e
 
     with slot:
-        return await _run_direct_block(obj, data, user_id, user.timezone, slot)
+        return await _run_direct_block(obj, data, user_id, user.timezone)
 
 
 async def _run_direct_block(
@@ -163,7 +162,6 @@ async def _run_direct_block(
     data: BlockInput,
     user_id: str,
     user_timezone: str,
-    slot: DirectBlockExecutionSlot,
 ) -> CompletedBlockOutput:
     try:
         await execution_utils.charge_for_direct_block_execution(
@@ -182,9 +180,8 @@ async def _run_direct_block(
 
     start_time = time.time()
     try:
-        output = await run_block_off_loop(
-            obj.execute(data, user_id=user_id, execution_context=execution_context),
-            slot,
+        output = await run_block_in_child(
+            obj, data, user_id=user_id, execution_context=execution_context
         )
 
         # Record successful block execution with duration
@@ -200,6 +197,13 @@ async def _run_direct_block(
         block_type = obj.__class__.__name__
         record_block_execution(block_type=block_type, status="error", duration=duration)
         raise HTTPException(status_code=HTTP_504_GATEWAY_TIMEOUT, detail=str(e)) from e
+    except DirectBlockExecutionBusyError as e:
+        duration = time.time() - start_time
+        block_type = obj.__class__.__name__
+        record_block_execution(block_type=block_type, status="error", duration=duration)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        ) from e
     except Exception:
         # Record failed block execution
         duration = time.time() - start_time

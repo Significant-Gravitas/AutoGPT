@@ -161,6 +161,7 @@ class AutoPilotBlock(Block):
     # legitimately long autopilot runs; rely on per-LLM-call timeouts and
     # downstream sub-graph caps for bounding.
     execution_timeout_seconds: int | None = None
+    direct_run_timeout_seconds = _AUTOPILOT_BLOCK_MAX_WAIT_SECONDS
 
     class Input(BlockSchemaInput):
         """Input schema for the AutoPilot block."""

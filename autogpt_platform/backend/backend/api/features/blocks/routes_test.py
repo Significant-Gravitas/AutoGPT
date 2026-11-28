@@ -16,6 +16,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.blocks._base import DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -36,6 +37,8 @@ def _test_ctx(user_id: str) -> RequestContext:
 app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
+
+pytestmark = pytest.mark.usefixtures("blocks_run_in_process")
 
 
 @pytest.fixture(autouse=True)
@@ -167,6 +170,7 @@ def test_execute_graph_block(
     # Mock block
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.direct_run_timeout_seconds = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
     mock_block.name = "TestBlock"
 
     async def mock_execute(*args, **kwargs):
@@ -235,6 +239,7 @@ def test_execute_graph_block_forwards_execution_context(
 
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.direct_run_timeout_seconds = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
     mock_block.name = "TestBlock"
 
     async def mock_execute(*args, **kwargs):
@@ -275,6 +280,7 @@ def test_execute_graph_block_charges_when_cost_positive(
     """Paid blocks must charge credits before executing."""
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.direct_run_timeout_seconds = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
     mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
 

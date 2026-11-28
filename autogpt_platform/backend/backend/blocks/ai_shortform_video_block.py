@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import SecretStr
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -219,6 +220,8 @@ class RevidVideoBlockBase(Block):
 class AIShortformVideoCreatorBlock(RevidVideoBlockBase):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REVID], Literal["api_key"]
@@ -369,6 +372,8 @@ class AIShortformVideoCreatorBlock(RevidVideoBlockBase):
 
 class AIAdMakerVideoCreatorBlock(RevidVideoBlockBase):
     """Generates a 30‑second vertical AI advert using optional user‑supplied imagery."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
@@ -521,6 +526,8 @@ class AIAdMakerVideoCreatorBlock(RevidVideoBlockBase):
 
 class AIScreenshotToVideoAdBlock(RevidVideoBlockBase):
     """Creates an advert where the supplied screenshot is narrated by an AI avatar."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[

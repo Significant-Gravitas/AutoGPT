@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -74,6 +75,8 @@ async def emit_quote(quote: Quote) -> BlockOutput:
 
 class RMFGCreateQuoteBlock(Block):
     """Price one or more configured designs. Quoting also runs DFM."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(RMFGBasketInput):
         ship_to: Optional[ShipTo] = SchemaField(
@@ -180,6 +183,8 @@ class RMFGCreateQuoteBlock(Block):
 
 class RMFGGetQuoteBlock(Block):
     """Re-read a quote, e.g. one that was still processing."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = credentials_field()

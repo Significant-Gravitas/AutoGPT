@@ -4,6 +4,7 @@ from enum import Enum
 from stagehand import AsyncStagehand
 from stagehand.types.session_act_params import Options as ActOptions
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.blocks.llm import (
     MODEL_METADATA,
     AICredentials,
@@ -201,6 +202,8 @@ class StagehandObserveBlock(Block):
 
 
 class StagehandActBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(_StagehandInput):
         # Browserbase credentials (Stagehand provider) or raw API key
         stagehand_credentials: CredentialsMetaInput = (

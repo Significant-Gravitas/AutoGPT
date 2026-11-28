@@ -22,6 +22,7 @@ from pydantic.json_schema import SkipJsonSchema
 from pydantic_core import PydanticUndefined
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -570,6 +571,9 @@ async def _llm_call(
 
 
 class AIBlockBase(Block, ABC):
+    # Each provider request may take llm_request_timeout_seconds, up to 1500 s.
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.prompt = []

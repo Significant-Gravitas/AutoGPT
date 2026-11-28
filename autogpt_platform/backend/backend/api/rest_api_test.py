@@ -45,6 +45,21 @@ def test_metrics_get_a_listener_of_their_own_only_when_enabled(
     assert config.agent_api_metrics_port != config.agent_api_port
 
 
+def test_the_rest_server_starts_its_run_parent_and_stops_it(
+    mocker,
+) -> None:
+    """Without the run parent every direct block run is refused with a 503."""
+    start = mocker.patch("backend.api.rest_api.start_run_parent")
+    stop = mocker.patch("backend.api.rest_api.stop_run_parent")
+    server = rest_api.AgentServer()
+
+    server.before_threads()
+    server.cleanup()
+
+    start.assert_called_once_with()
+    stop.assert_called_once_with()
+
+
 def test_uvicorn_trusts_x_forwarded_for_from_trusted_proxies(
     mocker, monkeypatch: pytest.MonkeyPatch
 ) -> None:

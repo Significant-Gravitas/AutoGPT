@@ -3,6 +3,7 @@
 from typing import Literal
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -20,6 +21,8 @@ from backend.util.file import MediaFileType, get_exec_file_path
 
 class VideoClipBlock(VideoMediaStorage, Block):
     """Extract a time segment from a video."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         video_in: MediaFileType = SchemaField(

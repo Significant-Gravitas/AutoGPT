@@ -5,6 +5,9 @@ setup_test_user, and setup_admin_user are defined in the parent conftest.py
 (backend/conftest.py) and are available here automatically.
 """
 
+import asyncio
+import json
+import pickle
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +19,7 @@ from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_account_closed as _REAL_IS_USER_ACCOUNT_CLOSED
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
 from backend.data.user import is_user_refused as _REAL_IS_USER_REFUSED
+from backend.executor import direct_block_execution, direct_block_run_parent
 
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
@@ -40,6 +44,30 @@ _REFUSAL_CHECK_SITES = (
 )
 # A WebSocket's per-message check reads the ban, then the closure.
 _CLOSURE_CHECK_SITES = ("backend.api.ws_api.is_user_account_closed",)
+
+
+@pytest.fixture
+def blocks_run_in_process(monkeypatch):
+    """Direct block runs run on the test's own loop, so a route test can see what
+    its stub block was called with; what they are given and return still crosses
+    the boundary a run's process does. Runs in their own process are tested in
+    ``executor/direct_block_execution_test.py``."""
+    monkeypatch.setattr(direct_block_execution, "_run_parent", _RunsInProcess())
+
+
+class _RunsInProcess:
+    def running(self) -> bool:
+        return True
+
+    async def run(self, block, input_data, execute_kwargs, timeout):
+        input_data, execute_kwargs = pickle.loads(
+            pickle.dumps((input_data, execute_kwargs))
+        )
+        async with asyncio.timeout(timeout):
+            outputs = await direct_block_run_parent._collect(
+                block.execute(input_data, **execute_kwargs)
+            )
+        return json.loads(direct_block_run_parent._OUTPUTS.dump_json(outputs))
 
 
 @pytest.fixture

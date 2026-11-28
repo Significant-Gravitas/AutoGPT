@@ -617,10 +617,15 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 # the value is not None.
 DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS: int = 30 * 60
 
+# How long a block run on its own, outside a workflow, may take; a block whose own
+# work takes longer sets a longer `direct_run_timeout_seconds` (see rate-limits.md).
+DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS: int = 300
+
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
     execution_timeout_seconds: int | None = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    direct_run_timeout_seconds: ClassVar[int] = DEFAULT_DIRECT_RUN_TIMEOUT_SECONDS
     # The block keeps what it creates in the vendor account behind its key, so
     # it can't run on the platform's shared keys (a "Use Credits for X" system
     # credential or an SDK ``<provider>-default``). Graph validation refuses

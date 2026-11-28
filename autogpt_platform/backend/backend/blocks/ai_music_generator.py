@@ -7,6 +7,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockEffect,
@@ -61,6 +62,8 @@ class NormalizationStrategy(str, Enum):
 
 
 class AIMusicGeneratorBlock(Block):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]

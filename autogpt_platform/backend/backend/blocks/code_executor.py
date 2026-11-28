@@ -8,6 +8,7 @@ from e2b_code_interpreter.constants import DEFAULT_TIMEOUT as RUN_CODE_TIMEOUT
 from pydantic import BaseModel, Field, JsonValue, SecretStr
 
 from backend.blocks._base import (
+    DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS,
     Block,
     BlockCategory,
     BlockOutput,
@@ -303,6 +304,8 @@ class BaseE2BExecutorMixin:
 
 
 class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     # TODO : Add support to upload and download files
     # NOTE: Currently, you can only customize the CPU and Memory
     #       by creating a pre customized sandbox template
@@ -502,6 +505,8 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
 
 
 class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]
@@ -634,6 +639,8 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
 
 
 class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.E2B], Literal["api_key"]

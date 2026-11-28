@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Optional
 
+from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.sdk import (
     Block,
@@ -69,6 +70,8 @@ async def emit_design(design: Design) -> BlockOutput:
 
 class RMFGAnalyzeDesignBlock(Block):
     """Upload a STEP file; RMFG splits it into parts and detects bends and holes."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = credentials_field()
@@ -198,6 +201,8 @@ class RMFGAnalyzeDesignBlock(Block):
 
 class RMFGGetDesignBlock(Block):
     """Read a design by ID, optionally waiting for analysis to finish."""
+
+    direct_run_timeout_seconds = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = credentials_field()
