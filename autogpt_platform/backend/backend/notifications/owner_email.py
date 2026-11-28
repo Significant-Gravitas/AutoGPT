@@ -10,9 +10,8 @@ from collections.abc import Awaitable
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from postmarker.exceptions import ClientError
+from postmarker.exceptions import ClientError, TransportError
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from requests import RequestException
 
 from backend.data.redis_client import get_redis_async
 from backend.notifications.email import EmailSender
@@ -129,7 +128,7 @@ async def send_owner_email(
     except RuntimeError:
         await _give_back(counter)
         raise
-    except RequestException as e:
+    except TransportError as e:
         raise TimeoutError(
             "The email service didn't confirm the send, so it may still arrive. "
             "Check your inbox before sending it again."

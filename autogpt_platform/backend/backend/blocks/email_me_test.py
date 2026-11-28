@@ -14,8 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
-import requests
-from postmarker.exceptions import ClientError
+from postmarker.exceptions import ClientError, TransportError
 
 from backend.blocks import email_me
 from backend.blocks.email_me import SendEmailToMeBlock
@@ -191,7 +190,7 @@ async def test_a_send_postmark_refused_does_not_use_up_the_days_allowance(
 
 async def test_a_send_that_may_have_arrived_keeps_its_slot(monkeypatch, postmark):
     monkeypatch.setattr(owner_email.settings.config, "owner_email_daily_limit", 1)
-    postmark.emails.send.side_effect = [requests.Timeout("read timed out"), None]
+    postmark.emails.send.side_effect = [TransportError("read timed out"), None]
 
     unknown = await run({"subject": "s", "body": "b"})
     response = await run({"subject": "s", "body": "b"})
