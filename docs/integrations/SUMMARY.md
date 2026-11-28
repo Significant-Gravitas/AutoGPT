@@ -126,6 +126,7 @@
 * [Google Docs](block-integrations/google/docs.md)
 * [Google Gmail](block-integrations/google/gmail.md)
 * [Google Sheets](block-integrations/google/sheets.md)
+* [Google Sheets Layout](block-integrations/google/sheets_layout.md)
 * [Hacker News Items](block-integrations/hacker_news/items.md)
 * [Hacker News Search](block-integrations/hacker_news/search.md)
 * [Hacker News Stories](block-integrations/hacker_news/stories.md)
