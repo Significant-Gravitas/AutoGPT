@@ -288,6 +288,13 @@ export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
 // cap, plus the Stripe calls. Giving up earlier shows an error for an account
 // the backend still closes.
 export const ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS = 180_000;
+// Opening a desktop can resume or create the box and start its display under
+// the backend's 285 s deadline (_DESKTOP_OPEN_DEADLINE_SECONDS in
+// backend/copilot/computer.py), so a cold start often outlasts the standard
+// budget. Giving up earlier shows an error for a desktop that still comes up.
+// A few seconds over that deadline lets the backend's own error through, and
+// stays under the proxy's 290 s fetch ceiling.
+export const DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS = 288_000;
 
 export function getResponseStartTimeoutMs(
   path: string[],
@@ -309,7 +316,21 @@ export function getResponseStartTimeoutMs(
   if (method === "POST" && path.join("/") === "api/account/deletion") {
     return ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS;
   }
+  if (method === "POST" && isDesktopOpenRequest(path)) {
+    return DESKTOP_OPEN_RESPONSE_START_TIMEOUT_MS;
+  }
   return RESPONSE_START_TIMEOUT_MS;
+}
+
+// api/experts/{id}/computer/desktop and api/chat/sessions/{id}/desktop
+function isDesktopOpenRequest(path: string[]): boolean {
+  if (path.length !== 5 || path[0] !== "api" || path[4] !== "desktop") {
+    return false;
+  }
+  return (
+    (path[1] === "experts" && path[3] === "computer") ||
+    (path[1] === "chat" && path[2] === "sessions")
+  );
 }
 
 export function watchResponseStart(
