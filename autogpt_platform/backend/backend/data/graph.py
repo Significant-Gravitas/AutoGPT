@@ -40,7 +40,7 @@ from prisma.types import (
 from pydantic import BaseModel, BeforeValidator, Field
 from pydantic.fields import computed_field
 
-from backend.blocks import get_block, get_blocks
+from backend.blocks import get_block, get_block_definition, get_blocks
 from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
@@ -166,8 +166,17 @@ class Node(BaseDbModel):
 
     @property
     def block(self) -> "AnyBlockSchema | _UnknownBlockBase":
-        """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
-        block = get_block(self.block_id)
+        """The node's block, shared with every other node of it: read what it
+        declares, never run it (see `new_block`). UnknownBlock if deleted."""
+        return self._block_or_placeholder(get_block_definition(self.block_id))
+
+    def new_block(self) -> "AnyBlockSchema | _UnknownBlockBase":
+        """A block instance of the node's own, to run it with."""
+        return self._block_or_placeholder(get_block(self.block_id))
+
+    def _block_or_placeholder(
+        self, block: "AnyBlockSchema | None"
+    ) -> "AnyBlockSchema | _UnknownBlockBase":
         if not block:
             # Log warning but don't raise exception - return a placeholder block for deleted blocks
             logger.warning(
@@ -259,7 +268,7 @@ def _auto_credentials_field_names(node: Node) -> list[str]:
     picker fields its schema declares, plus any input typed as a file carrying
     `_credentials_id`. The second covers the default of an agent's Google Drive
     file input, whose picker is only declared per node."""
-    if get_block(node.block_id) is None:
+    if get_block_definition(node.block_id) is None:
         # The block was removed, so no schema says which inputs are pickers.
         # Treat any value that embeds a `_credentials_id` as one, so a picked
         # file doesn't slip through exports and non-owner reads.
@@ -1074,7 +1083,7 @@ class GraphModel(Graph, GraphMeta):
         nodes_block = {
             node.id: block
             for node in graph.nodes
-            if (block := get_block(node.block_id)) is not None
+            if (block := get_block_definition(node.block_id)) is not None
         }
 
         input_links: dict[str, list[Link]] = defaultdict(list)
@@ -1354,7 +1363,7 @@ class GraphModel(Graph, GraphMeta):
                         f"{prefix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
                     )
 
-                block = get_block(node.block_id)
+                block = get_block_definition(node.block_id)
                 if not block:
                     blocks = {v().id: v().name for v in get_blocks().values()}
                     raise ValueError(
@@ -2936,6 +2945,13 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     Returns:
         GraphModel: The converted Graph object.
     """
+    # Refused before the dump below: its computed fields read every node's block.
+    known_blocks = get_blocks()
+    for graph in (creatable_graph, *creatable_graph.sub_graphs):
+        for node in graph.nodes:
+            if node.block_id not in known_blocks:
+                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
+
     # Create a new Graph object, inheriting properties from CreatableGraph
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),

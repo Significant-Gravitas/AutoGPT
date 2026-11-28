@@ -176,6 +176,15 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(autouse=True)
+def fresh_block_definitions() -> None:
+    """Give each test new shared block instances: a constructor can read
+    settings a test patches, and the instance keeps what it read."""
+    # Unit-only runs never load the blocks, so there is nothing to clear.
+    if blocks := sys.modules.get("backend.blocks"):
+        blocks._block_definitions.clear()
+
+
+@pytest.fixture(autouse=True)
 def patient_shared_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """In production the shared cache waits ``REDIS_OP_TIMEOUT_S`` (1 s) for
     each Redis command, each connect and each close of a loop's client, then

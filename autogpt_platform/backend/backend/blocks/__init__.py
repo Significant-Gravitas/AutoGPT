@@ -145,6 +145,23 @@ def get_block(block_id: str) -> "AnyBlockSchema | None":
     return cls() if cls else None
 
 
+def get_block_definition(block_id: str) -> "AnyBlockSchema | None":
+    """One shared instance per block, for reading what the block declares.
+
+    Never run it: a run keeps state on its instance, so use `get_block()`.
+    """
+    cls = get_blocks().get(block_id)
+    if cls is None:
+        return None
+    block = _block_definitions.get(block_id)
+    if type(block) is not cls:
+        block = _block_definitions[block_id] = cls()
+    return block
+
+
+_block_definitions: dict[str, "AnyBlockSchema"] = {}
+
+
 @cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [

@@ -99,6 +99,7 @@ class _Run:
         for target, kwargs in (
             ("backend.executor.manager.get_block", {"return_value": _BLOCK}),
             ("backend.data.graph.get_block", {"return_value": _BLOCK}),
+            ("backend.data.graph.get_block_definition", {"return_value": _BLOCK}),
             (
                 "backend.executor.manager.get_db_async_client",
                 {"return_value": self.db_client},
