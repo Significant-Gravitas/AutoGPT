@@ -5,6 +5,7 @@ import {
   usePostV1ExecuteGraphAgent,
   usePostV1StopGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import {
   getGetV2ListPresetsQueryKey,
   usePostV2CreateANewPreset,
@@ -52,6 +53,8 @@ export function useSelectedRunActions({
     useState(false);
   // The run form a rerun opens to replace the run's deleted keys
   const [rerunForm, setRerunForm] = useState<RerunForm | null>(null);
+  // The user's keys are being read again, to confirm one is gone
+  const [isConfirmingDeletedKeys, setIsConfirmingDeletedKeys] = useState(false);
   // A refusal can come back after the user moved to another run. Its form is
   // dropped: it would hold one run's inputs on the other's version.
   if (rerunForm && rerunForm.runId !== run?.id) setRerunForm(null);
@@ -111,7 +114,7 @@ export function useSelectedRunActions({
 
     // A key the run used was deleted: the server would refuse it, so the run
     // form opens with the run's inputs for the user to pick another key
-    const deletedKeys = getDeletedKeys(run.credential_inputs, allProviders);
+    const deletedKeys = await confirmDeletedKeys(run);
     if (deletedKeys.length > 0) {
       setRerunForm(getRerunForm(run, deletedKeys));
       return;
@@ -138,6 +141,31 @@ export function useSelectedRunActions({
       if (newRunId && onSelectRun) onSelectRun(newRunId);
     } catch (error: unknown) {
       handleRunAgainError(run, error);
+    }
+  }
+
+  // The page read the user's keys when it loaded, so a key added since, in
+  // another tab or on another device, isn't among them. Before a key is called
+  // deleted the keys are read again; when that fails, the server decides.
+  async function confirmDeletedKeys(checkedRun: GraphExecution) {
+    const missing = getDeletedKeys(checkedRun.credential_inputs, allProviders);
+    if (missing.length === 0) return missing;
+    setIsConfirmingDeletedKeys(true);
+    try {
+      const saved = okData(await getV1ListCredentials());
+      if (!saved) return [];
+      const savedIDs = new Set(saved.map(({ id }) => id));
+      const deleted = missing.filter(({ field }) => {
+        const id = checkedRun.credential_inputs?.[field]?.id;
+        return id === undefined || !savedIDs.has(id);
+      });
+      // The page's own list catches up with the keys it didn't know of
+      if (deleted.length < missing.length) credentialsActions?.reload();
+      return deleted;
+    } catch {
+      return [];
+    } finally {
+      setIsConfirmingDeletedKeys(false);
     }
   }
 
@@ -243,7 +271,8 @@ export function useSelectedRunActions({
     rerunForm,
     // The workflow at the run's version, once it's known
     rerunAgent: rerunForm ? runVersion.runAgent : undefined,
-    isOpeningRerunForm: rerunForm !== null && runVersion.isLoading,
+    isOpeningRerunForm:
+      isConfirmingDeletedKeys || (rerunForm !== null && runVersion.isLoading),
     hasRerunVersionError: rerunForm !== null && runVersion.hasError,
     isRetryingRerunVersion: runVersion.isRetrying,
     retryRerunVersion: runVersion.retry,

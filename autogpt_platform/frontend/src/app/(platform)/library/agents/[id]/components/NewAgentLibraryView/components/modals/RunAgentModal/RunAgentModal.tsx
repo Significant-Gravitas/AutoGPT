@@ -43,6 +43,9 @@ interface Props {
   controlled?: { isOpen: boolean; set: (open: boolean) => void };
   /** Shown above the task's inputs. */
   notice?: React.ReactNode;
+  /** The form repeats a run: an optional credential it starts without is one
+   *  the run went without, so nothing fills it. */
+  keepsSkippedCredentials?: boolean;
 }
 
 const NO_FIELDS_TO_PICK: Record<string, string> = {};
@@ -61,6 +64,7 @@ export function RunAgentModal({
   dialogVariant = "default",
   controlled,
   notice,
+  keepsSkippedCredentials,
 }: Props) {
   const {
     // UI state
@@ -119,6 +123,7 @@ export function RunAgentModal({
     initialTriggerConfigValues,
     initialInputCredentials,
     controlled,
+    keepsSkippedCredentials,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -186,6 +191,10 @@ export function RunAgentModal({
   }
 
   function handleSetOpen(open: boolean) {
+    // The safety popup opens over the form and takes focus, which the form's
+    // dialog reads as a click outside it. A host that unmounts the form once
+    // it closes would take the popup, and the run it holds, with it.
+    if (!open && isSafetyPopupOpen) return;
     setIsOpen(open);
   }
 

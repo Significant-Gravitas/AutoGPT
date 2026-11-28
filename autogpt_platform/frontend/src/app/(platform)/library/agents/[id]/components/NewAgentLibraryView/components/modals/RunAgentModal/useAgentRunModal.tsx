@@ -50,6 +50,9 @@ interface UseAgentRunModalCallbacks {
   initialInputCredentials?: Record<string, any>;
   /** The host opens and closes the form itself. */
   controlled?: { isOpen: boolean; set: (open: boolean) => void };
+  /** The form repeats a run: an optional credential it starts without is one
+   *  the run went without, so nothing fills it. */
+  keepsSkippedCredentials?: boolean;
 }
 
 export function useAgentRunModal(
@@ -90,7 +93,18 @@ export function useAgentRunModal(
   // The keys the form started fields on while the steps' keys were unknown
   const provisionalCreds = useRef<Record<string, string>>({});
   // The fields the user set, to a key or to none: the form leaves them alone
-  const [userFields, setUserFields] = useState<string[]>([]);
+  const [userFields, setUserFields] = useState<string[]>(getSkippedFields);
+
+  // The optional credential fields a repeated run went without
+  function getSkippedFields() {
+    if (!callbacks?.keepsSkippedCredentials) return [];
+    const schema = agent.credentials_input_schema;
+    const required = (schema?.required as string[] | undefined) ?? [];
+    return Object.keys(schema?.properties ?? {}).filter(
+      (key) =>
+        !required.includes(key) && !callbacks.initialInputCredentials?.[key],
+    );
+  }
 
   // Determine the default run type based on agent capabilities
   const defaultRunType: RunVariant = agent.trigger_setup_info
@@ -106,7 +120,7 @@ export function useAgentRunModal(
     );
     setInputCredentials(callbacks?.initialInputCredentials || {});
     provisionalCreds.current = {};
-    setUserFields([]);
+    setUserFields(getSkippedFields());
     setTriggerConfigValues(
       withCalendarDates(
         agent.trigger_setup_info?.config_schema,

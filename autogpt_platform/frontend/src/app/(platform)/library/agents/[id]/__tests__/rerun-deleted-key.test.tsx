@@ -197,6 +197,7 @@ type ScheduleBody = {
   cron?: string;
   graph_version?: number | null;
   inputs?: Record<string, unknown>;
+  credentials?: Record<string, { id?: string }>;
 };
 
 interface Setup {
@@ -890,6 +891,9 @@ describe("the run form reruns the workflow version the task ran", () => {
     await waitFor(() => expect(scheduleBodies).toHaveLength(1));
     expect(scheduleBodies[0].graph_version).toBe(RUN_VERSION);
     expect(scheduleBodies[0].inputs).toEqual({ topic: "news" });
+    expect(keyIn({ credentials_inputs: scheduleBodies[0].credentials })).toBe(
+      OTHER_KEY.id,
+    );
     expect(runRequests).toHaveLength(0);
     // The page moves to the new schedule, as Start Task moves to the new run
     expect(await screen.findByText("Recurrence")).toBeDefined();

@@ -103,6 +103,7 @@ export function SelectedRunActions({
           initialInputValues={rerunForm.inputs}
           initialInputCredentials={rerunForm.credentials}
           fieldsToPick={rerunForm.fieldsToPick}
+          keepsSkippedCredentials
           onRunCreated={(execution) => onSelectRun?.(execution.id)}
           onScheduleCreated={onScheduleCreated}
         />
