@@ -30,11 +30,11 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { grantToExpert } from "@/services/experts/grant-to-expert";
 import { useQueryClient } from "@tanstack/react-query";
 import { useContext, useEffect, useId, useRef, useState } from "react";
-import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
-import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
-import { ChainActionsContext } from "../../../../components/ToolChain/chainActions";
-import { CredentialRejectionNotice } from "../../../../components/CredentialRejectionNotice/CredentialRejectionNotice";
-import { coerceExpertGrant } from "../../../../components/SetupRequirementsCard/helpers";
+import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { ContentMessage } from "../ToolAccordion/AccordionContent";
+import { ChainActionsContext } from "../ToolChain/chainActions";
+import { CredentialRejectionNotice } from "../CredentialRejectionNotice/CredentialRejectionNotice";
+import { coerceExpertGrant } from "../SetupRequirementsCard/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {

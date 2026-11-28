@@ -13,7 +13,7 @@ import {
 import { CopilotChatActionsProvider } from "../../../../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { CopilotChatSurface } from "../../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { RunAgentTool } from "../../../RunAgent";
-import { LIVE_STATUS_POLL_MS } from "../helpers";
+import { LIVE_STATUS_POLL_MS } from "../../../../../components/ToolChain/liveRunStatus";
 
 const EXECUTION_URL = "/api/proxy/api/graphs/:graphId/executions/:graphExecId";
 

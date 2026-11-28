@@ -2,7 +2,7 @@
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { Button } from "@/components/atoms/Button/Button";
-import { isAnswered } from "../../tools/clarifying-questions";
+import { isAnswered } from "../../helpers/clarifying-questions";
 import { ConnectionsSection } from "./ConnectionsSection";
 import { InputsSection } from "./InputsSection";
 import { QuestionsSection } from "./QuestionsSection";

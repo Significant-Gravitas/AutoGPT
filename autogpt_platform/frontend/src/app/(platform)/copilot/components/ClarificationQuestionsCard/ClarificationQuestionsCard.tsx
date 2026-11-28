@@ -6,7 +6,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type { ClarifyingQuestion } from "../../helpers/clarifying-questions";
 import {
   Chatting01Icon,
   CheckmarkCircle02Icon,

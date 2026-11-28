@@ -5,12 +5,12 @@ import { isQuestionTool } from "../QuestionDock/helpers";
 import {
   type ClarifyingQuestion,
   extractClarifyingQuestions,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import {
   extractToolName,
   getAnimationText,
   getToolCategory,
-} from "../../tools/GenericTool/helpers";
+} from "../GenericTool/helpers";
 import { capabilityTargetRow, capabilityTargetToolName } from "./capabilityRow";
 import { type ChainCategory, getCatalogLabel } from "./toolCatalog";
 import type { HeldRowInfo } from "./heldRow";

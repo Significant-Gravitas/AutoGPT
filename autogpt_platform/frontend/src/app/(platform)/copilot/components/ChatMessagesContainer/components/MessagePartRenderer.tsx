@@ -5,8 +5,8 @@ import { StoppedTaskCard } from "./StoppedTaskCard";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
-import { RenderUI } from "../../../tools/RenderUI/RenderUI";
-import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
+import { RenderUI } from "../../RenderUI/RenderUI";
+import { RENDER_UI_PART_TYPE } from "../../RenderUI/helpers";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
 import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
@@ -24,12 +24,12 @@ import {
   resolveWorkspaceUrls,
   workspaceLinkFileID,
 } from "../helpers";
-import { MistakeTool } from "../../../tools/FeedbackPrompts/MistakeTool";
+import { MistakeTool } from "../../FeedbackPrompts/MistakeTool";
 import {
   type FeedbackCardTarget,
   MISTAKE_PART_TYPE,
   WORK_CHECK_PART_TYPE,
-} from "../../../tools/FeedbackPrompts/helpers";
+} from "../../FeedbackPrompts/helpers";
 import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 

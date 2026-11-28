@@ -6,11 +6,11 @@ import {
 } from "@/components/organisms/Message/Message";
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
-import { WorkCheckTool } from "../../../../tools/FeedbackPrompts/WorkCheckTool";
+import { WorkCheckTool } from "../../../FeedbackPrompts/WorkCheckTool";
 import {
   readFeedbackPrompt,
   WORK_CHECK_PART_TYPE,
-} from "../../../../tools/FeedbackPrompts/helpers";
+} from "../../../FeedbackPrompts/helpers";
 import type { ExpertIdentity } from "../../../../useExpertMap";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";

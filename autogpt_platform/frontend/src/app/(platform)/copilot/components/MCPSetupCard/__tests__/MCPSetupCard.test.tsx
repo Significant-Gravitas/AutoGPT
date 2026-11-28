@@ -14,18 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChainActionsContext,
   type ChainActionEntry,
-} from "../../../../../components/ToolChain/chainActions";
+} from "../../ToolChain/chainActions";
 import { MCPSetupCard } from "../MCPSetupCard";
 
 // Mock the copilot chat actions used by MCPSetupCard
 const mockOnSend = vi.fn();
 let currentOnSend = mockOnSend;
-vi.mock(
-  "../../../../../components/CopilotChatActionsProvider/useCopilotChatActions",
-  () => ({
-    useCopilotChatActions: () => ({ onSend: currentOnSend }),
-  }),
-);
+vi.mock("../../CopilotChatActionsProvider/useCopilotChatActions", () => ({
+  useCopilotChatActions: () => ({ onSend: currentOnSend }),
+}));
 
 // Mock the OAuth popup utility
 vi.mock("@/lib/oauth-popup", () => ({

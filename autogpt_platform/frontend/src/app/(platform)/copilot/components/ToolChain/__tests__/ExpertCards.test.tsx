@@ -27,7 +27,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
 }));
 
-vi.mock("../../../tools/GenericTool/GenericTool", () => ({
+vi.mock("../../GenericTool/GenericTool", () => ({
   GenericTool: () => <div data-testid="generic-tool" />,
 }));
 

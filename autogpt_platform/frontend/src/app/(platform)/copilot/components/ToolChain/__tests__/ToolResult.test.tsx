@@ -23,12 +23,9 @@ vi.mock("../../SetupRequirementsCard/SetupRequirementsCard", () => ({
   ),
 }));
 
-vi.mock(
-  "../../../tools/RunMCPTool/components/MCPSetupCard/MCPSetupCard",
-  () => ({
-    MCPSetupCard: () => <div>mcp-setup-card</div>,
-  }),
-);
+vi.mock("../../MCPSetupCard/MCPSetupCard", () => ({
+  MCPSetupCard: () => <div>mcp-setup-card</div>,
+}));
 
 vi.mock("../../QuestionDock/QuestionDock", () => ({
   QuestionsForm: ({ dockId }: { dockId: string }) => (

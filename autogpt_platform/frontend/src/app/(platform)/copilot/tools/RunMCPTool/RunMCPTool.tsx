@@ -2,7 +2,7 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
-import { MCPSetupCard } from "./components/MCPSetupCard/MCPSetupCard";
+import { MCPSetupCard } from "../../components/MCPSetupCard/MCPSetupCard";
 import { MCPToolOutputCard } from "./components/MCPToolOutputCard/MCPToolOutputCard";
 import {
   ToolIcon,

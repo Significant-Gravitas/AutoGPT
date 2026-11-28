@@ -10,7 +10,7 @@ import {
   toAnswerText,
   toMultiAnswer,
   type QuestionAnswer,
-} from "../../../../tools/clarifying-questions";
+} from "../../../../helpers/clarifying-questions";
 import { getLetterIndex } from "../../helpers";
 
 export interface OnboardingChoicesHandle {

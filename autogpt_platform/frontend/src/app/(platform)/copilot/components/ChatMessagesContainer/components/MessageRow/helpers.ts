@@ -9,7 +9,7 @@ import {
 } from "../../../../helpers/workspaceAttachments";
 import { isBookkeepingPart } from "../../../../messageParts";
 import type { SentFrom } from "../../../../sentFrom";
-import type { FeedbackCardTarget } from "../../../../tools/FeedbackPrompts/helpers";
+import type { FeedbackCardTarget } from "../../../FeedbackPrompts/helpers";
 import {
   getRatedMessageId,
   getLastCompactionCallId,

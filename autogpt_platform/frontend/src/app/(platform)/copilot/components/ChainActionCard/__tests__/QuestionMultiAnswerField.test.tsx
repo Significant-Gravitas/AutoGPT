@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type {
   MultiAnswer,
   QuestionAnswer,
-} from "../../../tools/clarifying-questions";
+} from "../../../helpers/clarifying-questions";
 import { QuestionMultiAnswerField } from "../QuestionMultiAnswerField";
 import { QuestionsSection } from "../QuestionsSection";
 

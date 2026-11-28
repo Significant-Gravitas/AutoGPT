@@ -1,7 +1,7 @@
 "use client";
 
 import type { ToolUIPart } from "ai";
-import { GenericTool } from "../GenericTool/GenericTool";
+import { GenericTool } from "../../components/GenericTool/GenericTool";
 import { RunBlockTool } from "../RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../RunMCPTool/RunMCPTool";
 import {

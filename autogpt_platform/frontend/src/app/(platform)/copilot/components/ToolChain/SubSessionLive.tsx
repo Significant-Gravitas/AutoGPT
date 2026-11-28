@@ -12,10 +12,7 @@ import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
 import type { ToolUIPart } from "ai";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import {
-  getAnimationText,
-  getToolCategory,
-} from "../../tools/GenericTool/helpers";
+import { getAnimationText, getToolCategory } from "../GenericTool/helpers";
 import { useExpertMap } from "../../useExpertMap";
 import { extractToolOutputsFromRaw } from "../../helpers/convertChatSessionToUiMessages";
 import type { ChainRow } from "./helpers";

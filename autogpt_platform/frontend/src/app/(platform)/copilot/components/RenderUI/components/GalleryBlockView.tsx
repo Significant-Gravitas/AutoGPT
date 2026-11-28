@@ -1,7 +1,7 @@
 import type { GalleryBlock } from "@/app/api/__generated__/models/galleryBlock";
 import { Text } from "@/components/atoms/Text/Text";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
-import { defaultWorkspaceFileUrl } from "../../../components/ChatMessagesContainer/helpers";
+import { defaultWorkspaceFileUrl } from "../../ChatMessagesContainer/helpers";
 import { BlockCard } from "./BlockCard";
 
 interface Props {

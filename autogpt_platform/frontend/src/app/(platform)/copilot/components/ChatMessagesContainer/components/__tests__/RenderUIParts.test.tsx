@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import output from "../../../../tools/RenderUI/__tests__/renderUIOutput.json";
+import output from "../../../RenderUI/__tests__/renderUIOutput.json";
 import { CopilotChatActionsProvider } from "../../../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import type { MessagePart } from "../../helpers";
 import { ChainMessageParts } from "../ChainMessageParts";

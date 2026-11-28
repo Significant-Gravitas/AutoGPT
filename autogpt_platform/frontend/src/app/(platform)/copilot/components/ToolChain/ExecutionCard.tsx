@@ -7,7 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { useLiveRunStatus } from "../../tools/RunAgent/components/ExecutionStartedCard/useLiveRunStatus";
+import { useLiveRunStatus } from "./useLiveRunStatus";
 import { CARD, HALF, StatusPill } from "./ResultCards";
 import { Text } from "@/components/atoms/Text/Text";
 

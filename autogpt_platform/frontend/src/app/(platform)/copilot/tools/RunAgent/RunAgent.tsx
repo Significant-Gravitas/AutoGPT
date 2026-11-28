@@ -18,7 +18,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
-import { useLiveRunStatus } from "./components/ExecutionStartedCard/useLiveRunStatus";
+import { useLiveRunStatus } from "../../components/ToolChain/useLiveRunStatus";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";

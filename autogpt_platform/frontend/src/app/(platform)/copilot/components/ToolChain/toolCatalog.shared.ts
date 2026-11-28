@@ -1,4 +1,4 @@
-import { type ToolCategory, truncate } from "../../tools/GenericTool/helpers";
+import { type ToolCategory, truncate } from "../GenericTool/helpers";
 
 export type ChainCategory =
   | ToolCategory

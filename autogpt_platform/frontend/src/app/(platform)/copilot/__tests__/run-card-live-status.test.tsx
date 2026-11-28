@@ -19,7 +19,7 @@ import {
 import { BuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/BuilderChatPanel";
 import { useBuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/useBuilderChatPanel";
 import { ChatContainer } from "../components/ChatContainer/ChatContainer";
-import { LIVE_STATUS_POLL_MS } from "../tools/RunAgent/components/ExecutionStartedCard/helpers";
+import { LIVE_STATUS_POLL_MS } from "../components/ToolChain/liveRunStatus";
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
   ChatInput: () => <textarea aria-label="Chat input" />,

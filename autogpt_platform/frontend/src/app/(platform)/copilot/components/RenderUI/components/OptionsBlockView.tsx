@@ -6,7 +6,7 @@ import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { VisualAnswerEvent } from "@/services/analytics/posthog-events";
 import { AlertCircleIcon, ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
-import { useCopilotChatActions } from "../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { useCopilotChatActions } from "../../CopilotChatActionsProvider/useCopilotChatActions";
 import { type BlockTone, TEXT_TONE } from "../helpers";
 
 const ICON_BADGE: Record<BlockTone, string> = {

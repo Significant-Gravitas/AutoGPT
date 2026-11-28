@@ -3,18 +3,18 @@
 import React from "react";
 import { ToolUIPart } from "ai";
 import { cn } from "@/lib/utils";
-import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { MorphingTextAnimation } from "../MorphingTextAnimation/MorphingTextAnimation";
+import { ToolAccordion } from "../ToolAccordion/ToolAccordion";
 import {
   ContentCodeBlock,
   ContentMessage,
-} from "../../components/ToolAccordion/AccordionContent";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+} from "../ToolAccordion/AccordionContent";
+import { OrbitLoader } from "../OrbitLoader/OrbitLoader";
 import {
   isBlankOutput,
   isEmptyResult,
   NOTHING_FOUND,
-} from "../../components/ToolChain/resultHelpers";
+} from "../ToolChain/resultHelpers";
 import {
   globalRegistry,
   OutputItem,

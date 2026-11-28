@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   isAnswered,
   type QuestionAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import type { OnboardingChoicesHandle } from "./components/OnboardingChoices/useOnboardingChoices";
 import {

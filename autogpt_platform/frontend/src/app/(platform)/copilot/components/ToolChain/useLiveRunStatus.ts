@@ -2,14 +2,14 @@ import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/g
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import { okData } from "@/app/api/helpers";
 import { useContext } from "react";
-import { CopilotChatActionsContext } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
+import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import {
   isFinalStatus,
   nextPollInterval,
   retryUnlessPermanent,
   runErrorFor,
   shouldWatchRun,
-} from "./helpers";
+} from "./liveRunStatus";
 
 type WatchedRun = Pick<
   ExecutionStartedResponse,

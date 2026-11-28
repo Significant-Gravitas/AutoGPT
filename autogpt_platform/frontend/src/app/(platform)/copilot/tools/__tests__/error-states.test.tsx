@@ -16,7 +16,7 @@ import { FindAgentsTool } from "../FindAgents/FindAgents";
 import { FindBlocksTool } from "../FindBlocks/FindBlocks";
 import { connectionBadge } from "../FindCapabilities/helpers";
 import { FolderTool } from "../FolderTool/FolderTool";
-import { GenericTool } from "../GenericTool/GenericTool";
+import { GenericTool } from "../../components/GenericTool/GenericTool";
 import { RunAgentTool } from "../RunAgent/RunAgent";
 import { getAccordionMeta, type RunBlockToolOutput } from "../RunBlock/helpers";
 import { RunBlockTool } from "../RunBlock/RunBlock";

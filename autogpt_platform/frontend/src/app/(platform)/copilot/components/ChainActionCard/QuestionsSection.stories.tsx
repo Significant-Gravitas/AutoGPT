@@ -5,7 +5,7 @@ import {
   type ClarifyingQuestion,
   isAnswered,
   type QuestionAnswer,
-} from "../../tools/clarifying-questions";
+} from "../../helpers/clarifying-questions";
 import { QuestionsSection } from "./QuestionsSection";
 
 interface CardProps {

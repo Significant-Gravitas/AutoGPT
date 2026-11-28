@@ -3,7 +3,7 @@ import type { ToolUIPart } from "ai";
 import { ClarificationQuestionsCard } from "../../components/ClarificationQuestionsCard/ClarificationQuestionsCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
-import { normalizeClarifyingQuestions } from "../clarifying-questions";
+import { normalizeClarifyingQuestions } from "../../helpers/clarifying-questions";
 import {
   getAnimationText,
   getAskQuestionOutput,

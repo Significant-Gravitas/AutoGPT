@@ -17,17 +17,6 @@ import {
   type CredentialsProvidersContextType,
 } from "@/providers/agent-credentials/credentials-provider";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { CreateAgentTool } from "../tools/CreateAgent/CreateAgent";
-import { EditAgentTool } from "../tools/EditAgent/EditAgent";
-import {
-  CreateFeatureRequestTool,
-  SearchFeatureRequestsTool,
-} from "../tools/FeatureRequests/FeatureRequests";
-import { FindAgentsTool } from "../tools/FindAgents/FindAgents";
-import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
-import { RunAgentTool } from "../tools/RunAgent/RunAgent";
-import { RunBlockTool } from "../tools/RunBlock/RunBlock";
-import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
 import { StoneStackLoader } from "../components/StoneStackLoader/StoneStackLoader";
 import {
   AUTOPILOT_HEX,
@@ -35,9 +24,10 @@ import {
 } from "@/components/molecules/ExpertAvatar/colors";
 import { ThinkingIndicator } from "../components/ChatMessagesContainer/components/ThinkingIndicator";
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
-import { GenericTool } from "../tools/GenericTool/GenericTool";
-import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
 import { RenderUISamples } from "./RenderUISamples";
+import type { ToolUIPart } from "ai";
+import type { MessagePart } from "../components/ChatMessagesContainer/helpers";
+import { ToolChain } from "../components/ToolChain/ToolChain";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -299,7 +289,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Find Blocks">
               <SubSection label="Input streaming">
-                <FindBlocksTool
+                <ChainDemo
                   part={{
                     type: "tool-find_block",
                     toolCallId: uid(),
@@ -310,7 +300,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Input available">
-                <FindBlocksTool
+                <ChainDemo
                   part={{
                     type: "tool-find_block",
                     toolCallId: uid(),
@@ -321,7 +311,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (with results)">
-                <FindBlocksTool
+                <ChainDemo
                   part={{
                     type: "tool-find_block",
                     toolCallId: uid(),
@@ -359,7 +349,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <FindBlocksTool
+                <ChainDemo
                   part={{
                     type: "tool-find_block",
                     toolCallId: uid(),
@@ -376,7 +366,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Find Agents (Marketplace)">
               <SubSection label="Input streaming">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_agent",
                     toolCallId: uid(),
@@ -387,7 +377,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agents found)">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_agent",
                     toolCallId: uid(),
@@ -418,7 +408,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (no results)">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_agent",
                     toolCallId: uid(),
@@ -437,7 +427,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_agent",
                     toolCallId: uid(),
@@ -454,7 +444,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Find Agents (Library)">
               <SubSection label="Input streaming">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_library_agent",
                     toolCallId: uid(),
@@ -465,7 +455,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agents found)">
-                <FindAgentsTool
+                <ChainDemo
                   part={{
                     type: "tool-find_library_agent",
                     toolCallId: uid(),
@@ -495,7 +485,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Search Docs">
               <SubSection label="Input streaming">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_docs",
                     toolCallId: uid(),
@@ -506,7 +496,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (search results)">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_docs",
                     toolCallId: uid(),
@@ -542,7 +532,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (no results)">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_docs",
                     toolCallId: uid(),
@@ -561,7 +551,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_docs",
                     toolCallId: uid(),
@@ -578,7 +568,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Get Doc Page">
               <SubSection label="Input streaming">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-get_doc_page",
                     toolCallId: uid(),
@@ -589,7 +579,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (page loaded)">
-                <SearchDocsTool
+                <ChainDemo
                   part={{
                     type: "tool-get_doc_page",
                     toolCallId: uid(),
@@ -614,7 +604,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Run Block">
               <SubSection label="Input streaming">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -625,7 +615,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Input available">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -639,7 +629,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (block output)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -665,7 +655,7 @@ export default function StyleguidePage() {
                 <CredentialsProvidersContext.Provider
                   value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
                 >
-                  <RunBlockTool
+                  <ChainDemo
                     part={{
                       type: "tool-run_block",
                       toolCallId: uid(),
@@ -708,7 +698,7 @@ export default function StyleguidePage() {
                 <CredentialsProvidersContext.Provider
                   value={MOCK_PROVIDERS_WITH_CREDENTIALS}
                 >
-                  <RunBlockTool
+                  <ChainDemo
                     part={{
                       type: "tool-run_block",
                       toolCallId: uid(),
@@ -738,7 +728,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -758,7 +748,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (JSON object output — interactive viewer)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -790,7 +780,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (image URL — ImageRenderer)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -810,7 +800,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (markdown text — MarkdownRenderer)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -832,7 +822,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (plain text — TextRenderer)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -854,7 +844,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (multiple items with expand)">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -905,7 +895,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <RunBlockTool
+                <ChainDemo
                   part={{
                     type: "tool-run_block",
                     toolCallId: uid(),
@@ -922,7 +912,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Run Agent">
               <SubSection label="Input streaming">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -933,7 +923,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (execution started)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -953,7 +943,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agent details / inputs needed)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -996,7 +986,7 @@ export default function StyleguidePage() {
                 <CredentialsProvidersContext.Provider
                   value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
                 >
-                  <RunAgentTool
+                  <ChainDemo
                     part={{
                       type: "tool-run_agent",
                       toolCallId: uid(),
@@ -1029,7 +1019,7 @@ export default function StyleguidePage() {
                 <CredentialsProvidersContext.Provider
                   value={MOCK_PROVIDERS_WITH_CREDENTIALS}
                 >
-                  <RunAgentTool
+                  <ChainDemo
                     part={{
                       type: "tool-run_agent",
                       toolCallId: uid(),
@@ -1060,7 +1050,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (need login)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -1076,7 +1066,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -1092,7 +1082,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-run_agent",
                     toolCallId: uid(),
@@ -1109,7 +1099,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Schedule Agent">
               <SubSection label="Input streaming (schedule)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-schedule_agent",
                     toolCallId: uid(),
@@ -1125,7 +1115,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (execution started — scheduled)">
-                <RunAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-schedule_agent",
                     toolCallId: uid(),
@@ -1155,7 +1145,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Create Agent">
               <SubSection label="Input streaming">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1165,7 +1155,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agent preview)">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1193,7 +1183,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agent saved)">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1213,7 +1203,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (clarification needed)">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1242,7 +1232,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1261,7 +1251,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <CreateAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-create_agent",
                     toolCallId: uid(),
@@ -1277,7 +1267,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Edit Agent">
               <SubSection label="Input streaming">
-                <EditAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-edit_agent",
                     toolCallId: uid(),
@@ -1287,7 +1277,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agent preview)">
-                <EditAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-edit_agent",
                     toolCallId: uid(),
@@ -1317,7 +1307,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (agent saved)">
-                <EditAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-edit_agent",
                     toolCallId: uid(),
@@ -1337,7 +1327,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (clarification needed)">
-                <EditAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-edit_agent",
                     toolCallId: uid(),
@@ -1360,7 +1350,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <EditAgentTool
+                <ChainDemo
                   part={{
                     type: "tool-edit_agent",
                     toolCallId: uid(),
@@ -1382,7 +1372,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: View Agent Output">
               <SubSection label="Input streaming">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1396,7 +1386,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (with execution data)">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1430,7 +1420,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (rich outputs — JSON + markdown + image)">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1479,7 +1469,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (no execution selected)">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1498,7 +1488,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (no results)">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1518,7 +1508,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1534,7 +1524,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <ViewAgentOutputTool
+                <ChainDemo
                   part={{
                     type: "tool-view_agent_output",
                     toolCallId: uid(),
@@ -1551,7 +1541,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Search Feature Requests">
               <SubSection label="Input streaming">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1562,7 +1552,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Input available">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1573,7 +1563,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (with results)">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1607,7 +1597,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (no results)">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1628,7 +1618,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1644,7 +1634,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <SearchFeatureRequestsTool
+                <ChainDemo
                   part={{
                     type: "tool-search_feature_requests",
                     toolCallId: uid(),
@@ -1661,7 +1651,7 @@ export default function StyleguidePage() {
 
             <Section title="Tool: Create Feature Request">
               <SubSection label="Input streaming">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1675,7 +1665,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Input available">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1689,7 +1679,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (new issue created)">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1715,7 +1705,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (added to existing issue)">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1743,7 +1733,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output available (error)">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1763,7 +1753,7 @@ export default function StyleguidePage() {
               </SubSection>
 
               <SubSection label="Output error">
-                <CreateFeatureRequestTool
+                <ChainDemo
                   part={{
                     type: "tool-create_feature_request",
                     toolCallId: uid(),
@@ -1801,7 +1791,7 @@ export default function StyleguidePage() {
                         Let me search for weather-related blocks for you.
                       </MessageResponse>
 
-                      <FindBlocksTool
+                      <ChainDemo
                         part={{
                           type: "tool-find_block",
                           toolCallId: uid(),
@@ -1855,7 +1845,7 @@ export default function StyleguidePage() {
                       size="large"
                       className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
                     >
-                      <RunBlockTool
+                      <ChainDemo
                         part={{
                           type: "tool-run_block",
                           toolCallId: uid(),
@@ -1913,7 +1903,7 @@ export default function StyleguidePage() {
                         className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
                       >
                         <ReasoningCollapse>
-                          <GenericTool
+                          <ChainDemo
                             part={{
                               type: "tool-bash_exec",
                               toolCallId: uid(),
@@ -1928,7 +1918,7 @@ export default function StyleguidePage() {
                               },
                             }}
                           />
-                          <FindBlocksTool
+                          <ChainDemo
                             part={{
                               type: "tool-find_block",
                               toolCallId: uid(),
@@ -1950,7 +1940,7 @@ export default function StyleguidePage() {
                           />
                         </ReasoningCollapse>
 
-                        <RunBlockTool
+                        <ChainDemo
                           part={{
                             type: "tool-run_block",
                             toolCallId: uid(),
@@ -2015,7 +2005,7 @@ export default function StyleguidePage() {
                         className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
                       >
                         <ReasoningCollapse>
-                          <FindAgentsTool
+                          <ChainDemo
                             part={{
                               type: "tool-find_library_agent",
                               toolCallId: uid(),
@@ -2039,7 +2029,7 @@ export default function StyleguidePage() {
                           />
                         </ReasoningCollapse>
 
-                        <RunAgentTool
+                        <ChainDemo
                           part={{
                             type: "tool-run_agent",
                             toolCallId: uid(),
@@ -2097,7 +2087,7 @@ export default function StyleguidePage() {
                         className="group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong"
                       >
                         <ReasoningCollapse>
-                          <FindBlocksTool
+                          <ChainDemo
                             part={{
                               type: "tool-find_block",
                               toolCallId: uid(),
@@ -2119,7 +2109,7 @@ export default function StyleguidePage() {
                           />
                         </ReasoningCollapse>
 
-                        <CreateAgentTool
+                        <ChainDemo
                           part={{
                             type: "tool-create_agent",
                             toolCallId: uid(),
@@ -2155,5 +2145,23 @@ export default function StyleguidePage() {
         </div>
       </div>
     </CopilotChatActionsProvider>
+  );
+}
+
+interface DemoPart {
+  type: `tool-${string}`;
+  toolCallId: string;
+  state: ToolUIPart["state"];
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+}
+
+/** A tool call as the chat draws it: one row of the tool chain. */
+function ChainDemo({ part }: { part: DemoPart }) {
+  const running =
+    part.state === "input-streaming" || part.state === "input-available";
+  return (
+    <ToolChain parts={[part as unknown as MessagePart]} isStreaming={running} />
   );
 }

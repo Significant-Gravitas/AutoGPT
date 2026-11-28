@@ -7,7 +7,7 @@ import { RunCapabilityTool } from "../RunCapability";
 // The three renderers this component routes between, stubbed down to the
 // part they receive: what is under test is the routing and the re-shaping,
 // not what a block or MCP card looks like.
-vi.mock("../../GenericTool/GenericTool", () => ({
+vi.mock("../../../components/GenericTool/GenericTool", () => ({
   GenericTool: () => <div data-testid="generic" />,
 }));
 vi.mock("../../RunBlock/RunBlock", () => ({
