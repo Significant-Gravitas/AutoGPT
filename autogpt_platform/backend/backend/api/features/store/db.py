@@ -10,6 +10,10 @@ import prisma.models
 import prisma.types
 from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
+from backend.api.features.search.hybrid_search import (
+    MAX_SEARCH_QUERY_LENGTH,
+    lexical_rank_tsquery_sql,
+)
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
@@ -235,7 +239,7 @@ async def _fallback_store_agent_search(
         return [store_model.StoreAgent.from_db(a) for a in db_agents], total
 
     # Text search using ad-hoc tsvector on StoreAgent view fields
-    params: list[Any] = [search_query]
+    params: list[Any] = [search_query[:MAX_SEARCH_QUERY_LENGTH]]
     filters = ["sa.is_available = true"]
     param_idx = 2
 
@@ -266,7 +270,7 @@ async def _fallback_store_agent_search(
                         COALESCE(sa.sub_heading, '') || ' ' ||
                         COALESCE(sa.description, '')
                     ),
-                    plainto_tsquery('english', $1)
+                    {lexical_rank_tsquery_sql("$1")}
                 ) AS rank,
                 COUNT(*) OVER () AS total_count
             FROM {{schema_prefix}}"StoreAgent" sa

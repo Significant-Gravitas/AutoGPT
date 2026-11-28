@@ -18,8 +18,14 @@ from prisma.enums import ContentType
 
 from backend.api.features.search import embeddings
 from backend.api.features.search.embeddings import EMBEDDING_DIM
-from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.search.hybrid_search import (
+    MAX_LEXICAL_RANK_TERMS,
+    lexical_rank_tsquery_sql,
+    unified_hybrid_search,
+)
+from backend.api.features.store import db as store_db
 from backend.api.features.store.hybrid_search import hybrid_search
+from backend.data.db import query_raw_with_schema
 
 # ============================================================================
 # Test Fixtures
@@ -661,6 +667,124 @@ async def test_search_all_content_types_default(server):
     # Should not raise
     assert isinstance(results, list)
     assert isinstance(total, int)
+
+
+# ============================================================================
+# The terms ts_rank_cd scores a row by
+# ============================================================================
+
+# More distinct terms than a row is ranked by, within the search routes' bound.
+MANY_WORDS = [
+    letter + digit for letter in "bcdfghjklmnpqrvwz" for digit in "0123456789"
+]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("separator", [" ", "-", "_", "'"])
+@pytest.mark.parametrize("prefix_match", [False, True])
+async def test_the_rank_tsquery_holds_a_bounded_number_of_terms(
+    server, separator: str, prefix_match: bool
+):
+    """However Postgres splits the text into terms."""
+    rank_tsquery = lexical_rank_tsquery_sql("$1", prefix_match=prefix_match)
+
+    (row,) = await query_raw_with_schema(
+        f"""
+        SELECT numnode({rank_tsquery}) AS ranked_by,
+               numnode(plainto_tsquery('english', $1)) AS matched_by
+        """,
+        separator.join(MANY_WORDS),
+    )
+
+    # n AND-ed terms are n operands and n - 1 operators.
+    assert row["matched_by"] >= 2 * len(MANY_WORDS) - 1
+    assert row["ranked_by"] == 2 * MAX_LEXICAL_RANK_TERMS - 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "text, match_fn, match_text",
+    [
+        ("AI writing assistant", "plainto_tsquery", "AI writing assistant"),
+        ("ai writ", "to_tsquery", "ai:* & writ:*"),
+        ("o'neil http://example.com/it's", "plainto_tsquery", None),
+    ],
+)
+async def test_a_short_query_is_ranked_by_all_of_its_terms(
+    server, text: str, match_fn: str, match_text: str | None
+):
+    rank_tsquery = lexical_rank_tsquery_sql("$1", prefix_match=match_fn == "to_tsquery")
+
+    (row,) = await query_raw_with_schema(
+        f"""
+        SELECT {rank_tsquery}::text AS ranked_by,
+               {match_fn}('english', $2)::text AS matched_by
+        """,
+        text,
+        match_text or text,
+    )
+
+    assert row["ranked_by"] == row["matched_by"] != ""
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_query_of_stopwords_has_no_rank_tsquery(server):
+    (row,) = await query_raw_with_schema(
+        f"SELECT {lexical_rank_tsquery_sql('$1')} IS NULL AS no_terms", "the of a"
+    )
+
+    assert row["no_terms"] is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_row_holding_every_term_of_a_long_query_is_found_and_scored(
+    server,
+    mocker,
+    mock_embedding: list[float],
+    test_user_id: str,
+    cleanup_embeddings: list,
+):
+    mocker.patch(
+        "backend.api.features.search.hybrid_search.embed_query",
+        return_value=mock_embedding,
+    )
+    agent_id = f"test-agent-{uuid.uuid4()}"
+    cleanup_embeddings.append((ContentType.LIBRARY_AGENT, agent_id, test_user_id))
+    await embeddings.store_content_embedding(
+        content_type=ContentType.LIBRARY_AGENT,
+        content_id=agent_id,
+        embedding=mock_embedding,
+        searchable_text=" ".join(MANY_WORDS),
+        metadata={},
+        user_id=test_user_id,
+    )
+
+    results, total = await unified_hybrid_search(
+        query=" ".join(MANY_WORDS),
+        content_types=[ContentType.LIBRARY_AGENT],
+        user_id=test_user_id,
+        min_score=0.0,
+    )
+
+    assert total == 1
+    assert results[0]["content_id"] == agent_id
+    assert results[0]["lexical_score"] == 1.0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_store_fallback_search_ranks_with_a_quote_in_the_query(server):
+    agents, total = await store_db._fallback_store_agent_search(
+        search_query="test agent it's",
+        featured=False,
+        creators=None,
+        category=None,
+        sorted_by=None,
+        page=1,
+        page_size=20,
+    )
+
+    assert isinstance(agents, list)
+    assert total >= 0
 
 
 if __name__ == "__main__":

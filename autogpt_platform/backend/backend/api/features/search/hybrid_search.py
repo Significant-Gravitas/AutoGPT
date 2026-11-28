@@ -190,6 +190,13 @@ DEFAULT_UNIFIED_WEIGHTS = UnifiedSearchWeights()
 DEFAULT_MIN_SCORE = 0.15  # For unified search (more permissive)
 DEFAULT_STORE_AGENT_MIN_SCORE = 0.20  # For store agent search (original threshold)
 
+# The longest query the search engines read. The search routes refuse a longer
+# one; text a tool or a block passes is cut to it.
+MAX_SEARCH_QUERY_LENGTH = 512
+# Query terms ``ts_rank_cd`` ranks a row by; the ``@@`` match still uses every
+# term.
+MAX_LEXICAL_RANK_TERMS = 6
+
 
 async def unified_hybrid_search(
     query: str,
@@ -233,14 +240,14 @@ async def unified_hybrid_search(
         Tuple of (results list, total count)
     """
     # Validate inputs
-    query = query.strip()
+    query = query.strip()[:MAX_SEARCH_QUERY_LENGTH]
     if not query:
         return [], 0
     # Default the lexical query to the semantic query for backwards-
     # compatibility; callers (e.g. library similarity search) override
     # when ``plainto_tsquery``'s AND semantics over a long natural goal
     # would zero out every match.
-    lexical_query = (lexical_query or query).strip() or query
+    lexical_query = (lexical_query or query).strip()[:MAX_SEARCH_QUERY_LENGTH] or query
 
     # Lexical matching mode. ``plainto_tsquery`` matches whole words only,
     # which is wrong for search-as-you-type callers (e.g. /search/global):
@@ -317,6 +324,9 @@ async def unified_hybrid_search(
     params.append(lexical_tsquery)
     query_param = f"${param_idx}"
     param_idx += 1
+    rank_tsquery = lexical_rank_tsquery_sql(
+        query_param, prefix_match=lexical_fn == "to_tsquery"
+    )
 
     # Query lowercase for category matching — keep tied to the
     # natural-language ``query`` so categories still match the user's
@@ -432,7 +442,7 @@ async def unified_hybrid_search(
                 -- Semantic score: cosine similarity (1 - distance)
                 COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                 -- Lexical score: ts_rank_cd
-                COALESCE(ts_rank_cd(uce.search, {lexical_fn}('english', {query_param})), 0) as lexical_raw,
+                COALESCE(ts_rank_cd(uce.search, {rank_tsquery}), 0) as lexical_raw,
                 -- Category match from metadata
                 CASE
                     WHEN uce.metadata ? 'categories' AND EXISTS (
@@ -521,6 +531,29 @@ async def unified_hybrid_search(
     logger.info(f"Unified hybrid search: {len(results)} results, {total} total")
 
     return results, total
+
+
+def lexical_rank_tsquery_sql(text_param: str, prefix_match: bool = False) -> str:
+    """SQL for the tsquery ``ts_rank_cd`` scores by: the first
+    ``MAX_LEXICAL_RANK_TERMS`` distinct lexemes of *text_param*, AND-ed (as
+    ``term:*`` with *prefix_match*); NULL when it has none.
+
+    Postgres picks the lexemes, as it does for the ``@@`` match: what reads as
+    one word can be several terms there (``a-b``, ``a_b``)."""
+    prefix = " || ':*'" if prefix_match else ""
+    # Quoted as tsquery input reads a lexeme back: quote and backslash doubled.
+    return rf"""(
+                    SELECT string_agg(
+                        '''' || replace(replace(lexeme, '\', '\\'), '''', '''''') || ''''{prefix},
+                        ' & ' ORDER BY positions[1]
+                    )::tsquery
+                    FROM (
+                        SELECT lexeme, positions
+                        FROM unnest(to_tsvector('english', {text_param}::text))
+                        ORDER BY positions[1]
+                        LIMIT {MAX_LEXICAL_RANK_TERMS}
+                    ) first_terms
+                )"""
 
 
 # ============================================================================

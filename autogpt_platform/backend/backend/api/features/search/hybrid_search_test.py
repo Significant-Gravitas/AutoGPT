@@ -5,13 +5,17 @@ Tests for the generic unified hybrid search engine.
 from unittest.mock import patch
 
 import pytest
+import pytest_mock
 from prisma.enums import ContentType
 from pydantic import TypeAdapter, ValidationError
+from rank_bm25 import BM25Okapi
 
 from backend.api.features.search import embeddings
 from backend.api.features.search.hybrid_search import (
+    MAX_SEARCH_QUERY_LENGTH,
     HybridSearchRow,
     UnifiedSearchWeights,
+    lexical_rank_tsquery_sql,
     tokenize,
     unified_hybrid_search,
 )
@@ -466,6 +470,78 @@ async def test_unified_hybrid_search_matches_categories_literally():
     assert params[0] == "Mark_ting 100%"
     assert params[1] == r"mark\_ting 100\%"
     assert mock_embed.call_args.args[0] == "Mark_ting 100%"
+
+
+# ---------------------------------------------------------------------------
+# Query length and rank terms
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("prefix_match", [False, True])
+async def test_unified_hybrid_search_ranks_by_a_bounded_number_of_terms(
+    prefix_match: bool,
+):
+    """``@@`` matches on every term; ``ts_rank_cd`` scores by the first few
+    (``embeddings_e2e_test`` runs that SQL)."""
+    with (
+        patch(
+            "backend.api.features.search.hybrid_search.query_raw_with_schema"
+        ) as mock_query,
+        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
+    ):
+        mock_query.return_value = []
+        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+        await unified_hybrid_search(query="test query", prefix_match=prefix_match)
+
+    sql = mock_query.call_args[0][0]
+    rank_tsquery = lexical_rank_tsquery_sql("$1", prefix_match=prefix_match)
+    assert f"ts_rank_cd(uce.search, {rank_tsquery})" in sql
+    assert sql.count("ts_rank_cd(") == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "lexical_query", [None, "word " * 2_000], ids=["query", "lexical_query"]
+)
+async def test_unified_hybrid_search_reads_a_long_query_up_to_its_bound(
+    lexical_query: str | None, mocker: pytest_mock.MockFixture
+):
+    get_scores = mocker.spy(BM25Okapi, "get_scores")
+    with (
+        patch(
+            "backend.api.features.search.hybrid_search.query_raw_with_schema"
+        ) as mock_query,
+        patch("backend.api.features.search.hybrid_search.embed_query") as mock_embed,
+    ):
+        mock_query.return_value = [_row("word")]
+        mock_embed.return_value = [0.1] * embeddings.EMBEDDING_DIM
+
+        await unified_hybrid_search(query="word " * 2_000, lexical_query=lexical_query)
+
+    lexical, category_pattern = mock_query.call_args[0][1:3]
+    assert len(mock_embed.call_args[0][0]) <= MAX_SEARCH_QUERY_LENGTH
+    assert len(lexical) <= MAX_SEARCH_QUERY_LENGTH
+    assert len(category_pattern) <= MAX_SEARCH_QUERY_LENGTH
+    (query_tokens,) = get_scores.call_args[0][1:]
+    assert 0 < len(query_tokens) <= MAX_SEARCH_QUERY_LENGTH // 2
+
+
+def _row(text: str) -> dict:
+    return {
+        "content_type": "BLOCK",
+        "content_id": "block-1",
+        "searchable_text": text,
+        "metadata": {},
+        "updated_at": None,
+        "semantic_score": 0.5,
+        "lexical_score": 0.5,
+        "category_score": 0.0,
+        "recency_score": 0.0,
+        "combined_score": 0.5,
+        "total_count": 1,
+    }
 
 
 if __name__ == "__main__":
