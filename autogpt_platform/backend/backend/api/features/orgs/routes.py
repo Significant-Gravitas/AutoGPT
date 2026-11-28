@@ -10,7 +10,7 @@ from autogpt_libs.auth import (
 )
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Security
 
 from . import db as org_db
 from .member_runs import stop_member_runs
@@ -202,10 +202,12 @@ async def remove_member(
         RequestContext,
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
+    background_tasks: BackgroundTasks,
 ) -> None:
     _verify_org_path(ctx, org_id)
     await org_db.remove_org_member(org_id, uid, requesting_user_id=ctx.user_id)
-    await stop_member_runs(org_id, uid)
+    # After the response, so the request doesn't last as long as the stops.
+    background_tasks.add_task(stop_member_runs, org_id, uid)
 
 
 @router.post(

@@ -17,8 +17,10 @@ from autogpt_libs.auth import get_request_context
 from autogpt_libs.auth.models import RequestContext
 
 from backend.api.features.orgs import db as orgs_db
+from backend.api.features.orgs import member_runs
 from backend.api.features.orgs.routes import router as orgs_router
 from backend.api.rest_api import app as rest_app
+from backend.data.execution import ExecutionStatus
 from backend.data.user import get_or_create_user
 from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
@@ -75,6 +77,33 @@ async def test_a_member_who_belongs_to_no_other_org_is_removed(
     assert not await prisma.models.TeamMember.prisma().find_many(
         where={"userId": member, "Team": {"orgId": org.id}}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_removed_members_runs_in_the_org_are_stopped_once_they_are_out(
+    server: SpinTestServer, users: list[str], monkeypatch: pytest.MonkeyPatch
+):
+    owner, member = await _user(users), await _user(users)
+    org, elsewhere = await _create_org(owner), await _create_org(member)
+    await orgs_db.add_org_member(org.id, member)
+    running = await _run(member, org.id, ExecutionStatus.RUNNING)
+    await _run(member, org.id, ExecutionStatus.COMPLETED)
+    await _run(member, elsewhere.id, ExecutionStatus.RUNNING)
+    stopped: list[tuple[str, bool]] = []
+
+    async def stop(*, graph_exec_id: str, **_) -> None:
+        membership = await prisma.models.OrgMember.prisma().find_unique(
+            where={"orgId_userId": {"orgId": org.id, "userId": member}}
+        )
+        stopped.append((graph_exec_id, membership is not None))
+
+    monkeypatch.setattr(member_runs, "stop_graph_execution", stop)
+
+    response = await _as_owner(owner, org.id).delete(f"/orgs/{org.id}/members/{member}")
+
+    assert response.status_code == 204, response.text
+    # Seen from outside the removal's transaction: it had committed by then.
+    assert stopped == [(running, False)]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -252,6 +281,23 @@ async def _owners(org_id: str) -> list[str]:
         where={"orgId": org_id, "isOwner": True}
     )
     return [m.userId for m in owners]
+
+
+async def _run(user_id: str, org_id: str, status: ExecutionStatus) -> str:
+    """A run of a new graph of *user_id*'s, stored in *org_id*."""
+    graph = await prisma.models.AgentGraph.prisma().create(
+        data={"id": str(uuid.uuid4()), "version": 1, "name": "run", "userId": user_id}
+    )
+    run = await prisma.models.AgentGraphExecution.prisma().create(
+        data={
+            "agentGraphId": graph.id,
+            "agentGraphVersion": 1,
+            "userId": user_id,
+            "organizationId": org_id,
+            "executionStatus": status,
+        }
+    )
+    return run.id
 
 
 async def _create_org(user_id: str):

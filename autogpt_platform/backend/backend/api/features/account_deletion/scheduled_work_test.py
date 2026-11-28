@@ -13,6 +13,7 @@ from backend.api.features.account_deletion.autopilot_work import (
     unlink_chat_platforms,
 )
 from backend.api.features.account_deletion.scheduled_work import (
+    STOP_CONCURRENCY,
     STOP_WAIT_TIMEOUT_SECONDS,
     stop_user_work,
 )
@@ -67,10 +68,8 @@ def _paused_expert_routine() -> CopilotTurnJobInfo:
     )
 
 
-def _run(run_id: str) -> MagicMock:
-    run = MagicMock()
-    run.id = run_id
-    return run
+def _run(run_id: str) -> str:
+    return run_id
 
 
 def _node(node_id: str) -> MagicMock:
@@ -93,7 +92,7 @@ def scheduler(mocker: MockerFixture) -> MagicMock:
 @pytest.fixture
 def list_runs(mocker: MockerFixture) -> AsyncMock:
     return mocker.patch(
-        f"{MODULE}.get_graph_executions", new_callable=AsyncMock, return_value=[]
+        f"{MODULE}.get_graph_execution_ids", new_callable=AsyncMock, return_value=[]
     )
 
 
@@ -227,6 +226,32 @@ async def test_runs_are_stopped_in_parallel(
     await stop_user_work(USER_ID)
 
     assert sorted(finished) == ["run-1", "run-2"]
+
+
+@pytest.mark.asyncio
+async def test_runs_are_stopped_a_few_at_a_time(
+    scheduler: MagicMock, list_runs: AsyncMock, stop_run: AsyncMock
+):
+    runs = [f"run-{n}" for n in range(3 * STOP_CONCURRENCY)]
+    list_runs.return_value = runs
+    stopping = 0
+    most_at_once = 0
+
+    async def stop(*, graph_exec_id: str, **_: object) -> None:
+        nonlocal stopping, most_at_once
+        stopping += 1
+        most_at_once = max(most_at_once, stopping)
+        await asyncio.sleep(0)
+        stopping -= 1
+
+    stop_run.side_effect = stop
+
+    await stop_user_work(USER_ID)
+
+    assert sorted(c.kwargs["graph_exec_id"] for c in stop_run.await_args_list) == (
+        sorted(runs)
+    )
+    assert most_at_once == STOP_CONCURRENCY
 
 
 @pytest.mark.asyncio
