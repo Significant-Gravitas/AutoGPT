@@ -2,7 +2,8 @@ import logging
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar, cast
 
 from prisma.enums import ContentType
 
@@ -77,6 +78,7 @@ from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
 from backend.data import dream_pass as dream_pass_db
+from backend.data import graph as graph_db
 from backend.data import memory_schedule as memory_schedule_db
 from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
@@ -131,6 +133,7 @@ from backend.data.credit import (
     reconcile_stripe_tier_for_user,
     sync_subscription_from_stripe,
 )
+from backend.data.db_endpoints import declared_endpoints
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
@@ -155,17 +158,6 @@ from backend.data.execution import (
     upsert_execution_output,
 )
 from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
-from backend.data.graph import (
-    get_connected_output_nodes,
-    get_copied_graph_ids,
-    get_graph,
-    get_graph_metadata,
-    get_graph_settings,
-    get_node,
-    get_store_listed_graphs,
-    is_graph_version_owner,
-    validate_graph_execution_permissions,
-)
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
@@ -269,6 +261,9 @@ config = Config()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
+
+# Each module declares its own routes with ``@db_endpoint``; listing it here serves them.
+DB_ENDPOINT_MODULES: tuple[ModuleType, ...] = (graph_db,)
 
 
 async def _spend_credits(
@@ -399,6 +394,17 @@ class DatabaseManager(AppService):
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
+    @classmethod
+    def serve(cls, module: ModuleType) -> None:
+        """Expose the endpoints ``module`` declares, each under its function name."""
+        for route, endpoint in declared_endpoints(module).items():
+            if hasattr(cls, route):
+                raise RuntimeError(
+                    f"{module.__name__}.{route} is declared a database endpoint, "
+                    f"but the database manager already has a {route!r}"
+                )
+            setattr(cls, route, expose(endpoint))
+
     is_auth_session_active = _(is_auth_session_active)
 
     # ============ Graph Executions ============ #
@@ -425,16 +431,6 @@ class DatabaseManager(AppService):
     get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
     get_frequently_executed_graphs = _(get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
-
-    # ============ Graphs ============ #
-    get_node = _(get_node)
-    get_graph = _(get_graph)
-    get_connected_output_nodes = _(get_connected_output_nodes)
-    get_copied_graph_ids = _(get_copied_graph_ids)
-    get_graph_metadata = _(get_graph_metadata)
-    get_graph_settings = _(get_graph_settings)
-    get_store_listed_graphs = _(get_store_listed_graphs)
-    is_graph_version_owner = _(is_graph_version_owner)
 
     # ============ Credits ============ #
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -504,7 +500,6 @@ class DatabaseManager(AppService):
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
-    validate_graph_execution_permissions = _(validate_graph_execution_permissions)
     setup_triggered_preset = _(setup_triggered_preset)
     update_triggered_preset = _(update_triggered_preset)
     delete_preset_with_webhook_cleanup = _(delete_preset_with_webhook_cleanup)
@@ -928,6 +923,16 @@ class DatabaseManager(AppService):
     update_briefing_content = _(update_briefing_content)
 
 
+for _module in DB_ENDPOINT_MODULES:
+    DatabaseManager.serve(_module)
+
+
+def _method(f: Callable[P, R]) -> Callable[Concatenate[Any, P], R]:
+    """Types a declared endpoint as a client method. The client only reads its
+    name and signature to build the request, and never calls it."""
+    return cast(Callable[Concatenate[Any, P], R], f)
+
+
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
     _ = endpoint_to_sync
@@ -948,8 +953,8 @@ class DatabaseManagerClient(AppServiceClient):
     upsert_execution_output = _(d.upsert_execution_output)
 
     # Graphs
-    get_graph_metadata = _(d.get_graph_metadata)
-    get_node = _(d.get_node)
+    get_graph_metadata = _(_method(graph_db.get_graph_metadata))
+    get_node = _(_method(graph_db.get_node))
 
     # Credits
     spend_credits = _(d.spend_credits)
@@ -987,7 +992,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
-    validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
+    validate_graph_execution_permissions = _(
+        _method(graph_db.validate_graph_execution_permissions)
+    )
 
     # Expert run posts (executor completion hook)
     append_expert_run_message = _(d.append_expert_run_message)
@@ -1030,7 +1037,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Graph Executions ============ #
     create_graph_execution = d.create_graph_execution
     get_child_graph_executions = d.get_child_graph_executions
-    get_connected_output_nodes = d.get_connected_output_nodes
+    get_connected_output_nodes = _method(graph_db.get_connected_output_nodes)
     get_latest_node_execution = d.get_latest_node_execution
     get_graph_execution = d.get_graph_execution
     get_graph_execution_meta = d.get_graph_execution_meta
@@ -1048,13 +1055,13 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     set_execution_kv_data = d.set_execution_kv_data
 
     # ============ Graphs ============ #
-    get_graph = d.get_graph
-    get_copied_graph_ids = d.get_copied_graph_ids
-    get_graph_metadata = d.get_graph_metadata
-    get_graph_settings = d.get_graph_settings
-    is_graph_version_owner = d.is_graph_version_owner
-    get_node = d.get_node
-    get_store_listed_graphs = d.get_store_listed_graphs
+    get_graph = _method(graph_db.get_graph)
+    get_copied_graph_ids = _method(graph_db.get_copied_graph_ids)
+    get_graph_metadata = _method(graph_db.get_graph_metadata)
+    get_graph_settings = _method(graph_db.get_graph_settings)
+    is_graph_version_owner = _method(graph_db.is_graph_version_owner)
+    get_node = _method(graph_db.get_node)
+    get_store_listed_graphs = _method(graph_db.get_store_listed_graphs)
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
@@ -1148,7 +1155,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
-    validate_graph_execution_permissions = d.validate_graph_execution_permissions
+    validate_graph_execution_permissions = _method(
+        graph_db.validate_graph_execution_permissions
+    )
     setup_triggered_preset = d.setup_triggered_preset
     update_triggered_preset = d.update_triggered_preset
     delete_preset_with_webhook_cleanup = d.delete_preset_with_webhook_cleanup
