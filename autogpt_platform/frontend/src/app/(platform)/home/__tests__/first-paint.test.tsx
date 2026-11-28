@@ -139,6 +139,7 @@ describe("/home first paint", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     for (const answer of unanswered.splice(0)) answer();
     await waitFor(() =>
       expect(useAuthStore.getState().isValidating).toBe(false),
@@ -216,21 +217,24 @@ describe("/home first paint", () => {
     });
     vi.mocked(getCurrentUser).mockReturnValue(lookup.promise);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const layout = PlatformLayout({ children: <HomePage /> });
+      await vi.advanceTimersByTimeAsync(FIRST_RENDER_SESSION_DEADLINE_MS);
+      const page = await layout;
+      vi.useRealTimers();
+      render(page);
 
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const layout = PlatformLayout({ children: <HomePage /> });
-    await vi.advanceTimersByTimeAsync(FIRST_RENDER_SESSION_DEADLINE_MS);
-    const page = await layout;
-    vi.useRealTimers();
-    render(page);
+      await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
+      expect(screen.getByTestId("loader")).toBeDefined();
+      expect(screen.queryByTestId("chat")).toBeNull();
 
-    await waitFor(() => expect(getCurrentUser).toHaveBeenCalled());
-    expect(screen.getByTestId("loader")).toBeDefined();
-    expect(screen.queryByTestId("chat")).toBeNull();
+      lookup.resolve({ user: USER });
 
-    lookup.resolve({ user: USER });
-
-    expect(await screen.findByTestId("chat")).toBeDefined();
-    warn.mockRestore();
+      expect(await screen.findByTestId("chat")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+    }
   });
 });
