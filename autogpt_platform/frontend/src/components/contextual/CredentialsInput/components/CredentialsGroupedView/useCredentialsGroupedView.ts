@@ -16,6 +16,7 @@ import {
   splitCredentialFieldsBySystem,
 } from "./helpers";
 import {
+  type SavedNodeCredential,
   awaitsUserChoice,
   CredentialFieldSchema,
   findOwnCredentialProvider,
@@ -30,7 +31,7 @@ interface Args {
   inputCredentials: Record<string, CredentialsMetaInput | undefined>;
   onCredentialChange: (key: string, value?: CredentialsMetaInput) => void;
   onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
-  nodeCredentials: CredentialsMetaInput[];
+  nodeCredentials: SavedNodeCredential[];
   nodeCredentialsUnknown: boolean;
   clearedFields: string[];
 }

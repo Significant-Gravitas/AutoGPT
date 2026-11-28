@@ -7,14 +7,22 @@ import { isSystemCredential } from "../../helpers";
 import { hasRequiredScopes, matchesDiscriminatorValues } from "./helpers";
 
 export interface CredentialFieldSchema {
+  credentials_node_fields?: [string, string][];
   credentials_provider?: string[];
   credentials_types?: string[];
   credentials_scopes?: string[];
   discriminator_values?: string[];
 }
 
-interface GraphSteps {
-  nodes?: Array<{ input_default?: Record<string, unknown> }>;
+interface StepInputs {
+  id?: string | null;
+  input_default?: Record<string, unknown> | null;
+}
+
+export interface SavedNodeCredential {
+  nodeId?: string | null;
+  fieldName: string;
+  credential: CredentialsMetaInput;
 }
 
 interface UserChoiceArgs {
@@ -27,31 +35,35 @@ interface UserChoiceArgs {
 }
 
 interface StartingCredentialArgs extends UserChoiceArgs {
-  nodeCredentials: CredentialsMetaInput[];
+  nodeCredentials: SavedNodeCredential[];
   /** The key the field starts on when the steps don't decide, e.g. the platform's. */
   findFallbackCredential: () => CredentialsMetaInput | undefined;
 }
 
 /** The credentials picked on a workflow's steps, read from each step's saved inputs. */
 export function getSavedNodeCredentials(
-  nodeInputs: Array<Record<string, unknown> | null | undefined>,
-): CredentialsMetaInput[] {
-  return nodeInputs.flatMap((inputs) =>
-    Object.values(inputs ?? {}).filter(isCredentialsMetaInput),
+  steps: StepInputs[],
+): SavedNodeCredential[] {
+  return steps.flatMap(({ id, input_default }) =>
+    Object.entries(input_default ?? {}).flatMap(([fieldName, value]) =>
+      isCredentialsMetaInput(value)
+        ? [{ nodeId: id, fieldName, credential: value }]
+        : [],
+    ),
   );
 }
 
 /** The inputs saved on these graphs' steps, e.g. a workflow's and its sub-workflows'. */
-export function getStepInputs(graphs: GraphSteps[]) {
-  return graphs.flatMap((graph) =>
-    (graph.nodes ?? []).map((node) => node.input_default),
-  );
+export function getStepInputs(graphs: Array<{ nodes?: StepInputs[] }>) {
+  return graphs.flatMap((graph) => graph.nodes ?? []);
 }
 
 /** Tells two sets of step keys apart, whatever order the steps come in. */
-export function getNodeCredentialsKey(nodeCredentials: CredentialsMetaInput[]) {
+export function getNodeCredentialsKey(nodeCredentials: SavedNodeCredential[]) {
   return nodeCredentials
-    .map((credential) => `${credential.provider}/${credential.id}`)
+    .map(({ nodeId, fieldName, credential }) =>
+      JSON.stringify([nodeId, fieldName, credential.provider, credential.id]),
+    )
     .sort()
     .join(",");
 }
@@ -117,12 +129,20 @@ export function awaitsUserChoice({
  */
 export function findNodeCredential(
   schema: CredentialFieldSchema,
-  nodeCredentials: CredentialsMetaInput[],
+  nodeCredentials: SavedNodeCredential[],
   allProviders: CredentialsProvidersContextType | null,
 ) {
   const choices = new Map<string, CredentialsMetaResponse>();
-  for (const nodeCredential of nodeCredentials) {
-    const saved = findSavedCredential(nodeCredential, allProviders);
+  for (const { nodeId, fieldName, credential } of nodeCredentials) {
+    // Older schemas lack membership. Keep provider/type/host matching for them.
+    if (
+      schema.credentials_node_fields &&
+      !schema.credentials_node_fields.some(
+        ([node, field]) => node === nodeId && field === fieldName,
+      )
+    )
+      continue;
+    const saved = findSavedCredential(credential, allProviders);
     if (saved && isUnderField(saved, schema)) choices.set(saved.id, saved);
   }
 

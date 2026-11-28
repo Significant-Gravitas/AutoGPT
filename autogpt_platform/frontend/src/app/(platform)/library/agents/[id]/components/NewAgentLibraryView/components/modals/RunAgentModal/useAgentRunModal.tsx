@@ -10,6 +10,7 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import {
+  type SavedNodeCredential,
   CredentialFieldSchema,
   hasOwnCredentialFor,
 } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
@@ -40,7 +41,7 @@ export type RunVariant =
   | "automatic-trigger"
   | "manual-trigger";
 
-const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_NODE_CREDENTIALS: SavedNodeCredential[] = [];
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;

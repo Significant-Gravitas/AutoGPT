@@ -1,5 +1,6 @@
 import { hasRequiredScopes } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import {
+  type SavedNodeCredential,
   CredentialFieldSchema,
   findNodeCredential,
   getFittingCredentials,
@@ -20,7 +21,7 @@ interface Args {
   /** Fields the user set, to a key or to none; the form leaves them alone. */
   userFields?: string[];
   allProviders: CredentialsProvidersContextType;
-  nodeCredentials: CredentialsMetaInput[];
+  nodeCredentials: SavedNodeCredential[];
   nodeCredentialsUnknown: boolean;
 }
 
@@ -30,7 +31,7 @@ interface ScheduleArgs {
   credentials: Record<string, CredentialsMetaInput | undefined>;
   userFields: string[];
   allProviders: CredentialsProvidersContextType | null;
-  nodeCredentials: CredentialsMetaInput[];
+  nodeCredentials: SavedNodeCredential[];
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { SavedNodeCredential } from "./node-credentials";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import {
   Accordion,
@@ -16,7 +17,7 @@ import { SlidersHorizontalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 const SYSTEM_SECTION = "system-credentials";
-const NO_NODE_CREDENTIALS: CredentialsMetaInput[] = [];
+const NO_NODE_CREDENTIALS: SavedNodeCredential[] = [];
 const NO_CLEARED_FIELDS: string[] = [];
 
 type Props = {
@@ -28,7 +29,7 @@ type Props = {
   /** Called instead of onCredentialChange for a key the view picks itself. */
   onAutoSelect?: (key: string, value: CredentialsMetaInput) => void;
   /** The credentials picked on the workflow's steps; a field starts on the user's own key among them. */
-  nodeCredentials?: CredentialsMetaInput[];
+  nodeCredentials?: SavedNodeCredential[];
   /** The steps' keys couldn't be read: a field the user has a key of their own for is left for them to pick. */
   nodeCredentialsUnknown?: boolean;
   /** Fields the user set to none: nothing fills them again. */

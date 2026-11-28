@@ -1,5 +1,6 @@
 "use client";
 
+import type { SavedNodeCredential } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/node-credentials";
 import React, { createContext, useContext } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
@@ -35,7 +36,7 @@ export interface RunAgentModalContextValue {
   agentCredentialsInputFields: Record<string, any>;
   // The keys picked on the workflow's steps, whether the form waits for them,
   // and whether reading them failed
-  nodeCredentials: CredentialsMetaInput[];
+  nodeCredentials: SavedNodeCredential[];
   isResolvingCredentials: boolean;
   nodeCredentialsUnknown: boolean;
   isRetryingNodeCredentials: boolean;
