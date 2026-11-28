@@ -285,6 +285,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
     from backend.api.external.v2.tenancy import TenantContext
 
     graph_exec_id = str(uuid4())
+    org_id = f"org-{uuid4()}"
     await get_or_create_human_review(
         user_id=user_id,
         node_exec_id=str(uuid4()),
@@ -294,6 +295,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
         input_data={},
         message="Send",
         editable=False,
+        organization_id=org_id,
     )
     await get_or_create_human_review(
         user_id=user_id,
@@ -302,6 +304,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
         input_data={},
         message="Create Folder",
         editable=False,
+        organization_id=org_id,
     )
     await PendingHumanReview.prisma().create(
         data={
@@ -313,6 +316,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
             "payload": SafeJson({}),
             "instructions": "Old shape",
             "editable": False,
+            "organizationId": org_id,
         }
     )
 
@@ -324,7 +328,7 @@ async def test_v2_run_review_listing_leaves_out_chat_reviews(user_id):
             user_id=user_id,
             scopes=list(APIKeyPermission),
             type="api_key",
-            organization_id=f"org-{uuid4()}",
+            organization_id=org_id,
         ),
     )
 

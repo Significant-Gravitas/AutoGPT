@@ -2025,7 +2025,7 @@ async def _add_graph_execution(
 
         # Tenant a NEW execution at creation: several callers arrive with a
         # falsy organization_id — legacy schedules (empty organizationId),
-        # sub-graphs inheriting an untenanted parent's ExecutionContext (see
+        # sub-graphs whose ExecutionContext carries no org (see
         # AgentExecutorBlock), or any caller that omits tenancy. Resolve the
         # user's default org/team so create_graph_execution gets a non-null
         # value and the ExecutionContext built below inherits it.
@@ -2036,9 +2036,8 @@ async def _add_graph_execution(
         # re-tenanting an existing row under a different org.
         #
         # Only resolve when NEITHER field was supplied — never overwrite an
-        # explicit team_id. resolve_default_tenancy is best-effort: an
-        # unresolvable org or a raised lookup yields (None, None) and the row
-        # is created untenanted rather than crashing the run.
+        # explicit team_id. resolve_default_tenancy is best-effort: on
+        # (None, None) create_graph_execution resolves the personal org itself.
         if not organization_id and not team_id:
             from backend.api.features.orgs.db import resolve_default_tenancy
 
@@ -2171,8 +2170,8 @@ async def _add_graph_execution(
             update={"organization_id": organization_id, "team_id": team_id}
         )
     elif execution_context.organization_id is None and graph_exec.organization_id:
-        # A caller-supplied context (e.g. a sub-graph's, whose parent run is
-        # untenanted) may have no org/team. Backfill from the persisted row
+        # A caller-supplied context (e.g. a sub-graph's) may have no
+        # org/team. Backfill from the persisted row
         # so billing and sub-graph runs aren't tenant-blind.
         execution_context = execution_context.model_copy(
             update={

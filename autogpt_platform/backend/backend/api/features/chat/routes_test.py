@@ -7126,7 +7126,11 @@ def test_create_session_replay_keeps_the_mode_it_was_created_with(
     async def _persist(**kwargs):
         if kwargs["session_id"] in store:
             raise DatabaseError("duplicate session id")
-        return SimpleNamespace(expert_id=kwargs["expert_id"])
+        return SimpleNamespace(
+            expert_id=kwargs["expert_id"],
+            organization_id=kwargs["organization_id"],
+            team_id=kwargs["team_id"],
+        )
 
     mock_experts_db = MagicMock()
     mock_experts_db.resolve_private_expert_tenancy = AsyncMock(

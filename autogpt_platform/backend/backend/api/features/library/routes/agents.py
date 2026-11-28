@@ -250,6 +250,12 @@ async def delete_library_agent(
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.requires_resource_permission(
+            autogpt_auth_lib.OrgAction.CREATE_RESOURCES,
+            autogpt_auth_lib.TeamAction.CREATE_AGENTS,
+        )
+    ),
 ) -> library_model.LibraryAgent:
     # `library_db.fork_library_agent` activates the forked graph (validates
     # node credentials) after the fork's own DB write. A GraphActivationError
@@ -259,6 +265,8 @@ async def fork_library_agent(
     return await library_db.fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
 

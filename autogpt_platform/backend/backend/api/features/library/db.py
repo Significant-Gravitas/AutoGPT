@@ -35,7 +35,11 @@ from backend.data.includes import (
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
-from backend.data.tenancy import organization_filter, writable_organization_ids
+from backend.data.tenancy import (
+    organization_filter,
+    tenancy_for_new_row,
+    writable_organization_ids,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
@@ -632,12 +636,10 @@ async def create_library_agent(
     # Library entries are the ADDING user's bookmarks: their tenancy is the
     # adder's active org (not the graph publisher's org — tagging with the
     # publisher's org would hide a marketplace add from the user's own org
-    # context). Default to the user's personal org, matching the migration
-    # invariant for backfilled rows.
-    if organization_id is None:
-        from backend.api.features.orgs.db import get_user_default_team
-
-        organization_id, team_id = await get_user_default_team(user_id)
+    # context), or their personal org without one.
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
 
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
@@ -660,11 +662,7 @@ async def create_library_agent(
                             isHidden=is_hidden,
                             useGraphIsActiveVersion=True,
                             User={"connect": {"id": user_id}},
-                            **(
-                                {"organizationId": organization_id}
-                                if organization_id
-                                else {}
-                            ),
+                            organizationId=organization_id,
                             **(
                                 {"Team": {"connect": {"id": team_id}}}
                                 if team_id
@@ -698,18 +696,12 @@ async def create_library_agent(
                             # Re-adding under a different active org re-tags the
                             # row — and resets the team alongside it, since a
                             # stale team from the previous org would point
-                            # across tenants. Untagged callers leave both as-is.
-                            **(
-                                {
-                                    "organizationId": organization_id,
-                                    "Team": (
-                                        {"connect": {"id": team_id}}
-                                        if team_id
-                                        else {"disconnect": True}
-                                    ),
-                                }
-                                if organization_id
-                                else {}
+                            # across tenants.
+                            "organizationId": organization_id,
+                            "Team": (
+                                {"connect": {"id": team_id}}
+                                if team_id
+                                else {"disconnect": True}
                             ),
                             # Settings are the user's: restoring an entry keeps
                             # them, as the marketplace re-add does.
@@ -868,8 +860,8 @@ async def create_graph_in_library(
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new graph and add it to the user's library.
 
-    Without ``organization_id`` the graph is untagged and the library entry
-    goes to the user's default team.
+    Without ``organization_id`` the graph and its library entry go to the
+    user's personal org.
 
     A graph ID belonging to somebody else makes the new graph a copy of
     theirs, such as one Otto saves from the JSON of their workflow: the
@@ -921,7 +913,8 @@ async def update_graph_in_library(
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Create a new version of an existing graph and update the library entry.
 
-    ``organization_id``/``team_id`` tag the new version; None leaves it untagged.
+    ``organization_id``/``team_id`` tag the new version; without them it goes
+    to the user's personal org.
     A call acting in ``organization_id`` may only version a graph whose
     versions are all the user's, within the organizations it may change
     (``writable_organization_ids``), and moves only their library entries and
@@ -1446,14 +1439,14 @@ async def add_store_agent_to_library_in_transaction(
     user_id: str,
     tx: prisma.Prisma,
     *,
-    organization_id: str | None,
+    organization_id: str,
     team_id: str | None,
 ) -> library_model.LibraryAgent:
     """Add a marketplace agent using the caller's transaction.
 
     Sends no ``listing_added_to_library``: the caller may still roll back, and
     the upsert cannot tell a first-time add from a restore. The caller resolves
-    the tenancy (``resolve_default_tenancy``) before opening the transaction.
+    the tenancy (``tenancy_for_new_row``) before opening the transaction.
     """
     return await _add_store_agent_to_library(
         store_listing_version_id,
@@ -1710,7 +1703,7 @@ async def create_folder(
         icon: Optional icon identifier.
         color: Optional hex color code.
         organization_id, team_id: Tenancy to tag the folder with; without
-            them it is untagged, which every organization of the user sees.
+            them the user's personal org and its default team.
 
     Returns:
         The created LibraryFolder.
@@ -1726,10 +1719,14 @@ async def create_folder(
     if parent_id:
         await get_folder(parent_id, user_id)
 
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     # Build data dict conditionally - don't include Parent key if no parent_id
     create_data: dict = {
         "name": name,
         "User": {"connect": {"id": user_id}},
+        "organizationId": organization_id,
     }
     if icon is not None:
         create_data["icon"] = icon
@@ -1737,8 +1734,6 @@ async def create_folder(
         create_data["color"] = color
     if parent_id:
         create_data["Parent"] = {"connect": {"id": parent_id}}
-    if organization_id is not None:
-        create_data["organizationId"] = organization_id
     if team_id is not None:
         create_data["Team"] = {"connect": {"id": team_id}}
 
@@ -2474,9 +2469,13 @@ async def create_preset(
         organization_id, team_id = await resolve_member_tenancy(
             user_id, graph.organization_id, graph.team_id
         )
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
 
     create_input = prisma.types.AgentPresetCreateInput(
         userId=user_id,
+        organizationId=organization_id,
         name=preset.name,
         description=preset.description,
         agentGraphId=preset.graph_id,
@@ -2487,8 +2486,6 @@ async def create_preset(
             "create": preset_input_rows({**preset.inputs, **preset.credentials}),
         },
     )
-    if organization_id:
-        create_input["organizationId"] = organization_id
     if team_id:
         create_input["teamId"] = team_id
     # Locked so two concurrent creates can't both pass check_preset_count and
@@ -3047,8 +3044,8 @@ async def fork_library_agent(
     Args:
         library_agent_id: The ID of the library agent to fork.
         user_id: The ID of the user who owns the library agent.
-        organization_id, team_id: Tenancy for the copy; without them the graph
-            is untagged and the library entry goes to the user's default team.
+        organization_id, team_id: Tenancy for the copy; without them the user's
+            personal org.
 
     Returns:
         The forked parent (if it has sub-graphs) LibraryAgent.

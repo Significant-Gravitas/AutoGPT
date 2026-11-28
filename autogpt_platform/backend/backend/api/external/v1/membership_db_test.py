@@ -179,7 +179,8 @@ async def test_a_removed_member_can_no_longer_create_in_the_former_organization(
     assert await _graphs(tenants.member, tenants.shared) == 1
     assert await _library_rows(tenants.member, tenants.shared) == 1
 
-    # Keys for anywhere else, and the colleagues' keys, are untouched.
+    # Keys for anywhere else, and the colleagues' keys, are untouched. A key
+    # made without an organization is the personal org's.
     for key in (personal_key, pre_org_key, owner_key):
         assert await _status(key) == APIKeyStatus.ACTIVE
         assert (await _create(client, key)).status_code == 201

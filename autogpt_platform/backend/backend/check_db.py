@@ -137,6 +137,7 @@ async def add_test_data(db):
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
                     "userId": random.choice(users).id,
+                    "organizationId": graph.organizationId,
                     "executionStatus": "COMPLETED",
                     "startedAt": datetime.now(),
                 }
@@ -162,6 +163,7 @@ async def add_test_data(db):
                     "agentGraphId": graph.id,
                     "hasApprovedVersion": True,
                     "owningUserId": graph.userId,
+                    "owningOrgId": graph.organizationId,
                 }
             )
 
@@ -169,6 +171,7 @@ async def add_test_data(db):
             version = await db.storelistingversion.create(
                 data={
                     "storeListingId": listing.id,
+                    "organizationId": graph.organizationId,
                     "agentGraphId": graph.id,
                     "agentGraphVersion": graph.version,
                     "name": f"Test Agent {i+1}",

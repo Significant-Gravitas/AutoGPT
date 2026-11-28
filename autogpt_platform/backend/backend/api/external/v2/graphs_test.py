@@ -4,6 +4,7 @@ from uuid import uuid4
 import prisma.models
 import pytest
 import pytest_mock
+from fastapi import HTTPException
 from prisma.enums import APIKeyPermission, SubmissionStatus
 
 from backend.api.features.library import db as library_db
@@ -304,7 +305,7 @@ async def test_listed_versions_carry_the_credentials_their_sub_graphs_need(
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
     parent = await _parent_of_a_sub_graph(user_id)
-    auth = _AUTH.model_copy(update={"user_id": user_id})
+    auth = await _personal_auth(user_id)
 
     single = await get_graph(parent.id, version=None, auth=auth)
     listed = await list_graph_versions(parent.id, page=PageRequest(limit=10), auth=auth)
@@ -354,7 +355,7 @@ async def test_a_page_of_versions_resolves_only_its_own_sub_graphs(
     resolve = mocker.patch.object(
         graph_db, "get_sub_graphs_of_each", wraps=graph_db.get_sub_graphs_of_each
     )
-    auth = _AUTH.model_copy(update={"user_id": user_id})
+    auth = await _personal_auth(user_id)
 
     newest = await list_graph_versions(first.id, page=PageRequest(limit=1), auth=auth)
     older = await list_graph_versions(
@@ -601,8 +602,9 @@ async def test_another_organizations_key_cannot_version_a_personal_graph(
     server: SpinTestServer,
 ) -> None:
     """A graph saved without an organization is the personal org's. A key in
-    another organization can read it, but a version it saved or activated would
-    move the personal org's library entry and the graph's active version."""
+    another organization doesn't find it, so it can't save or activate a version,
+    which would move the personal org's library entry and the graph's active
+    version."""
     user_id = str(uuid4())
     await get_or_create_user({"sub": user_id, "email": f"{user_id}@example.com"})
     personal_org, _ = await get_user_default_team(user_id)
@@ -615,10 +617,12 @@ async def test_another_organizations_key_cannot_version_a_personal_graph(
         update={"user_id": user_id, "organization_id": str(uuid4())}
     )
 
-    with pytest.raises(NotAuthorizedError):
+    with pytest.raises(HTTPException) as not_found:
         await update_graph(v1.id, _REQUEST, auth=elsewhere)
-    with pytest.raises(NotAuthorizedError):
+    assert not_found.value.status_code == 404
+    with pytest.raises(HTTPException) as not_found:
         await set_active_version(v1.id, activate_v2, auth=elsewhere)
+    assert not_found.value.status_code == 404
 
     versions = await graph_db.get_graph_all_versions(v1.id, user_id=user_id)
     assert sorted(v.version for v in versions) == [1, 2]
@@ -719,6 +723,15 @@ async def _untagged_version(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     return await graph_db.create_graph(
         graph, user_id=user_id, organization_id=organization_id
+    )
+
+
+async def _personal_auth(user_id: str) -> TenantContext:
+    """A key in the user's personal org, where a graph saved without one goes."""
+    organization_id, _ = await get_user_default_team(user_id)
+    assert organization_id
+    return _AUTH.model_copy(
+        update={"user_id": user_id, "organization_id": organization_id}
     )
 
 

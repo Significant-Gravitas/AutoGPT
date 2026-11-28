@@ -37,6 +37,15 @@ async def setup_prisma():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _personal_org(mocker):
+    """A row written without an org takes the user's personal one."""
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents(mocker):
     # Mock data
@@ -312,6 +321,8 @@ async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
     await _submit(organization_id="org-1")
 
     version_prisma.create.assert_awaited_once()
+    # A listing written before its org was set still gives the version one.
+    assert version_prisma.create.await_args.kwargs["data"]["organizationId"] == "org-1"
 
 
 @pytest.mark.asyncio(loop_scope="session")

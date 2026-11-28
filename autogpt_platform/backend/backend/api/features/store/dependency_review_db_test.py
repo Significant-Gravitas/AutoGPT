@@ -41,11 +41,11 @@ async def test_concurrent_approvals_of_nested_workflows(server, monkeypatch):
         outer_has_parent, parent_has_leaf = asyncio.Event(), asyncio.Event()
         approve_child = store_db._approve_sub_agent
 
-        async def overlap(tx, graph, main_name, main_version, main_user):
+        async def overlap(tx, graph, main_name, main_version, main_user, main_org):
             if main_name == outer and graph.id == leaf:
                 await outer_has_parent.wait()
                 await wait_for_blocked_statement(tx, until=parent_has_leaf)
-            await approve_child(tx, graph, main_name, main_version, main_user)
+            await approve_child(tx, graph, main_name, main_version, main_user, main_org)
             if main_name == outer and graph.id == parent:
                 outer_has_parent.set()
             if main_name == parent and graph.id == leaf:

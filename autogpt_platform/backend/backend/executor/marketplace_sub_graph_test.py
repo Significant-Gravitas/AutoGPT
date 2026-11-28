@@ -227,8 +227,11 @@ async def test_a_copy_of_a_listing_runs_none_of_its_copiers_own_workflows(
     fail and say why, and the rest runs."""
     listing = await _a_listing_naming_the_installers_workflows()
 
+    # Copied in the org test_execute_graph runs in, as the app copies in the active one.
     copy = await library_db.fork_library_agent(
-        listing.library_agent_id, listing.installer
+        listing.library_agent_id,
+        listing.installer,
+        organization_id=f"test-org-{listing.installer}",
     )
     graph_exec = await server.agent_server.test_execute_graph(
         user_id=listing.installer,

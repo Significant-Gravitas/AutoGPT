@@ -17,6 +17,15 @@ from backend.data.human_review import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _personal_org(mocker: pytest_mock.MockerFixture):
+    """A review written without an org takes the user's personal one."""
+    mocker.patch(
+        "backend.data.tenancy.personal_org_tenancy",
+        AsyncMock(return_value=("org-personal", "team-default")),
+    )
+
+
 @pytest.fixture
 def sample_db_review():
     """Create a sample database review object"""

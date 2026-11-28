@@ -369,7 +369,7 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
     except Exception:
         logger.warning(
             f"Could not resolve default team for dream session (user {user_id}); "
-            "creating tenant-less session"
+            "the session takes the personal org"
         )
         org_id, team_id = None, None
 

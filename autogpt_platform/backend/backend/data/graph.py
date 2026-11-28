@@ -46,7 +46,11 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.llm_registry.llm_models import is_llm_model_field
-from backend.data.tenancy import get_user_team_ids, visibility_filter
+from backend.data.tenancy import (
+    get_user_team_ids,
+    tenancy_for_new_row,
+    visibility_filter,
+)
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import (
@@ -2702,6 +2706,9 @@ async def create_graph(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> GraphModel:
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     async with transaction() as tx:
         await __create_graph(
             tx,
@@ -2738,6 +2745,9 @@ async def fork_graph(
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
 
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     async with transaction() as tx:
         await __create_graph(
             tx,
@@ -2781,6 +2791,9 @@ async def copy_graph(
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
 
+    organization_id, team_id = await tenancy_for_new_row(
+        user_id, organization_id, team_id
+    )
     dest_team = target_team_id or team_id
 
     async with transaction() as tx:
@@ -2807,7 +2820,7 @@ async def __create_graph(
     graph: Graph,
     user_id: str,
     *,
-    organization_id: str | None = None,
+    organization_id: str,
     team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
@@ -2865,7 +2878,6 @@ async def __create_graph(
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
                 forkedFromVersion=graph.forked_from_version,
-                # Tenancy dual-write fields
                 organizationId=organization_id,
                 teamId=team_id,
             )
