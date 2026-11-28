@@ -1092,6 +1092,42 @@ class TestMCPToolDynamicSinks:
         agent = _make_agent(nodes=[node])
         assert v.validate_sink_input_existence(agent, [self._mcp_block()]) is True
 
+    def test_many_links_into_one_node_merge_its_tool_arguments_once(self):
+        merges = 0
+
+        class CountingArguments(dict):
+            def __iter__(self):
+                nonlocal merges
+                merges += 1
+                return super().__iter__()
+
+            def keys(self):
+                nonlocal merges
+                merges += 1
+                return super().keys()
+
+        link_count = 200
+        node = self._mcp_node()
+        node["input_default"]["tool_input_schema"]["properties"] = CountingArguments(
+            {f"argument_{i}": {"type": "string"} for i in range(link_count)}
+        )
+        links = [
+            _make_link(
+                source_id="src",
+                source_name="out",
+                sink_id="mcp-1",
+                sink_name=f"argument_{i}",
+            )
+            for i in range(link_count)
+        ]
+        agent = _make_agent(nodes=[node], links=links)
+
+        assert (
+            AgentValidator().validate_sink_input_existence(agent, [self._mcp_block()])
+            is True
+        )
+        assert merges < link_count
+
 
 class TestNestedChainsThroughUntypedFields:
     """_#_ chains through untyped/Any levels are resolved dynamically at run

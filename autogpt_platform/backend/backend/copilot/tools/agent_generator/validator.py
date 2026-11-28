@@ -505,6 +505,8 @@ class AgentValidator:
                 return False
             return True
 
+        # Built once per node: merging a node's dynamic properties copies them all.
+        sink_input_props: dict[str, dict[str, Any]] = {}
         for link in agent.get("links", []):
             sink_id = link.get("sink_id")
             sink_name = link.get("sink_name", "")
@@ -521,7 +523,9 @@ class AgentValidator:
 
             block_id = sink_node.get("block_id", "")
             block_name = block_names.get(block_id, "Unknown Block")
-            input_props = get_input_props(sink_node)
+            if sink_id not in sink_input_props:
+                sink_input_props[sink_id] = get_input_props(sink_node)
+            input_props = sink_input_props[sink_id]
 
             context = (
                 f"Invalid sink input field '{sink_name}' in link "
