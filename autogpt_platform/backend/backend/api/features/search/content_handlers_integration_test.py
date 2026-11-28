@@ -7,8 +7,10 @@ These tests use the real database but mock OpenAI calls.
 """
 
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
+from prisma.enums import ContentType
 
 from backend.api.features.search.content_handlers import (
     CONTENT_HANDLERS,
@@ -19,8 +21,10 @@ from backend.api.features.search.content_handlers import (
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
     backfill_all_content_types,
+    delete_content_embedding,
     ensure_content_embedding,
     get_embedding_stats,
+    store_content_embedding,
 )
 
 
@@ -152,6 +156,34 @@ async def test_get_embedding_stats_all_types(server):
     assert totals["with_embeddings"] >= 0
     assert totals["without_embeddings"] >= 0
     assert "coverage_percent" in totals
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_documentation_stats_ignore_embeddings_of_removed_pages(tmp_path, server):
+    """An embedding left by a page no longer listed must not count as coverage,
+    or the docs' without_embeddings goes negative until cleanup runs."""
+    docs_root = tmp_path / "docs"
+    docs_root.mkdir()
+    page = f"stats-{uuid4().hex}"
+    (docs_root / f"{page}.md").write_text("# Kept\n\nA page.")
+    content_ids = [f"{page}.md::0", f"{page}-removed.md::0"]
+
+    async def store(content_id: str):
+        return await store_content_embedding(
+            ContentType.DOCUMENTATION, content_id, [0.1] * EMBEDDING_DIM, "text"
+        )
+
+    handler = DocumentationHandler()
+    try:
+        await _first_db_call(lambda: store(content_ids[0]))
+        await store(content_ids[1])
+        with patch.object(handler, "_get_docs_root", return_value=docs_root):
+            stats = await handler.get_stats()
+    finally:
+        for content_id in content_ids:
+            await delete_content_embedding(ContentType.DOCUMENTATION, content_id)
+
+    assert stats == {"total": 1, "with_embeddings": 1, "without_embeddings": 0}
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -82,6 +82,7 @@ from backend.data.skill_deletion import DeletedBehavior
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
+    MergeBudget,
     MergedPackage,
     PackageFile,
     merge_packages,
@@ -2292,11 +2293,17 @@ async def _reconcile_marketplace_copies(
             # of attempts is spent: the copy waits, and the index says so.
             flags[skill.name] = UPDATE_AVAILABLE
             continue
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
+        updating = (user_id, expert_id, skill.name)
+        if updating in _UPDATING:
+            # Another request of this process is updating it: the copy waits.
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
-        if manager is None:
-            manager = await _get_user_skill_manager(user_id, scope)
+        _UPDATING.add(updating)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
@@ -2309,6 +2316,8 @@ async def _reconcile_marketplace_copies(
             logger.exception("[skills] could not update copy %r", skill.name)
             flags[skill.name] = UPDATE_AVAILABLE
             continue
+        finally:
+            _UPDATING.discard(updating)
         if outcome is None:
             failed[skill.name] = current.version_id
             flags[skill.name] = UPDATE_AVAILABLE
@@ -2329,6 +2338,9 @@ async def _reconcile_marketplace_copies(
 
 _FAST_FORWARDED = "fast-forwarded"
 _STAMPED = "stamped"
+# Copies this process is updating now, as (user, expert, slug): until the write
+# lands every cold turn finds the copy behind and would merge it again.
+_UPDATING: set[tuple[str, str | None, str]] = set()
 
 
 async def _update_copy(
@@ -2444,9 +2456,13 @@ def _merge_copy(
 ) -> MergedPackage:
     """The siblings merge file by file; the SKILL.md merges frontmatter by
     field and body by line (:mod:`skill_merge`), so a frontmatter the runtime
-    re-rendered on an edit never masks a catalog change to a field."""
-    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs))
-    root = merge_skill_markdown(_root_text(base), _root_text(ours), _root_text(theirs))
+    re-rendered on an edit never masks a catalog change to a field. All of
+    them share one :class:`MergeBudget`."""
+    budget = MergeBudget()
+    merged = merge_packages(_siblings(base), _siblings(ours), _siblings(theirs), budget)
+    root = merge_skill_markdown(
+        _root_text(base), _root_text(ours), _root_text(theirs), budget
+    )
     merged.files[SKILL_MD] = PackageFile(content=root.text.encode("utf-8"))
     if root.conflicted:
         merged.conflicts = sorted([*merged.conflicts, SKILL_MD])
