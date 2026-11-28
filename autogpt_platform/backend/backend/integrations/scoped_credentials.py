@@ -12,8 +12,12 @@ reads from the User.integrations encrypted blob.
 import logging
 from typing import Optional
 
+from prisma.enums import CredentialOwnerType
+from prisma.types import IntegrationCredentialWhereInput
+
 from backend.data.db import prisma
 from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +42,9 @@ async def get_scoped_credentials(
     results: list[dict] = []
 
     # 1. User-scoped credentials
-    user_where: dict = {
+    user_where: IntegrationCredentialWhereInput = {
         "organizationId": organization_id,
-        "ownerType": "USER",
+        "ownerType": CredentialOwnerType.USER,
         "ownerId": user_id,
         "status": "active",
     }
@@ -53,9 +57,9 @@ async def get_scoped_credentials(
 
     # 2. Workspace-scoped credentials (only if workspace is active)
     if team_id:
-        ws_where: dict = {
+        ws_where: IntegrationCredentialWhereInput = {
             "organizationId": organization_id,
-            "ownerType": "TEAM",
+            "ownerType": CredentialOwnerType.TEAM,
             "ownerId": team_id,
             "status": "active",
         }
@@ -67,9 +71,9 @@ async def get_scoped_credentials(
             results.append(_cred_to_metadata(c, scope="TEAM"))
 
     # 3. Org-scoped credentials
-    org_where: dict = {
+    org_where: IntegrationCredentialWhereInput = {
         "organizationId": organization_id,
-        "ownerType": "ORG",
+        "ownerType": CredentialOwnerType.ORG,
         "ownerId": organization_id,
         "status": "active",
     }
@@ -126,8 +130,8 @@ async def get_credential_by_id(
 
 async def create_credential(
     organization_id: str,
-    owner_type: str,  # USER, WORKSPACE, ORG
-    owner_id: str,  # userId, workspaceId, or orgId
+    owner_type: CredentialOwnerType,
+    owner_id: str,  # userId, teamId, or orgId
     provider: str,
     credential_type: str,
     display_name: str,
@@ -150,7 +154,7 @@ async def create_credential(
             "encryptedPayload": encrypted,
             "createdByUserId": user_id,
             "expiresAt": expires_at,
-            "metadata": metadata,
+            "metadata": SafeJson(metadata) if metadata is not None else None,
         }
     )
 

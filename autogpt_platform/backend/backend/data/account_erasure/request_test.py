@@ -261,7 +261,7 @@ async def test_the_claimed_request_is_marked_done_once(requests_table):
     where = requests_table.update_many.await_args.kwargs["where"]
     assert where == {
         "id": REQUEST_ID,
-        "startedAt": {"not": None},
+        "NOT": [{"startedAt": None}],
         "completedAt": None,
     }
     assert report.counts == {"completed": 1}

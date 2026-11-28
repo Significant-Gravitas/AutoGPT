@@ -26,7 +26,7 @@ from prisma.models import (
     StoreListingVersion,
     UnifiedContentEmbedding,
 )
-from prisma.types import StoreListingWhereInput
+from prisma.types import StoreListingWhereInput, UnifiedContentEmbeddingWhereInput
 
 from backend.data.account_erasure.models import StepReport, StepStatus, Subject
 
@@ -43,7 +43,7 @@ async def delete_marketplace(subject: Subject, *, dry_run: bool) -> StepReport:
         where={"StoreListing": {"is": listings_where}}
     )
     version_ids = [version.id for version in versions]
-    embeddings_where = {
+    embeddings_where: UnifiedContentEmbeddingWhereInput = {
         "contentType": ContentType.STORE_AGENT,
         "contentId": {"in": version_ids},
     }

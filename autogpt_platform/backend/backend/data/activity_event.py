@@ -9,7 +9,9 @@ import enum
 from datetime import datetime
 from typing import Any, Literal, cast
 
+import prisma.enums
 import prisma.models
+import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.util.json import SafeJson
@@ -82,7 +84,7 @@ async def create_activity_event(
             "graphExecId": draft.graph_exec_id,
             "nodeExecId": draft.node_exec_id,
             "scheduleId": draft.schedule_id,
-            "category": draft.category,
+            "category": prisma.enums.ActivityEventCategory(draft.category),
             "eventType": draft.event_type,
             "provider": draft.provider,
             "objectId": draft.object_id,
@@ -99,9 +101,15 @@ async def list_activity_events(
     categories: list[ActivityEventCategory] | None = None,
     limit: int = 200,
 ) -> list[ActivityEvent]:
-    where: dict[str, Any] = {"userId": user_id, "createdAt": {"gte": since}}
+    where: prisma.types.ActivityEventWhereInput = {
+        "userId": user_id,
+        "createdAt": {"gte": since},
+    }
     if categories:
-        where["category"] = {"in": categories}
+        where["OR"] = [
+            {"category": prisma.enums.ActivityEventCategory(category)}
+            for category in categories
+        ]
     rows = await prisma.models.ActivityEvent.prisma().find_many(
         where=where, order={"createdAt": "desc"}, take=limit
     )

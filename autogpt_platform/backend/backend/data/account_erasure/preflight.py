@@ -5,6 +5,7 @@ exactly as it was.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict
 
 from prisma.enums import OrgMemberStatus
 from prisma.models import (
@@ -18,6 +19,7 @@ from prisma.models import (
     User,
     UserWorkspace,
 )
+from prisma.types import DateTimeFilter, StringFilter
 
 from backend.data.account_deletion import GRACE_PERIOD
 from backend.data.account_erasure.deleted_user import DELETED_USER_ID
@@ -122,7 +124,7 @@ async def _oauth_apps_others_use(user_id: str) -> int:
     """Active OAuth apps the account owns that another account holds a live
     grant to. A disabled app already works for nobody (its tokens fail
     validation and cannot be refreshed), so it goes with the account."""
-    live = {
+    live: _LiveGrant = {
         "userId": {"not": user_id},
         "revokedAt": None,
         "expiresAt": {"gt": datetime.now(UTC)},
@@ -132,11 +134,19 @@ async def _oauth_apps_others_use(user_id: str) -> int:
             "ownerId": user_id,
             "isActive": True,
             "OR": [
-                {"RefreshTokens": {"some": live}},
-                {"AccessTokens": {"some": live}},
+                {"RefreshTokens": {"some": {**live}}},
+                {"AccessTokens": {"some": {**live}}},
             ],
         }
     )
+
+
+# Refresh and access tokens have different Prisma filter types, so the shared
+# columns are unpacked into a literal for each.
+class _LiveGrant(TypedDict):
+    userId: StringFilter
+    revokedAt: None
+    expiresAt: DateTimeFilter
 
 
 def _keep_window_open(subject: Subject, now: datetime) -> bool:

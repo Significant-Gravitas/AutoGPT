@@ -37,6 +37,8 @@ import logging
 import sys
 from collections import defaultdict
 
+from prisma.types import UserWhereInput
+
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryEnvelope, SourceKind
 from backend.copilot.graphiti.scope import MemoryScope
@@ -268,7 +270,7 @@ async def backfill_all_users() -> tuple[int, int]:
     try:
         last_seen_id: str | None = None
         while True:
-            where = {"id": {"gt": last_seen_id}} if last_seen_id else {}
+            where: UserWhereInput = {"id": {"gt": last_seen_id}} if last_seen_id else {}
             batch = await db.user.find_many(
                 where=where,
                 order={"id": "asc"},

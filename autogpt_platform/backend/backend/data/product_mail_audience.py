@@ -76,7 +76,7 @@ def product_mail_audience_where(now: datetime) -> UserWhereInput | None:
     since = now - PRODUCT_MAIL_LAPSE_WINDOW
     return {
         "OR": [
-            {"subscriptionTier": {"not": SubscriptionTier.NO_TIER}},
+            {"NOT": [{"subscriptionTier": SubscriptionTier.NO_TIER}]},
             {"subscriptionEndedAt": {"gte": since}},
             {"subscriptionTrial": {"is": {"endsAt": {"gte": since, "lte": now}}}},
         ]

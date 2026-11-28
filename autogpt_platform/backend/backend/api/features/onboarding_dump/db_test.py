@@ -1,5 +1,6 @@
 """Guards on claiming the one-row-per-user brain dump."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -282,3 +283,35 @@ async def test_clear_audio_paths_with_nothing_to_clear_skips_the_query(
 
     assert await db.clear_audio_paths([]) == 0
     update_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda prompts: db.replace_suggested_prompts(
+            USER_ID, datetime.now(timezone.utc), prompts
+        ),
+        lambda prompts: db.store_greeting(USER_ID, RECORDING_ID, "Hi", prompts),
+        lambda prompts: db.replace_plan(
+            USER_ID, RECORDING_ID, datetime.now(timezone.utc), prompts, {}
+        ),
+    ],
+    ids=["replace_suggested_prompts", "store_greeting", "replace_plan"],
+)
+async def test_suggested_prompts_are_stored_without_nul_characters(
+    mocker: MockerFixture, write
+):
+    """Postgres refuses a NUL inside jsonb text, which failed the whole write."""
+    update_many = AsyncMock(return_value=1)
+    mocker.patch.object(
+        OnboardingBrainDump,
+        "prisma",
+        MagicMock(return_value=MagicMock(update_many=update_many)),
+    )
+
+    await write([{"title": "Plan\x00 my week"}])
+
+    stored = update_many.await_args.kwargs["data"]["suggestedPrompts"]
+    assert isinstance(stored, Json)
+    assert stored.data == [{"title": "Plan my week"}]

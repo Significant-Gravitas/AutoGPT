@@ -20,6 +20,7 @@ from mcp.types import ToolAnnotations
 
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.context import (
+    ExecutorSandbox,
     _current_envelope,
     _current_hidden_tools,
     _current_permissions,
@@ -82,8 +83,6 @@ from .e2b_file_tools import (
 from .tool_display import SDKToolDisplayBridge
 
 if TYPE_CHECKING:
-    from e2b import AsyncSandbox
-
     from backend.copilot.permissions import CopilotPermissions
     from backend.copilot.tree import TurnEnvelope
 
@@ -150,7 +149,7 @@ _consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
-    sandbox: "AsyncSandbox | None" = None,
+    sandbox: "ExecutorSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
     envelope: "TurnEnvelope | None" = None,

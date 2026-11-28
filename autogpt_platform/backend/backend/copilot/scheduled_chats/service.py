@@ -9,6 +9,7 @@ schedule's jobs, persist the streak, and tell the owner in the chat.
 
 import logging
 from datetime import datetime, timezone
+from typing import TypedDict
 
 from prisma.errors import UniqueViolationError
 from prisma.models import ExpertRoutine, ScheduledChatStreak
@@ -296,7 +297,7 @@ async def _save(
     (*replaces_pause*). Returns None, having written nothing, when the pause
     stands."""
     now = datetime.now(tz=timezone.utc)
-    fields = {
+    fields: _StreakFields = {
         "scheduleIds": paused_ids,
         "title": title,
         "sessionId": run.session_id,
@@ -318,7 +319,8 @@ async def _save(
         where["pausedAt"] = None
     if not restarted:
         updated = await ScheduledChatStreak.prisma().update_many(
-            where=where, data={**fields, **({"notifiedAt": now} if told else {})}
+            where=where,
+            data={**fields, "notifiedAt": now} if told else {**fields},
         )
         if updated:
             return await ScheduledChatStreak.prisma().find_unique(
@@ -337,6 +339,20 @@ async def _save(
     except UniqueViolationError:
         # The paused row the delete left in place.
         return None
+
+
+# The columns every streak write sets; unpacked into each Prisma input literal.
+class _StreakFields(TypedDict):
+    scheduleIds: list[str]
+    title: str
+    sessionId: str | None
+    failureKey: str
+    failureKind: str
+    provider: str | None
+    tool: str | None
+    failures: int
+    wholeRunFailures: int
+    pausedAt: datetime | None
 
 
 async def _raise_paused(

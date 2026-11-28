@@ -129,7 +129,8 @@ async def seed_listing(
         version_ids.append(version.id)
     if statuses and statuses[0] == APPROVED:
         await prisma.models.StoreListing.prisma().update(
-            where={"id": listing.id}, data={"activeVersionId": version_ids[0]}
+            where={"id": listing.id},
+            data={"ActiveVersion": {"connect": {"id": version_ids[0]}}},
         )
     return version_ids
 

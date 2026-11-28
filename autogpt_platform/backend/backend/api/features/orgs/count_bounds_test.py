@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma.enums import OrgMemberStatus
 
 from backend.api.features.orgs import db as orgs_db
 from backend.api.features.orgs import team_db
@@ -54,8 +55,8 @@ async def test_an_account_at_the_org_bound_cannot_create_another(tx):
     tx.organization.create.assert_not_awaited()
     assert tx.orgmember.count.await_args.kwargs["where"] == {
         "userId": "user-1",
-        "status": "ACTIVE",
-        "Org": {"deletedAt": None},
+        "status": OrgMemberStatus.ACTIVE,
+        "Org": {"is": {"deletedAt": None}},
     }
 
 

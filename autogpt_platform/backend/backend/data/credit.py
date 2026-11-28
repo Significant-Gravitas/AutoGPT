@@ -1863,7 +1863,7 @@ async def set_subscription_tier(
         await User.prisma().update_many(
             where={
                 "id": user_id,
-                "subscriptionTier": {"not": SubscriptionTier.NO_TIER},
+                "NOT": [{"subscriptionTier": SubscriptionTier.NO_TIER}],
             },
             data={**data, "subscriptionEndedAt": datetime.now(timezone.utc)},
         )

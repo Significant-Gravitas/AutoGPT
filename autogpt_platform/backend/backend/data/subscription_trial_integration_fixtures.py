@@ -63,7 +63,7 @@ async def enrollment():
     yield trial
     await User.prisma().delete_many(where={"id": user_id})
     await SubscriptionTrialClaim.prisma().delete_many(
-        where={"trialId": {"startsWith": trial.id}}
+        where={"trialId": {"startswith": trial.id}}
     )
     if owns_connection:
         await db.disconnect()

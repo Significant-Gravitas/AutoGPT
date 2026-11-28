@@ -7,6 +7,8 @@ callers to have verified team membership before handing out secrets.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prisma import Json
+from prisma.enums import CredentialOwnerType
 
 from backend.integrations import scoped_credentials
 
@@ -171,3 +173,27 @@ async def test_delete_allowed_for_org_admin(mock_prisma):
         "cred-1", user_id=USER_ID, organization_id=ORG_ID, is_org_admin=True
     )
     mock_prisma.integrationcredential.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_stores_metadata_as_json(mock_prisma):
+    """Prisma refuses a bare dict for a Json column."""
+    mock_prisma.integrationcredential.create = AsyncMock(
+        return_value=_cred(owner_type="ORG", owner_id=ORG_ID)
+    )
+
+    await scoped_credentials.create_credential(
+        organization_id=ORG_ID,
+        owner_type=CredentialOwnerType.ORG,
+        owner_id=ORG_ID,
+        provider="github",
+        credential_type="api_key",
+        display_name="GitHub",
+        payload={"api_key": "k"},
+        user_id=USER_ID,
+        metadata={"scopes": ["repo"]},
+    )
+
+    stored = mock_prisma.integrationcredential.create.await_args.kwargs["data"]
+    assert isinstance(stored["metadata"], Json)
+    assert stored["metadata"].data == {"scopes": ["repo"]}

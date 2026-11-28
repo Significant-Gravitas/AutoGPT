@@ -148,7 +148,7 @@ async def _revoke_issued_access(tx: Prisma, user_id: str, now: datetime) -> None
     same statements as ``revoke_user_api_keys`` and
     ``revoke_user_oauth_tokens``, inside the reopen's transaction."""
     await tx.apikey.update_many(
-        where={"userId": user_id, "status": {"not": APIKeyStatus.REVOKED}},
+        where={"userId": user_id, "NOT": [{"status": APIKeyStatus.REVOKED}]},
         data={"status": APIKeyStatus.REVOKED, "revokedAt": now},
     )
     await tx.oauthauthorizationcode.delete_many(

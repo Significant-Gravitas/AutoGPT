@@ -2506,7 +2506,7 @@ class TestSoftDeleteOrg:
 
         # Verify the query includes deletedAt filter
         where = self.prisma.orgmember.find_many.call_args[1]["where"]
-        assert where["Org"]["deletedAt"] is None
+        assert where["Org"]["is"]["deletedAt"] is None
 
 
 class TestSelfRemovalPrevention:
