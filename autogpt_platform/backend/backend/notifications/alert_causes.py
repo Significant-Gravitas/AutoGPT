@@ -23,14 +23,20 @@ from backend.data.notifications import AlertAlsoItem, AlertFact, BriefingAttenti
 SEVERITY: dict[AlertCause, int] = {
     AlertCause.ZERO_BALANCE: 0,
     AlertCause.AUTH_EXPIRED: 1,
-    AlertCause.PAUSED_FAILURES: 2,
-    AlertCause.CONTINUOUS_ERROR: 3,
-    AlertCause.BLOCK_FAILED: 4,
-    AlertCause.GUARDRAIL: 5,
-    AlertCause.AWAITING_INPUT: 6,
-    AlertCause.AWAITING_REVIEW: 7,
-    AlertCause.LOW_BALANCE: 8,
+    AlertCause.SCHEDULE_SKIPPED: 2,
+    AlertCause.PAUSED_FAILURES: 3,
+    AlertCause.CONTINUOUS_ERROR: 4,
+    AlertCause.BLOCK_FAILED: 5,
+    AlertCause.GUARDRAIL: 6,
+    AlertCause.AWAITING_INPUT: 7,
+    AlertCause.AWAITING_REVIEW: 8,
+    AlertCause.LOW_BALANCE: 9,
 }
+
+# Why a schedule's runs fail the workflow's checks when they fire.
+ScheduleProblem = Literal[
+    "key_removed", "key_unusable", "inputs_invalid", "step_disabled"
+]
 
 AlertCauseT = TypeVar("AlertCauseT", bound=AlertCause)
 
@@ -151,6 +157,102 @@ class AuthExpiredCause(BaseCause[Literal[AlertCause.AUTH_EXPIRED]]):
     @property
     def microcopy(self) -> str | None:
         return "Usually takes under a minute"
+
+
+class ScheduleSkippedCause(BaseCause[Literal[AlertCause.SCHEDULE_SKIPPED]]):
+    """A schedule whose runs fail the workflow's checks when they fire.
+
+    The schedule is kept and each run skipped, so it can run again; deleting
+    it is the owner's call. A schedule's key and inputs can't be changed in
+    the Library yet, so the fix offered is a new schedule.
+    """
+
+    cause: Literal[AlertCause.SCHEDULE_SKIPPED] = AlertCause.SCHEDULE_SKIPPED
+    agent: str
+    problem: ScheduleProblem
+    schedule: str | None = None
+    # The removed key, as the Integrations page lists it.
+    provider: str | None = None
+    key_title: str | None = None
+    # The switched-off step, as the builder names it.
+    step: str | None = None
+
+    @property
+    def headline(self) -> str:
+        return f"{self.agent} is skipping its scheduled runs"
+
+    @property
+    def subject_line(self) -> str:
+        return f"{self.headline}: {_SKIP_REASONS[self.problem]}"
+
+    @property
+    def preheader(self) -> str:
+        schedule = (
+            f"its schedule “{self.schedule}”" if self.schedule else "its schedule"
+        )
+        if self.problem == "key_removed":
+            return f"{self._removed_key} {schedule} ran on was removed."
+        if self.problem == "key_unusable":
+            return f"One of the keys {schedule} runs on can’t be used."
+        if self.problem == "inputs_invalid":
+            return (
+                f"The inputs {schedule} runs with no longer pass the workflow’s "
+                "checks."
+            )
+        step = f"Its step “{self.step}”" if self.step else "One of its steps"
+        return f"{step} is switched off, so {schedule} can’t start a run."
+
+    @property
+    def body(self) -> str:
+        return f"{self.preheader} {_SKIP_FIXES[self.problem]}"
+
+    @property
+    def cta_label(self) -> str:
+        if self.problem == "step_disabled":
+            return "Replace the step"
+        return "See the schedule"
+
+    @property
+    def agent_label(self) -> str:
+        return self.agent
+
+    @property
+    def tag(self) -> str | None:
+        return "runs skipped"
+
+    @property
+    def _removed_key(self) -> str:
+        if not self.provider:
+            return "A key"
+        title = f" “{self.key_title}”" if self.key_title else ""
+        return f"The {self.provider} key{title}"
+
+
+_SKIP_REASONS: dict[ScheduleProblem, str] = {
+    "key_removed": "the key it used was removed",
+    "key_unusable": "it can’t use one of its keys",
+    "inputs_invalid": "its inputs no longer pass the workflow’s checks",
+    "step_disabled": "one of its steps is switched off",
+}
+
+_SKIP_FIXES: dict[ScheduleProblem, str] = {
+    "key_removed": (
+        "The schedule is kept and skips each run until it has another key: "
+        "schedule the workflow again with one, then delete this schedule."
+    ),
+    "key_unusable": (
+        "The schedule is kept and skips each run until it has a key that works: "
+        "schedule the workflow again with one, then delete this schedule."
+    ),
+    "inputs_invalid": (
+        "The schedule is kept and skips each run until they pass: schedule the "
+        "workflow again with inputs that do, then delete this schedule."
+    ),
+    "step_disabled": (
+        "The schedule is kept and runs again once the step is switched back on. "
+        "To run it before then, replace the step and schedule the workflow again."
+    ),
+}
 
 
 class PausedFailuresCause(BaseCause[Literal[AlertCause.PAUSED_FAILURES]]):
@@ -465,6 +567,7 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
 AlertCausePayload = Annotated[
     Union[
         AuthExpiredCause,
+        ScheduleSkippedCause,
         PausedFailuresCause,
         BlockFailedCause,
         ContinuousErrorCause,
@@ -479,6 +582,7 @@ AlertCausePayload = Annotated[
 
 _BY_CAUSE: dict[AlertCause, type[BaseCause]] = {
     AlertCause.AUTH_EXPIRED: AuthExpiredCause,
+    AlertCause.SCHEDULE_SKIPPED: ScheduleSkippedCause,
     AlertCause.PAUSED_FAILURES: PausedFailuresCause,
     AlertCause.BLOCK_FAILED: BlockFailedCause,
     AlertCause.CONTINUOUS_ERROR: ContinuousErrorCause,

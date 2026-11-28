@@ -1310,6 +1310,9 @@ enum AlertCause {
   LOW_BALANCE
   ZERO_BALANCE
   GUARDRAIL
+  // A schedule whose runs fail the workflow's checks when they fire (a
+  // removed key, inputs that no longer pass): kept, and each run skipped.
+  SCHEDULE_SKIPPED
 }
 
 enum AlertConditionStatus {

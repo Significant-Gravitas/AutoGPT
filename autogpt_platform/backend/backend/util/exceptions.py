@@ -320,6 +320,19 @@ class GraphValidationError(ValueError):
         )
 
 
+class BlockDisabledError(ValueError):
+    """A workflow uses a block that is switched off, so it can't run.
+
+    A ``ValueError``, as it was before it had a type of its own, so every
+    handler written for that still catches it. Over RPC only the message is
+    rebuilt, so ``block_id`` is then None.
+    """
+
+    def __init__(self, message: str, block_id: str | None = None):
+        super().__init__(message)
+        self.block_id = block_id
+
+
 class GraphActivationError(ValueError):
     """A graph cannot be activated, e.g. a required credential is missing,
     revoked, or its OAuth token can no longer be refreshed.

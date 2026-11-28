@@ -50,6 +50,7 @@ from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import (
+    BlockDisabledError,
     GraphInUseError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
@@ -1108,8 +1109,9 @@ class GraphModel(Graph, GraphMeta):
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
             if block.disabled:
-                raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in workflows"
+                raise BlockDisabledError(
+                    f"Block {node.block_id} is disabled and cannot be used in workflows",
+                    block_id=node.block_id,
                 )
 
             node_input_mask = (

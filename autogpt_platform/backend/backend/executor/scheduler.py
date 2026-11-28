@@ -127,10 +127,11 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.redis_client import get_redis_async
 from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH, normalize_schedule_name
 from backend.data.user import is_user_refused
-from backend.executor import schedule_events
+from backend.executor import schedule_events, schedule_skips
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.executor.schedule_skips import RunsSkipped
 from backend.executor.scheduler_shutdown import StopSafeBackgroundScheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.monitoring import (
@@ -153,6 +154,7 @@ from backend.util.clients import (
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.cron import check_cron_fires, validate_cron
 from backend.util.exceptions import (
+    BlockDisabledError,
     ConflictError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -211,6 +213,9 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+# An edit or delete withdraws its schedule's skipped-runs alert on the way out;
+# the request it answers waits no longer than this for that.
+_SKIP_ALERT_TIMEOUT_SECONDS = 30
 # Dream / nightly / community-rebuild operations call into OpenRouter
 # with 50K-token prompts and FalkorDB-backed Leiden passes that
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
@@ -365,6 +370,7 @@ async def _execute_graph(**kwargs):
             trigger_ref=args.schedule_id,
             schedule_id=args.schedule_id,
         )
+        await schedule_skips.note_run_started(args)
         await db.increment_onboarding_runs(args.user_id)
         product_analytics.track_schedule_fired(
             user_id=args.user_id,
@@ -390,8 +396,12 @@ async def _execute_graph(**kwargs):
         await _handle_graph_not_available(e, args, start_time)
     except GraphNotInLibraryError as e:
         await _handle_graph_not_available(e, args, start_time)
-    except GraphValidationError:
-        await _handle_graph_validation_error(args)
+    except GraphValidationError as e:
+        # A removed key or inputs that no longer pass: kept, like the skips
+        # below, and its owner is told once (#17245).
+        await schedule_skips.skip_invalid_run(args, e)
+    except BlockDisabledError as e:
+        await schedule_skips.skip_run_of_disabled_step(args, e)
     except ExpertRunPausedError as e:
         # Expected while an expert is paused (budget/archive): skip quietly;
         # the schedule stays registered for one-click resume.
@@ -1176,35 +1186,26 @@ async def _reschedule_one_shot(
 
 
 async def _best_effort_unschedule(
-    schedule_id: str | None, graph_id: str | None, user_id: str, *, reason: str
+    schedule_id: str | None, user_id: str, *, reason: str
 ) -> None:
-    """Self-delete a schedule whose firing condition is no longer satisfiable
-    (graph deleted, session deleted, validation failure, etc.).
+    """Self-delete a copilot-turn schedule whose firing condition is no longer
+    satisfiable (session deleted, scope mismatch).
 
-    ``graph_id`` enables targeted cleanup of legacy jobs that predate
-    ``schedule_id``; copilot-turn schedules have no graph to target and pass
-    ``None``. Best-effort: failures are logged and swallowed. For recurring
-    schedules the next cron tick will re-attempt the cleanup; for one-shot
-    schedules APScheduler removes the job after fire anyway, so a missed
-    delete here doesn't accumulate orphans indefinitely.
+    Best-effort: failures are logged and swallowed. For recurring schedules
+    the next cron tick will re-attempt the cleanup; for one-shot schedules
+    APScheduler removes the job after fire anyway, so a missed delete here
+    doesn't accumulate orphans indefinitely.
     """
+    if not schedule_id:
+        logger.warning(
+            f"Cannot unschedule (reason: {reason}) — no schedule_id "
+            f"available; this is an old job, remove manually"
+        )
+        return
     try:
-        if schedule_id:
-            await get_scheduler_client().delete_schedule(
-                schedule_id=schedule_id, user_id=user_id
-            )
-        elif graph_id is not None:
-            logger.warning(
-                f"Old scheduled job for graph {graph_id} (user {user_id}) "
-                f"has no schedule_id, attempting targeted cleanup"
-            )
-            await _cleanup_old_schedules_without_id(graph_id, user_id=user_id)
-        else:
-            logger.warning(
-                f"Cannot unschedule (reason: {reason}) — no schedule_id "
-                f"available; this is an old job, remove manually"
-            )
-            return
+        await get_scheduler_client().delete_schedule(
+            schedule_id=schedule_id, user_id=user_id
+        )
         logger.info(f"Unscheduled job {schedule_id} (reason: {reason})")
     except Exception:
         logger.warning(
@@ -1215,11 +1216,10 @@ async def _best_effort_unschedule(
 
 async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None:
     """Remove a copilot schedule whose target is unavailable or out of scope."""
-    # Copilot-turn schedules aren't graph-bound — no graph target for legacy
-    # cleanup, so a schedule_id-less job can only be removed manually.
+    # A schedule_id-less job predates the field and can only be removed
+    # manually.
     await _best_effort_unschedule(
         args.schedule_id,
-        None,
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
@@ -1563,18 +1563,6 @@ async def _at_reset_cancelled_at(job_id: str) -> datetime | None:
     return max((at for at in (here, anywhere) if at is not None), default=None)
 
 
-async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
-    logger.warning(
-        f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
-    )
-    await _best_effort_unschedule(
-        args.schedule_id,
-        args.graph_id,
-        args.user_id,
-        reason=f"graph {args.graph_id} validation failed",
-    )
-
-
 async def _handle_graph_not_available(
     e: Exception, args: "GraphExecutionJobArgs", start_time: float
 ) -> None:
@@ -1612,35 +1600,6 @@ async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> 
         except Exception:
             logger.exception(
                 f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
-            )
-
-
-async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None:
-    """Remove only schedules that have no schedule_id in their job args.
-
-    Unlike _cleanup_orphaned_schedules_for_graph (which removes ALL schedules
-    for a graph), this only targets legacy jobs created before schedule_id was
-    added to GraphExecutionJobArgs, preserving any valid newer schedules.
-    """
-    scheduler_client = get_scheduler_client()
-    schedules = await scheduler_client.get_execution_schedules(
-        graph_id=graph_id, user_id=user_id
-    )
-
-    for schedule in schedules:
-        if schedule.schedule_id is not None:
-            continue
-        try:
-            await scheduler_client.delete_schedule(
-                schedule_id=schedule.id, user_id=user_id
-            )
-            logger.info(
-                f"Cleaned up old schedule {schedule.id} (no schedule_id) "
-                f"for graph {graph_id}"
-            )
-        except Exception:
-            logger.exception(
-                f"Failed to delete old schedule {schedule.id} for graph {graph_id}"
             )
 
 
@@ -2761,6 +2720,10 @@ class GraphExecutionJobArgs(BaseModel):
     # user paused stays paused across the re-hire. Jobs stored without the
     # field read False, so re-hire leaves them paused.
     paused_by_expert_archive: bool = False
+    # What its owner was told about the runs it skips because they fail the
+    # workflow's checks (``schedule_skips``). Cleared by the next run that
+    # starts and by an edit.
+    runs_skipped: RunsSkipped | None = None
 
 
 class CopilotTurnJobArgs(BaseModel):
@@ -2941,10 +2904,12 @@ _SCHEDULE_KEY_TAKEN = (
     "schedules before trying again."
 )
 
-# What a graph schedule create asks for, which a create sent again must match.
-# The archive's mark is pause state, set later like ``next_run_time``.
+# What a graph schedule create asks for, which a create sent again must match,
+# and what each of its runs is made of. The archive's mark and the skipped-runs
+# notice are state, set later like ``next_run_time``.
 _GRAPH_CREATE_FIELDS = set(GraphExecutionJobArgs.model_fields) - {
-    "paused_by_expert_archive"
+    "paused_by_expert_archive",
+    "runs_skipped",
 }
 
 
@@ -3002,7 +2967,10 @@ def _updated_graph_job_args(
     input_credentials: dict[str, CredentialsMetaInput] | None,
 ) -> GraphExecutionJobArgs:
     """The stored job args with each provided field replaced. Identity fields
-    (schedule id, owner, graph, tenancy, expert) are never editable."""
+    (schedule id, owner, graph, tenancy, expert) are never editable.
+
+    An edit drops the skipped-runs notice: a run of the edited schedule that
+    fails the checks too tells its owner again."""
     current = info.model_dump(include=set(GraphExecutionJobArgs.model_fields))
     overrides = {
         "agent_name": normalize_schedule_name(name) if name else None,
@@ -3011,7 +2979,9 @@ def _updated_graph_job_args(
         "input_credentials": input_credentials,
     }
     return GraphExecutionJobArgs.model_validate(
-        current | {k: v for k, v in overrides.items() if v is not None}
+        current
+        | {k: v for k, v in overrides.items() if v is not None}
+        | {"runs_skipped": None}
     )
 
 
@@ -4073,6 +4043,7 @@ class Scheduler(AppService):
         # Invalidate the read cache so the deletion shows up immediately
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
+        self._withdraw_skip_alert(info)
         return info
 
     @expose
@@ -4147,6 +4118,7 @@ class Scheduler(AppService):
                     schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
                 )
             self._invalidate_jobs_cache()
+        self._withdraw_skip_alert(info)
         logger.info(
             f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
             f"{_timezone_from_job(updated)}"
@@ -4341,6 +4313,79 @@ class Scheduler(AppService):
                 )
         self._invalidate_jobs_cache()
         return True
+
+    @expose
+    def mark_runs_skipped(
+        self, user_id: str, fired: GraphExecutionJobArgs, runs_skipped: RunsSkipped
+    ) -> bool:
+        """Keep on a graph schedule what its owner was told about the runs it
+        skips, so later runs that fail the same way don't tell them again.
+
+        Kept only while the schedule is as *fired* ran it: one edited since
+        then would carry a notice about inputs it no longer has. Returns
+        whether it was kept."""
+        if fired.schedule_id is None:
+            return False
+        fired_fields = fired.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS)
+        with self._jobstore_locked():
+            try:
+                job, info = self._authorized_graph_job(fired.schedule_id, user_id)
+            except NotFoundError:
+                return False
+            stored_fields = info.model_dump(mode="json", include=_GRAPH_CREATE_FIELDS)
+            if _as_json(stored_fields) != _as_json(fired_fields):
+                return False
+            self.scheduler.modify_job(
+                fired.schedule_id,
+                jobstore=Jobstores.EXECUTION.value,
+                kwargs={
+                    **job.kwargs,
+                    "runs_skipped": runs_skipped.model_dump(mode="json"),
+                },
+            )
+        self._invalidate_jobs_cache()
+        return True
+
+    @expose
+    def clear_runs_skipped(self, schedule_id: str, user_id: str) -> bool:
+        """A run of the graph schedule started, so the notice is over. Returns
+        whether there was one."""
+        with self._jobstore_locked():
+            try:
+                job, info = self._authorized_graph_job(schedule_id, user_id)
+            except NotFoundError:
+                return False
+            if info.runs_skipped is None:
+                return False
+            self.scheduler.modify_job(
+                schedule_id,
+                jobstore=Jobstores.EXECUTION.value,
+                kwargs={**job.kwargs, "runs_skipped": None},
+            )
+        self._invalidate_jobs_cache()
+        return True
+
+    def _withdraw_skip_alert(
+        self, info: Union[GraphExecutionJobInfo, CopilotTurnJobInfo]
+    ) -> None:
+        """An edit or delete makes an alert about the schedule's skipped runs
+        out of date. Only a schedule holding the notice can have one."""
+        if (
+            not isinstance(info, GraphExecutionJobInfo)
+            or info.runs_skipped is None
+            or info.schedule_id is None
+        ):
+            return
+        try:
+            run_async(
+                schedule_skips.withdraw_alert(info.user_id, info.schedule_id),
+                timeout=_SKIP_ALERT_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            logger.warning(
+                f"Could not withdraw the skipped-runs alert of schedule {info.id}",
+                exc_info=True,
+            )
 
     @expose
     def update_copilot_turn_cron(
@@ -5676,6 +5721,8 @@ class SchedulerClient(AppServiceClient):
     )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
+    mark_runs_skipped = endpoint_to_async(Scheduler.mark_runs_skipped)
+    clear_runs_skipped = endpoint_to_async(Scheduler.clear_runs_skipped)
     update_copilot_turn_cron = endpoint_to_async(Scheduler.update_copilot_turn_cron)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
