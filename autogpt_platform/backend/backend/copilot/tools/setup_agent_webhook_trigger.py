@@ -43,10 +43,12 @@ from .models import (
 )
 from .utils import (
     build_missing_credentials_from_graph,
+    chat_tenancy,
     create_credential_meta_from_match,
     get_or_create_library_agent,
     get_user_credentials,
     match_user_credentials_to_graph,
+    workflow_in_another_organization,
 )
 
 logger = logging.getLogger(__name__)
@@ -315,10 +317,20 @@ class SetupAgentWebhookTriggerTool(BaseTool):
             graph_id = library_agent.graph_id
             graph_version = library_agent.graph_version
 
+        org_id, _ = await chat_tenancy(user_id, session)
         # Sub-graphs are needed to aggregate the full set of required credentials.
         graph = await graph_db().get_graph(
-            graph_id, graph_version, user_id=user_id, include_subgraphs=True
+            graph_id,
+            graph_version,
+            user_id=user_id,
+            include_subgraphs=True,
+            organization_id=org_id,
         )
+        # A trigger takes its workflow's org, so one in another org is refused.
+        if not graph and await graph_db().get_graph(
+            graph_id, graph_version, user_id=user_id
+        ):
+            return None, workflow_in_another_organization(session_id)
         if not graph:
             return None, ErrorResponse(
                 message=f"Workflow '{graph_id}' not found.",

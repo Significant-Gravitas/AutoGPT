@@ -1331,7 +1331,7 @@ async def test_run_agent_attributes_execution_to_session_org(mocker, expert_id):
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
     mocker.patch(
-        "backend.copilot.tools.run_agent.orgs_db",
+        "backend.copilot.tools.utils.orgs_db",
         return_value=MagicMock(get_user_default_team=default_team),
     )
 
@@ -1568,7 +1568,7 @@ async def test_run_agent_falls_back_to_default_team_for_tenantless_session(mocke
     )
     default_team = AsyncMock(return_value=("personal-org", "personal-team"))
     mocker.patch(
-        "backend.copilot.tools.run_agent.orgs_db",
+        "backend.copilot.tools.utils.orgs_db",
         return_value=MagicMock(get_user_default_team=default_team),
     )
 
@@ -1726,6 +1726,7 @@ async def test_run_preset_executes_with_merged_inputs():
     preset.inputs = {"a": 1, "b": 2}
     preset.credentials = {}
     preset.expert_id = None
+    preset.organization_id = "personal-org"
 
     graph = MagicMock()
     graph.id = "g1"
@@ -1933,7 +1934,7 @@ def _completed_run_mocks(
         "backend.copilot.tools.run_agent._safe_link_to_chat_share", AsyncMock()
     )
     mocker.patch(
-        "backend.copilot.tools.run_agent.orgs_db",
+        "backend.copilot.tools.utils.orgs_db",
         return_value=MagicMock(
             get_user_default_team=AsyncMock(return_value=("org-1", "team-1"))
         ),

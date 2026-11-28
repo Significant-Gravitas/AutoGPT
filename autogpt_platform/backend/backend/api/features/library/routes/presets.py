@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, st
 
 from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data import graph as graph_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.data.tenancy import require_role_where_resource_lives
@@ -138,11 +139,25 @@ async def create_preset(
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
 ) -> models.LibraryAgentPreset:
     """
     Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
     Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
     """
+    # A trigger takes its workflow's org, so it must be one the request's org sees.
+    if not await graph_db.get_graph(
+        params.graph_id,
+        params.graph_version,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Workflow #{params.graph_id} not found.",
+        )
     try:
         return await setup_triggered_preset(
             user_id=user_id,
