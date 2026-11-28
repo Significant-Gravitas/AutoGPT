@@ -213,12 +213,24 @@ async def test_a_key_store_that_cannot_be_read_is_one_problem_whatever_it_says(
     db.raise_alert_condition.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "skip, error",
+    [
+        pytest.param(skip_invalid_run, REMOVED, id="removed-key"),
+        # Its link names no schedule, so nothing fails on the way to the alert.
+        pytest.param(
+            skip_run_of_disabled_step,
+            BlockDisabledError("switched off", block_id=StoreValueBlock().id),
+            id="disabled-step",
+        ),
+    ],
+)
 @pytest.mark.asyncio
 async def test_a_schedule_without_an_id_is_kept_but_has_nothing_to_tell_by(
-    db, scheduler, caplog
+    db, scheduler, caplog, skip, error
 ):
     with caplog.at_level(logging.WARNING, logger=_PATH):
-        await skip_invalid_run(_args(schedule_id=None), REMOVED)
+        await skip(_args(schedule_id=None), error)
 
     db.raise_alert_condition.assert_not_awaited()
     scheduler.mark_runs_skipped.assert_not_awaited()
