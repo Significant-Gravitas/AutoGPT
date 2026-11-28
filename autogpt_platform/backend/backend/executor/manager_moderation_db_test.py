@@ -24,35 +24,14 @@ from backend.data.execution import (
 from backend.data.model import User
 from backend.executor import manager
 from backend.executor.manager import ExecutionProcessor
+from backend.executor.manager_db_test_helpers import processor
 from backend.executor.manager_moderation_test import (
     _automod_that_never_answers,
     _automod_verdict,
     _real_automod,
 )
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
-
-
-@pytest.fixture
-def processor() -> Iterator[ExecutionProcessor]:
-    """An executor worker with its node-execution and node-evaluation loops
-    and its credentials manager, as `on_graph_executor_start` sets it up."""
-    processor = ExecutionProcessor()
-    processor.creds_manager = IntegrationCredentialsManager()
-    loops = [asyncio.new_event_loop() for _ in range(2)]
-    threads = [threading.Thread(target=loop.run_forever, daemon=True) for loop in loops]
-    for thread in threads:
-        thread.start()
-    processor.node_execution_loop, processor.node_evaluation_loop = loops
-    yield processor
-    for loop, thread in zip(loops, threads):
-        # Closes the async Redis clients the loop's code opened, as asyncio.run
-        # does; loop.close() alone leaves them open (#17087).
-        asyncio.run_coroutine_threadsafe(loop.shutdown_asyncgens(), loop).result(10)
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join(timeout=10)
-        loop.close()
 
 
 @pytest.mark.asyncio(loop_scope="session")
