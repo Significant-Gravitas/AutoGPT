@@ -50,16 +50,24 @@ async def record_card_decisions(user_id: str, session_id: str, message: str) -> 
 
 
 async def approved_on_card(
-    tool_name: str, args: dict[str, Any], user_id: str, session_id: str
+    tool_name: str,
+    args: dict[str, Any],
+    user_id: str,
+    session_id: str,
+    *,
+    spend: bool = True,
 ) -> bool:
-    """True once, when this user approved exactly this id on its card in this chat."""
+    """True once, when this user approved exactly this id on its card in this
+    chat; ``spend=False`` only looks, for a gate that enforces nothing."""
     confirmation_id = args.get("confirmation_id")
     if tool_name not in _CONFIRMS or not isinstance(confirmation_id, str):
         return False
     try:
         redis = await get_redis_async()
-        # HDEL's count is the answer, so two confirms of one approval cannot both pass.
         field = _field(user_id, confirmation_id)
+        if not spend:
+            return bool(await redis.hexists(_key(session_id), field))
+        # HDEL's count is the answer, so two confirms of one approval cannot both pass.
         return await redis.hdel(_key(session_id), field) == 1
     except Exception:
         logger.warning(

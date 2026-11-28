@@ -2,7 +2,9 @@
 
 Ordering is the design, cheapest and most certain first:
 
-1. gate inactive                          -> ALLOW (today's behaviour)
+1. gate inactive                          -> ALLOW (today's behaviour); in
+   shadow the steps below are judged after the call is let through, and
+   recorded instead of enforced (``action_shadow.py``)
 2. an approval for exactly these args     -> ALLOW, consumed single-use;
    a proposal card's Approve of the id a confirm applies counts as one
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
@@ -15,6 +17,7 @@ a run into a question, never the reverse.
 """
 
 import logging
+from functools import partial
 from typing import Any, Awaitable, Callable, Literal
 
 from prisma.enums import ReviewStatus
@@ -26,9 +29,9 @@ from backend.copilot.model import ChatSession, chat_of_origin
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.platform_linking.models import Platform
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, get_flag_variant, is_feature_enabled
 
-from . import chat_rules, held
+from . import action_shadow, chat_rules, held
 from . import review as review_store
 from .card_approval import approved_on_card
 from .classifier import DecidedBy, Judgement, supervise
@@ -126,11 +129,23 @@ class Ruling(BaseModel):
 ALLOW = Decision(allowed=True)
 DECIDED = Decision(allowed=True, decided=True)
 
+GateMode = Literal["enforce", "shadow", "off"]
+SHADOW_VARIANT = "shadow"
+
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
+    return await gate_mode(user_id, session) == "enforce"
+
+
+async def gate_mode(user_id: str | None, session: ChatSession) -> GateMode:
+    """``copilot-auto-mode`` enforces when true or "enforce"; its "shadow"
+    variant judges and records every call, holding nothing."""
     if not user_id or not await answered_from_chat_of_origin(user_id, session):
-        return False
-    return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+        return "off"
+    if await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return "enforce"
+    variant = await get_flag_variant(Flag.COPILOT_AUTO_MODE, user_id)
+    return "shadow" if variant == SHADOW_VARIANT else "off"
 
 
 async def answered_from_chat_of_origin(
@@ -209,9 +224,28 @@ async def check_action(
         if fold_pass is not None:
             return await _on_fold_pass(fold_pass, user_id, session)
         unmatched()
-    if not await gate_active(user_id, session):
+    gating = await gate_mode(user_id, session)
+    if gating == "off":
         return ALLOW
     assert user_id is not None
+    if gating == "shadow":
+        action_shadow.judge_later(
+            user_id,
+            session,
+            mode=resolve_mode(session),
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            judge=partial(
+                _shadow_finding,
+                tool_name,
+                args,
+                user_id,
+                session,
+                subject_of,
+                context_of,
+            ),
+        )
+        return ALLOW
 
     # Reads, workspace work and the ungated tools run in every mode and can
     # never have been parked, so they skip the review and rule lookups; a paid
@@ -274,32 +308,9 @@ async def check_action(
             spend=_spend_shown(estimate, *spend),
         )
 
-    async def judge() -> Judgement:
-        files = await context_of() if context_of is not None else None
-        if unread := [path for path, text in (files or {}).items() if text is None]:
-            return Judgement(
-                allowed=False,
-                reason=(
-                    f"Could not read {', '.join(unread)}, so this could not be "
-                    "checked."
-                ),
-            )
-        outward_judged = effect is Effect.EXTERNAL_JUDGED
-        # A workflow's name is its author's free text; only a block's is vouched for.
-        runs = (
-            subject.name
-            if outward_judged
-            and subject is not None
-            and subject.key.startswith("block:")
-            else None
-        )
-        return await supervise(
-            tool_name=tool_name,
-            args=_judged_args(args, files, runs),
-            user_messages=_typed_messages(session),
-            outward_judged=outward_judged,
-        )
-
+    judge = partial(
+        _supervisor_judgement, tool_name, args, session, subject, effect, context_of
+    )
     ruling = await rule_on(
         session, user_id, rule_key, effect, subject, judge, over_ceiling
     )
@@ -355,11 +366,13 @@ async def rule_on(
     over_ceiling: Callable[[], Awaitable[Ruling | None]] | None = None,
     *,
     floor: bool = False,
+    mode: AutopilotMode | None = None,
 ) -> Ruling:
     """The user's rule on the subject in this chat, else the mode's verdict for
     its effect, the supervisor deciding where either says judge. ``floor``
-    turns the mode's run into an ask; a rule still decides."""
-    mode = resolve_mode(session)
+    turns the mode's run into an ask; a rule still decides. ``mode`` stands in
+    for the chat's own."""
+    mode = mode or resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
     hit = (
@@ -400,6 +413,90 @@ async def rule_on(
         by="supervisor",
         decided_by=judgement.decided_by,
     )
+
+
+async def _supervisor_judgement(
+    tool_name: str,
+    args: dict[str, Any],
+    session: ChatSession,
+    subject: Subject | None,
+    effect: Effect,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
+) -> Judgement:
+    files = await context_of() if context_of is not None else None
+    if unread := [path for path, text in (files or {}).items() if text is None]:
+        return Judgement(
+            allowed=False,
+            reason=f"Could not read {', '.join(unread)}, so this could not be checked.",
+            code="files_unreadable",
+        )
+    outward_judged = effect is Effect.EXTERNAL_JUDGED
+    # A workflow's name is its author's free text; only a block's is vouched for.
+    runs = (
+        subject.name
+        if outward_judged and subject is not None and subject.key.startswith("block:")
+        else None
+    )
+    return await supervise(
+        tool_name=tool_name,
+        args=_judged_args(args, files, runs),
+        user_messages=_typed_messages(session),
+        outward_judged=outward_judged,
+    )
+
+
+async def _shadow_finding(
+    tool_name: str,
+    args: dict[str, Any],
+    user_id: str,
+    session: ChatSession,
+    subject_of: Callable[[], Awaitable[Subject | None]] | None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
+) -> action_shadow.Finding:
+    """What the enforcing gate would decide about this call in each mode, with
+    nothing spent: a card approval is only looked at, no review is read, as
+    shadow never opens one, and the spend ceiling is not read, which would
+    open the chat's ledger."""
+    effect = effect_for(tool_name)
+    if effect not in PARKABLE and not estimate_for(tool_name):
+        return action_shadow.unjudged(effect, None)
+    session_id = session.session_id
+    if await approved_on_card(tool_name, args, user_id, session_id, spend=False):
+        return action_shadow.unjudged(effect, None, approved=True)
+    subject = await subject_of() if subject_of is not None else None
+    effect = subject.effect if subject is not None else effect
+    if effect is Effect.UNGATED:
+        return action_shadow.unjudged(effect, subject)
+    judged: list[Judgement] = []
+
+    async def judge_once() -> Judgement:
+        # Every mode that judges reads the same answer, so it is asked once.
+        if not judged:
+            judged.append(
+                await _supervisor_judgement(
+                    tool_name, args, session, subject, effect, context_of
+                )
+            )
+        return judged[0]
+
+    rule_key = subject.key if subject is not None else tool_name
+    rulings: dict[AutopilotMode, Ruling] = {
+        mode: await rule_on(
+            session, user_id, rule_key, effect, subject, judge_once, mode=mode
+        )
+        for mode in action_shadow.MODES
+    }
+    judgement = judged[0] if judged else None
+    verdicts: dict[AutopilotMode, action_shadow.ModeVerdict] = {
+        mode: action_shadow.mode_verdict(
+            run=ruling.run,
+            by=ruling.by,
+            reason_kind=ruling.reason_kind,
+            judgement=judgement,
+        )
+        for mode, ruling in rulings.items()
+    }
+    return action_shadow.finding(effect, subject, verdicts, judgement)
 
 
 def _mode_asks(mode: AutopilotMode, subject: Subject | None, floor: bool) -> bool:
@@ -526,6 +623,7 @@ __all__ = [
     "check_action",
     "child_autopilot_mode",
     "gate_active",
+    "gate_mode",
     "refusal_message",
     "resolve_mode",
     "rule_on",

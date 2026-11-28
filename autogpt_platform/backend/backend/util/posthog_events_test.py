@@ -33,6 +33,7 @@ LIVE_EVENT_NAMES = {
     "chat_library_check_outcome",
     "chat_blocked",
     "chat_read_screen_shadow_decision",
+    "chat_gate_shadow_decision",
     "topup_completed",
     "subscription_cancellation_scheduled",
     "subscription_changed",

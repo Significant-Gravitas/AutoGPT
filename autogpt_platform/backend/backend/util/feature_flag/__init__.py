@@ -52,6 +52,8 @@ class Flag(str, Enum):
     # A ROLLOUT control, not a safety control — off means today's
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
+    # True or the variant "enforce" enforces; the variant "shadow" judges every
+    # call and records it, holding nothing (``copilot/gate/action_shadow.py``).
     COPILOT_AUTO_MODE = "copilot-auto-mode"
     # The prompt-injection check on outside reads (``copilot/gate/reads.py``):
     # true or "enforce" holds a flagged read for the user; "shadow" judges every
@@ -500,6 +502,12 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
     }
 )
 
+# Flags served as variants as well as booleans: a boolean read is on for the
+# variants listed and off for any other, without the misconfiguration warning.
+_VARIANTS_READ_AS_ON: dict[str, frozenset[str]] = {
+    Flag.COPILOT_AUTO_MODE.value: frozenset({"enforce"}),
+}
+
 # Log the master switch's state once per process, not once per evaluation.
 _force_all_logged = False
 
@@ -674,6 +682,10 @@ async def _evaluate_boolean_flag(
     # If the result is already a boolean, return it
     if isinstance(result, bool):
         return result, evaluated
+
+    on_variants = _VARIANTS_READ_AS_ON.get(flag_key)
+    if on_variants is not None and isinstance(result, str):
+        return result in on_variants, evaluated
 
     # Log a warning if the flag is not returning a boolean
     logger.warning(

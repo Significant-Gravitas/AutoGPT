@@ -39,6 +39,14 @@ RUBRIC_QUESTIONS = {
     4: "a restricted effect by another route",
 }
 JUDGED_RUBRIC_QUESTIONS = {**RUBRIC_QUESTIONS, 3: QUESTION_3_NAME}
+# Each question's fixed name, for the shadow gate's events.
+QUESTION_CODES = {
+    1: "beyond_request",
+    2: "irreversible",
+    3: "data_leaves_platform",
+    4: "restricted_route",
+}
+JUDGED_QUESTION_CODES = {**QUESTION_CODES, 3: "unmeant_send"}
 QUESTIONS: dict[str, Choice | Score | Noul] = {
     "verdict": Choice(
         instructions="May the assistant's proposed call run without asking the"

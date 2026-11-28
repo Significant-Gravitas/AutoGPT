@@ -55,6 +55,13 @@ class Judgement(BaseModel):
     # None when no model was asked: the call was too long to judge.
     decided_by: DecidedBy | None = None
     first_stage: dict[str, float] | None = None
+    # ``reason`` as a fixed code, for the shadow gate's events: allowed, asked,
+    # too_long, failed, files_unreadable, or the rubric question Jev flagged.
+    code: str = ""
+    # Which stage failed and was passed over or fell back to an ask.
+    judge_error: DecidedBy | None = None
+    jev_calls: int = 0
+    llm_calls: int = 0
 
 
 async def supervise(
@@ -89,13 +96,14 @@ async def supervise(
         prompt, over = _fit(recent, proposed, outward_judged)
     except Exception:
         logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
-        return Judgement(allowed=False, reason=_FALLBACK_REASON)
+        return Judgement(allowed=False, reason=_FALLBACK_REASON, code="failed")
     if over:
-        return Judgement(allowed=False, reason=too_long_reason(over))
-    first = await jev.judge(prompt, outward_judged) if jev.enabled() else None
+        return Judgement(allowed=False, reason=too_long_reason(over), code="too_long")
+    jev_on = jev.enabled()
+    first = await jev.judge(prompt, outward_judged) if jev_on else None
     if first is None:
-        allowed, reason = await _llm_verdict(prompt, tool_name, rubric)
-        return Judgement(allowed=allowed, reason=reason, decided_by="llm")
+        return await _llm_judgement(prompt, tool_name, rubric, jev_failed=jev_on)
+    jev_calls, jev_failed = 1, False
     logger.info(
         f"Gate first stage {'ask' if first.ask else 'allow'} for {tool_name}: "
         f"{first.probabilities}"
@@ -105,6 +113,7 @@ async def supervise(
         whole := _whole_chat(user_messages, proposed, tool_name, outward_judged)
     ):
         again = await jev.judge(whole, outward_judged)
+        jev_calls, jev_failed = 2, again is None
         if again is not None:
             logger.info(
                 f"Gate first stage {'ask' if again.ask else 'allow'} for "
@@ -117,6 +126,9 @@ async def supervise(
             reason="Allowed.",
             decided_by="jev",
             first_stage=first.probabilities,
+            code="allowed",
+            judge_error=_failed_stages(jev_failed, False),
+            jev_calls=jev_calls,
         )
     answer = await _judge(
         prompt + "\n\n" + jev.flag_line(first, outward_judged), tool_name, rubric
@@ -131,15 +143,50 @@ async def supervise(
         reason=reason,
         decided_by="jev+llm",
         first_stage=first.probabilities,
+        code=(jev.JUDGED_QUESTION_CODES if outward_judged else jev.QUESTION_CODES)[
+            first.flagged
+        ],
+        judge_error=_failed_stages(jev_failed, answer is None),
+        jev_calls=jev_calls,
+        llm_calls=1,
     )
 
 
-async def _llm_verdict(prompt: str, tool_name: str, rubric: str) -> tuple[bool, str]:
+async def _llm_judgement(
+    prompt: str, tool_name: str, rubric: str, *, jev_failed: bool
+) -> Judgement:
+    """The LLM decides alone: Jev is off, or ``jev_failed`` and fell through."""
     verdict = await _judge(prompt, tool_name, rubric)
+    judge_error = _failed_stages(jev_failed, verdict is None)
+    jev_calls = int(jev_failed)
     if verdict is None:
-        return False, _FALLBACK_REASON
+        return Judgement(
+            allowed=False,
+            reason=_FALLBACK_REASON,
+            decided_by="llm",
+            code="failed",
+            judge_error=judge_error,
+            jev_calls=jev_calls,
+            llm_calls=1,
+        )
     allow = verdict[0] == "allow"
-    return allow, verdict[1] or ("Allowed." if allow else "Needs your approval.")
+    return Judgement(
+        allowed=allow,
+        reason=verdict[1] or ("Allowed." if allow else "Needs your approval."),
+        decided_by="llm",
+        code="allowed" if allow else "asked",
+        judge_error=judge_error,
+        jev_calls=jev_calls,
+        llm_calls=1,
+    )
+
+
+def _failed_stages(jev_failed: bool, llm_failed: bool) -> DecidedBy | None:
+    if jev_failed and llm_failed:
+        return "jev+llm"
+    if jev_failed:
+        return "jev"
+    return "llm" if llm_failed else None
 
 
 async def _judge(prompt: str, tool_name: str, rubric: str) -> tuple[str, str] | None:
