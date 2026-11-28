@@ -812,4 +812,40 @@ describe("a pause marker row", () => {
       { type: "text", text: MARKER, state: "done" },
     ]);
   });
+
+  it("renders synthetic interrupted tool results as output-error Interrupted", () => {
+    const { messages } = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        {
+          role: "assistant",
+          content: "Running tool",
+          sequence: 0,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "run_capability", arguments: "{}" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          tool_call_id: "call_1",
+          content: JSON.stringify({ interrupted: true, error: "Interrupted" }),
+          sequence: 1,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(messages[0].parts).toContainEqual(
+      expect.objectContaining({
+        type: "tool-run_capability",
+        toolCallId: "call_1",
+        state: "output-error",
+        errorText: "Interrupted",
+      }),
+    );
+  });
 });

@@ -350,53 +350,36 @@ test.describe("copilot stop journey", () => {
     },
   );
 
-  test(
-    "a tool stopped while it runs shows as stopped, not as run, after a reload",
-    {
-      annotation: [
-        {
-          type: "issue",
-          description:
-            "https://github.com/Significant-Gravitas/AutoGPT/issues/17294",
-        },
-      ],
-    },
-    async ({ page, journeyUser: _user }) => {
-      const run = scriptedRun("stop-during-tool");
-      await startTheTimer(
-        page,
-        `Set a timer, then tell me when it goes off. ${run.marker}`,
-        run.nonce,
-      );
-      const sessionID = await currentSessionID(page);
-      const stoppedTurn = await runningTurnID(page, sessionID);
-      expect(stoppedTurn, "the timer's turn should be running").toBeTruthy();
-      const cancel = watchCancel(page, STOPPED_TURN_ENDS_WITHIN_MS);
-      const stoppedAt = await clickStop(page);
-      await expectStoppedTurnEnds(page, sessionID, stoppedTurn, stoppedAt);
-      // A reload would cut off the Stop's own request.
-      expect((await cancel).status, "the Stop should reach the server").toBe(
-        200,
-      );
+  test("a tool stopped while it runs shows as stopped, not as run, after a reload", async ({
+    page,
+    journeyUser: _user,
+  }) => {
+    const run = scriptedRun("stop-during-tool");
+    await startTheTimer(
+      page,
+      `Set a timer, then tell me when it goes off. ${run.marker}`,
+      run.nonce,
+    );
+    const sessionID = await currentSessionID(page);
+    const stoppedTurn = await runningTurnID(page, sessionID);
+    expect(stoppedTurn, "the timer's turn should be running").toBeTruthy();
+    const cancel = watchCancel(page, STOPPED_TURN_ENDS_WITHIN_MS);
+    const stoppedAt = await clickStop(page);
+    await expectStoppedTurnEnds(page, sessionID, stoppedTurn, stoppedAt);
+    // A reload would cut off the Stop's own request.
+    expect((await cancel).status, "the Stop should reach the server").toBe(200);
 
-      await page.reload();
-      const transcript = page.getByRole("log");
-      await expect(
-        transcript.getByText(STOPPED_CARD, { exact: true }).first(),
-        "the reloaded chat should show the turn was stopped",
-      ).toBeVisible();
-      // The stopped call is saved with an empty result, so its row reads
-      // `Ran "Countdown Timer"` and the chain's heading "Ran blocks" (#17294).
-      const pinned = pinKnownFailure(
-        "#17294: a tool stopped by Stop is saved as an empty successful result and shows as Ran",
-        "the stopped timer should not show as run after a reload",
-      );
-      await expect(
-        transcript.getByText(/^Ran( blocks$| ")/),
-        pinned,
-      ).toHaveCount(0, { timeout: STOPPED_TOOL_CHECK_MS });
-    },
-  );
+    await page.reload();
+    const transcript = page.getByRole("log");
+    await expect(
+      transcript.getByText(STOPPED_CARD, { exact: true }).first(),
+      "the reloaded chat should show the turn was stopped",
+    ).toBeVisible();
+    await expect(
+      transcript.getByText(/^Ran( blocks$| ")/),
+      "the stopped timer should not show as run after a reload",
+    ).toHaveCount(0, { timeout: STOPPED_TOOL_CHECK_MS });
+  });
 });
 
 /**

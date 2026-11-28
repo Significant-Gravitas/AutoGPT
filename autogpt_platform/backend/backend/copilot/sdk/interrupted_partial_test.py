@@ -12,7 +12,7 @@ directly. Full retry-loop coverage lives in ``retry_scenarios_test.py``.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -50,7 +50,8 @@ def _adapter_with_unresolved(responses: list[StreamToolOutputAvailable]):
     adapter = MagicMock()
     adapter.has_unresolved_tool_calls = bool(responses)
 
-    def _flush(out: list) -> None:
+    def _flush(out: list, *, interrupted: bool = False) -> None:
+        assert interrupted is True
         out.extend(responses)
         adapter.has_unresolved_tool_calls = False
 
@@ -365,3 +366,24 @@ class TestRetryableStreamErrorCodes:
     def test_unknown_codes_are_not_retryable(self):
         assert "sdk_error" not in _RETRYABLE_STREAM_ERROR_CODES
         assert "all_attempts_exhausted" not in _RETRYABLE_STREAM_ERROR_CODES
+
+
+def test_flush_unresolved_tool_calls_without_stash_marks_interrupted():
+    from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+
+    adapter = SDKResponseAdapter(session_id="sess-test")
+    adapter.current_tool_calls["call_1"] = {
+        "name": "run_capability",
+        "input": {"capability": "countdown"},
+    }
+    responses = []
+    with patch(
+        "backend.copilot.sdk.response_adapter.pop_pending_tool_output",
+        return_value=None,
+    ):
+        adapter.flush_unresolved_tool_calls(responses, interrupted=True)
+
+    assert len(responses) == 1
+    assert responses[0].toolCallId == "call_1"
+    assert responses[0].success is False
+    assert responses[0].output == {"interrupted": True, "error": "Interrupted"}
