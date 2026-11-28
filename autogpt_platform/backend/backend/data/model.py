@@ -829,12 +829,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 if field.required_scopes:
                     all_scopes.update(field.required_scopes)
 
-            # Combine discriminator_values from all fields in the group (removing duplicates)
-            all_discriminator_values = []
+            all_discriminator_values = set()
             for _, field in group:
-                for value in field.discriminator_values:
-                    if value not in all_discriminator_values:
-                        all_discriminator_values.append(value)
+                all_discriminator_values.update(field.discriminator_values)
 
             all_credential_free_values = set()
             for _, field in group:
@@ -862,7 +859,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     discriminator=combined.discriminator,
                     discriminator_mapping=combined.discriminator_mapping,
                     discriminator_type_mapping=combined.discriminator_type_mapping,
-                    discriminator_values=set(all_discriminator_values),
+                    discriminator_values=all_discriminator_values,
                     credential_free_discriminator_values=all_credential_free_values,
                     is_auto_credential=combined.is_auto_credential,
                     credential_reference_only=all(

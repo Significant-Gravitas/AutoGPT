@@ -1637,6 +1637,46 @@ def test_mcp_credential_combine_same_server():
     )
 
 
+def test_mcp_credential_combine_collects_server_urls_without_pairwise_comparison():
+    """Combining many blocks on one MCP host must not compare each server URL
+    with every URL collected before it."""
+    from backend.data.model import CredentialsFieldInfo, CredentialsType
+    from backend.integrations.providers import ProviderName
+
+    comparisons = 0
+
+    class CountingURL(str):
+        def __eq__(self, other: object) -> bool:
+            nonlocal comparisons
+            comparisons += 1
+            return str.__eq__(self, other)
+
+        __hash__ = str.__hash__
+
+    oauth2_types: frozenset[CredentialsType] = frozenset(["oauth2"])
+    url_count = 2_000
+    fields = [
+        (
+            CredentialsFieldInfo(
+                credentials_provider=frozenset([ProviderName.MCP]),
+                credentials_types=oauth2_types,
+                credentials_scopes=None,
+                discriminator="server_url",
+                discriminator_values={CountingURL(f"https://mcp.example.com/{i}")},
+            ),
+            (f"node-{i}", "credentials"),
+        )
+        for i in range(url_count)
+    ]
+
+    combined = CredentialsFieldInfo.combine(*fields)
+
+    ((info, keys),) = combined.values()
+    assert len(info.discriminator_values) == url_count
+    assert len(keys) == url_count
+    assert comparisons < url_count
+
+
 def test_mcp_credential_combine_no_discriminator_values():
     """MCP credential fields without discriminator_values should be merged
     into a single entry (backwards compat for blocks without server_url set)."""
