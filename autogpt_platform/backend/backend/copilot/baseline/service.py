@@ -85,6 +85,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.model_hints import build_model_hint, with_model_hint
 from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import ResolvedModel, resolve_model_route
 from backend.copilot.moonshot import is_moonshot_model
@@ -915,6 +916,22 @@ def _add_message_text(msg: dict[str, Any], text: str, *, prepend: bool) -> None:
         msg["content"] = [block, *content] if prepend else [*content, block]
     else:
         msg["content"] = text + content if prepend else content + text
+
+
+def _add_model_hint(msg: dict[str, Any], hint: str) -> None:
+    """``hint`` after the leading server blocks of the message's first text."""
+    if not hint:
+        return
+    content = msg.get("content") or ""
+    if isinstance(content, str):
+        msg["content"] = with_model_hint(content, hint)
+        return
+    for i, part in enumerate(content):
+        if part.get("type") == "text":
+            hinted = {**part, "text": with_model_hint(part.get("text") or "", hint)}
+            msg["content"] = [*content[:i], hinted, *content[i + 1 :]]
+            return
+    _add_message_text(msg, hint, prepend=True)
 
 
 def _mark_system_message_with_cache_control(
@@ -2573,6 +2590,9 @@ async def stream_chat_completion_baseline(
                 )
                 if matched_skills_notice:
                     _add_message_text(msg, matched_skills_notice, prepend=False)
+                _add_model_hint(
+                    msg, await build_model_hint(user_id, session, turn_text)
+                )
                 break
 
     # Live budget, every turn — the first-turn ``<budget_context>`` above is
