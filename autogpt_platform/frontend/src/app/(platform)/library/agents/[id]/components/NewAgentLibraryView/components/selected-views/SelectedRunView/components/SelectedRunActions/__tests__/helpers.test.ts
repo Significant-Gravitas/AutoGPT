@@ -164,6 +164,20 @@ describe("getRefusedKeys", () => {
       [],
     );
   });
+
+  it("finds none while the saved keys are loading, as only they mark the platform's ids", () => {
+    const credentials: RunCredentials = {
+      openai: key("53c25cb8", "openai", "OpenAI"),
+    };
+
+    expect(
+      getRefusedKeys(
+        refusal({ "step-1": { credentials: "Unknown credentials #53c25cb8" } }),
+        credentials,
+        null,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("getRerunForm", () => {

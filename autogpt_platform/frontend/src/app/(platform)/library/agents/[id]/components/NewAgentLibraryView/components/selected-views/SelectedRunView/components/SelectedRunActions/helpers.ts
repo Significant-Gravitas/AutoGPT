@@ -55,12 +55,17 @@ export function getDeletedKeys(
   });
 }
 
-/** The run's own keys the server refused as unknown: deleted since the page read them. */
+/**
+ * The run's own keys the server refused as unknown: deleted since the page
+ * read them. None count while the saved keys are loading, as they alone mark
+ * which ids are the platform's.
+ */
 export function getRefusedKeys(
   error: unknown,
   credentials: RunCredentials,
   allProviders: CredentialsProvidersContextType | null,
 ): DeletedKey[] {
+  if (!allProviders) return [];
   const unknownIDs = new Set(
     getNodeErrorMessages(error)
       .filter((message) => message.startsWith(UNKNOWN_KEY_PREFIX))
@@ -102,6 +107,8 @@ export function getRerunForm(
 /**
  * The library's workflow as it was at a past version: what that version
  * asks for, the keys it takes and the checks it runs, and that version to run.
+ * Its trigger fields stay the library's: a rerun runs the task's inputs, as
+ * Rerun does for a task whose keys still exist, and never sets up a trigger.
  */
 export function getAgentAtVersion(
   agent: LibraryAgent,

@@ -403,7 +403,7 @@ test("rerunning a task whose key was deleted sends nothing, names the key and op
       "A key this task used was deleted: My Firecrawl key. Choose another key below to run it again.",
     ),
   ).toBeDefined();
-  expect(within(form).getByDisplayValue("news")).toBeDefined();
+  expect(await within(form).findByDisplayValue("news")).toBeDefined();
   // The field is shown, outside the collapsed system credentials, and left
   // for the user to pick: not moved to the platform's key
   const picker = await within(form).findByRole("combobox", { name: PICKER });
@@ -414,6 +414,29 @@ test("rerunning a task whose key was deleted sends nothing, names the key and op
   expect(isDisabled("Start Task", form)).toBe(true);
   expect(runRequests).toHaveLength(0);
   expect(screen.queryByText("Failed to start run")).toBeNull();
+});
+
+test("closing the rerun form sends nothing, and Rerun opens it again without the earlier pick", async () => {
+  const { runRequests } = setup();
+  await waitForRunView();
+
+  await rerun();
+  const form = await screen.findByRole("dialog", { name: "Rerun task" });
+  await userEvent.selectOptions(
+    await within(form).findByRole("combobox", { name: PICKER }),
+    OTHER_KEY.id,
+  );
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Rerun task" })).toBeNull(),
+  );
+
+  await rerun();
+  const again = await screen.findByRole("dialog", { name: "Rerun task" });
+  const picker = await within(again).findByRole("combobox", { name: PICKER });
+  expect((picker as HTMLSelectElement).value).toBe("__none__");
+  expect(await within(again).findByDisplayValue("news")).toBeDefined();
+  expect(runRequests).toHaveLength(0);
 });
 
 test("taking the offer runs the task again with the key the user picks", async () => {
@@ -529,7 +552,7 @@ test("a key deleted after the page loaded is named when the server refuses it, a
   // The page read the user's keys again, so the deleted one isn't offered
   await waitFor(() =>
     expect(
-      within(picker).queryByRole("option", { name: /My Firecrawl key/ }),
+      within(picker).queryByRole("option", { name: /^My Firecrawl key \(/ }),
     ).toBeNull(),
   );
   await userEvent.selectOptions(picker, OTHER_KEY.id);
@@ -603,7 +626,7 @@ describe("a field left to pick waits for the user's pick", () => {
     const picker = await within(form).findByRole("combobox", { name: PICKER });
     expect((picker as HTMLSelectElement).value).toBe("__none__");
     expect(
-      within(picker).getByRole("option", { name: /Firecrawl API Key/ }),
+      within(picker).getByRole("option", { name: /^Firecrawl API Key \(/ }),
     ).toBeDefined();
     expect(isDisabled("Start Task", form)).toBe(true);
 

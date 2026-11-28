@@ -78,7 +78,7 @@ export function useCredentialsGroupedView({
   // system credentials, so they can see which key the run will use, and so
   // is one left for them to pick, or a required one they have to add a key for.
   function isShownAbove([key, schema]: CredentialField) {
-    if (pinnedAbove.includes(key) || Object.hasOwn(fieldsToPick, key)) {
+    if (pinnedAbove.includes(key) || isFieldToPick(fieldsToPick, key)) {
       return true;
     }
     if (pinnedInside.includes(key)) return false;
@@ -130,7 +130,7 @@ export function useCredentialsGroupedView({
       // their choice: its picker doesn't take even its only key, which can
       // be the platform's
       autoSelect:
-        !clearedFields.includes(key) && !Object.hasOwn(fieldsToPick, key),
+        !clearedFields.includes(key) && !isFieldToPick(fieldsToPick, key),
     }));
   }
 
@@ -161,7 +161,7 @@ export function useCredentialsGroupedView({
       if (
         inputCredentials?.[key] ||
         clearedFields.includes(key) ||
-        Object.hasOwn(fieldsToPick, key)
+        isFieldToPick(fieldsToPick, key)
       ) {
         continue;
       }
@@ -238,8 +238,12 @@ function getPickerSchema<Schema extends CredentialFieldSchema>(
     : null;
 }
 
+function isFieldToPick(fieldsToPick: Record<string, string>, key: string) {
+  return Object.hasOwn(fieldsToPick, key);
+}
+
 function getProviderToPick(fieldsToPick: Record<string, string>, key: string) {
-  return Object.hasOwn(fieldsToPick, key) ? fieldsToPick[key] : undefined;
+  return isFieldToPick(fieldsToPick, key) ? fieldsToPick[key] : undefined;
 }
 
 // The platform's key, or failing that the only key that fits

@@ -1,4 +1,7 @@
-import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  type getV1GetSpecificGraphResponse,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
@@ -30,7 +33,9 @@ export function useRunVersionAgent({ agent, run, enabled }: Args) {
         query: {
           enabled: isReading,
           retry: retryUnlessClientError,
-          select: (response) => okData(response),
+          // A saved version never changes
+          staleTime: Infinity,
+          select: selectGraph,
         },
       },
     );
@@ -51,4 +56,8 @@ export function useRunVersionAgent({ agent, run, enabled }: Args) {
       void refetch();
     },
   };
+}
+
+function selectGraph(response: getV1GetSpecificGraphResponse) {
+  return okData(response);
 }
