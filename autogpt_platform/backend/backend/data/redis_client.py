@@ -3,27 +3,47 @@ import logging
 import os
 import threading
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from typing import Any
 from weakref import ReferenceType, WeakKeyDictionary, ref
 
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
+from redis.asyncio.cluster import NodesManager as AsyncNodesManager
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
+from redis.asyncio.connection import Connection as AsyncConnection
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import ExponentialBackoff, NoBackoff
-from redis.cluster import ClusterNode, RedisCluster
-from redis.exceptions import ClusterDownError
+from redis.cluster import ClusterNode, NodesManager, RedisCluster
+from redis.exceptions import AskError, ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import MovedError, RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
 
+from backend.data.redis_cluster import (
+    Remap,
+    _AsyncClusterNode,
+    _AsyncNodesManager,
+    _AsyncRedisCluster,
+    _NodesManager,
+    _RedisCluster,
+    _get_node,
+    _remap_reply,
+)
 from backend.util.cache import cached
 from backend.util.retry import conn_retry
 
 load_dotenv()
+
+# Aliases so call-sites don't care which class this is, and default to the
+# redirect-remapped and LIFO-pooled subclasses (#17074, #17090).
+RedisCluster = _RedisCluster
+AsyncRedisCluster = _AsyncRedisCluster
+RedisClient = RedisCluster
+AsyncRedisClient = AsyncRedisCluster
 
 # Prefer the cluster env vars so the cluster-only image can co-exist with
 # old-image pods still reading REDIS_HOST during a rollout.
@@ -70,10 +90,6 @@ TRANSIENT_REDIS_ERRORS: tuple[type[RedisError], ...] = (
 )
 
 logger = logging.getLogger(__name__)
-
-# Aliases so call-sites don't care which class this is.
-RedisClient = RedisCluster
-AsyncRedisClient = AsyncRedisCluster
 
 
 def _build_retry() -> Retry:
