@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 class ImageGeneratorConfiguration(BaseModel):
     image_provider: Literal["dalle", "huggingface", "sdwebui"] = "dalle"
-    dalle_model: str = "gpt-image-1"
-    """OpenAI image model. dall-e-2/3 were removed from the API on 2026-05-12;
-    gpt-image-1 returns base64 PNGs and supports 1024x1024 square output."""
+    dalle_model: str = "gpt-image-2.6-sunburst"
+    """OpenAI image model. dall-e-2/3 were removed from the API on 2026-05-12 and
+    gpt-image-1 on 2026-10-23; gpt-image-2.6-sunburst is its replacement."""
     huggingface_image_model: str = "CompVis/stable-diffusion-v1-4"
     huggingface_api_token: Optional[SecretStr] = UserConfigurable(
         None, from_env="HUGGINGFACE_API_TOKEN", exclude=True
@@ -174,7 +174,7 @@ class ImageGeneratorComponent(
     def generate_image_with_dalle(
         self, prompt: str, output_file: Path, size: int
     ) -> str:
-        """Generate an image with OpenAI's image API (gpt-image-1).
+        """Generate an image with OpenAI's image API (`dalle_model`).
 
         Args:
             prompt (str): The prompt to use
