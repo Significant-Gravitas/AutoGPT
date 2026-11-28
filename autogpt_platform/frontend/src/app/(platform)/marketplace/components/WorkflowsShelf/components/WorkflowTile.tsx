@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { isLocalStoreMediaUrl } from "@/lib/store-media";
 import Image from "next/image";
@@ -33,7 +34,7 @@ export function WorkflowTile({ agent }: Props) {
         ) : null
       }
       title={agent.agent_name}
-      subtitle={runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
+      subtitle={runs === 0 ? "No runs" : `${formatMarketplaceCount(runs)} runs`}
     />
   );
 }

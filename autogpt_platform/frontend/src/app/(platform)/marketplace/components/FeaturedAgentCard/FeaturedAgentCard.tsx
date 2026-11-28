@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import Avatar, {
   AvatarFallback,
@@ -130,7 +131,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
         <span className="text-caption text-foreground-tertiary">
           {agent.runs === 0
             ? "No runs"
-            : `${(agent.runs ?? 0).toLocaleString()} runs`}
+            : `${formatMarketplaceCount(agent.runs ?? 0)} runs`}
         </span>
       </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (

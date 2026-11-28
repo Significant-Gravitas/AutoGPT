@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import type { ChangelogEntry } from "@/app/api/__generated__/models/changelogEntry";
 import type { GetV2GetSpecificAgentParams } from "@/app/api/__generated__/models/getV2GetSpecificAgentParams";
@@ -241,7 +242,7 @@ export const AgentInfo = ({
             <Text variant="body" className="shrink-0 whitespace-nowrap">
               {runs === 0
                 ? "No runs"
-                : `${runs.toLocaleString()} run${runs > 1 ? "s" : ""}`}
+                : `${formatMarketplaceCount(runs)} run${runs > 1 ? "s" : ""}`}
             </Text>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import type { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import {
   Avatar,
@@ -116,7 +117,7 @@ export function SkillCard({ skill, isInstalled }: Props) {
             {/* Nobody having installed it yet makes a listing new, not failing. */}
             {skill.install_count === 0
               ? "New"
-              : `${skill.install_count.toLocaleString()} installed`}
+              : `${formatMarketplaceCount(skill.install_count)} installed`}
           </span>
           {isInstalled ? (
             <span className="flex items-center gap-1.5 text-body-lg font-medium text-success">

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -101,7 +102,7 @@ export function SkillsBrowsePage() {
       ) : (
         <>
           <p className="mb-4 text-body text-foreground-tertiary">
-            {total.toLocaleString()} {total === 1 ? "skill" : "skills"}
+            {formatMarketplaceCount(total)} {total === 1 ? "skill" : "skills"}
           </p>
           <InfiniteList
             items={skills}
