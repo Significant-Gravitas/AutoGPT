@@ -29,21 +29,24 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
     isError,
     isLoading,
     isSuccess,
+    isTurnedOff,
   } = useLocalPCExecutor(sessionID);
 
   const connected = isSuccess && executor?.kind === "shim";
   const platformLabel = executor?.platform
     ? (PLATFORM_DISPLAY[executor.platform] ?? executor.platform)
     : "unknown platform";
-  const label = isLoading
-    ? "Checking Local PC…"
-    : isError
-      ? "Local PC status unavailable"
-      : connected
-        ? `Local PC connected: ${platformLabel}${executor?.arch ? ` ${executor.arch}` : ""}`
-        : sessionID
-          ? "Local PC disconnected"
-          : "Local PC";
+  const label = isTurnedOff
+    ? "Local PC is off"
+    : isLoading
+      ? "Checking Local PC…"
+      : isError
+        ? "Local PC status unavailable"
+        : connected
+          ? `Local PC connected: ${platformLabel}${executor?.arch ? ` ${executor.arch}` : ""}`
+          : sessionID
+            ? "Local PC disconnected"
+            : "Local PC";
 
   const consentLabel =
     executor?.computer_use_consent === "approved"
@@ -63,8 +66,8 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
           aria-live="polite"
           className={
             connected
-              ? "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-success/40 bg-success-surface px-2.5 py-1 text-left text-success-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
-              : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-warning-border bg-warning-surface px-2.5 py-1 text-left text-warning-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              ? "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-pill border border-success/40 bg-success-surface px-2.5 py-1 text-left text-success-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-pill border border-warning-border bg-warning-surface px-2.5 py-1 text-left text-warning-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
           }
         >
           <Icon
@@ -72,7 +75,12 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
             className="h-3.5 w-3.5 shrink-0"
             aria-hidden="true"
           />
-          <Text variant="small-medium-tight" className="min-w-0 break-words">
+          <Text
+            variant="small"
+            weight="medium"
+            leading="4"
+            className="min-w-0 break-words"
+          >
             {label}
           </Text>
         </button>
@@ -120,11 +128,13 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
             </>
           ) : (
             <div>
-              {isLoading
-                ? "Checking whether your local executor is connected."
-                : isError
-                  ? "The local executor status could not be loaded. It will retry automatically."
-                  : "The Local PC selected for this chat is offline. Restart autogpt-shim on that computer to reconnect."}
+              {isTurnedOff
+                ? "Local PC is turned off for your account, so this chat can't reach your computer."
+                : isLoading
+                  ? "Checking whether your local executor is connected."
+                  : isError
+                    ? "The local executor status could not be loaded. It will retry automatically."
+                    : "The Local PC selected for this chat is offline. Restart autogpt-shim on that computer to reconnect."}
             </div>
           )}
 

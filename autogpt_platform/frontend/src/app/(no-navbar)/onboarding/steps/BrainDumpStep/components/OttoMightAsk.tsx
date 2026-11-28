@@ -70,10 +70,17 @@ export function OttoMightAsk({
           type="button"
           variant="ghost"
           size="xs"
+          shape="sharp"
           onClick={onAnother}
           className={isLeft ? "col-start-2 row-start-1 -mr-2.5" : "mt-1"}
         >
-          <Text variant="small-medium-loose-underline" as="span">
+          <Text
+            variant="small"
+            weight="medium"
+            leading="5"
+            decoration="underline"
+            as="span"
+          >
             Another question
           </Text>
         </Button>

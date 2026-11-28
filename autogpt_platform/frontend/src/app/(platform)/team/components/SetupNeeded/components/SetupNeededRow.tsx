@@ -36,7 +36,8 @@ export function SetupNeededRow({
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <Text
-          variant="body-medium"
+          variant="body"
+          weight="medium"
           as="span"
           tone="emphasis"
           className="truncate"

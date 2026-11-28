@@ -11,7 +11,7 @@ from backend.copilot.token_tracking import (
     _pending_log_tasks_lock as _copilot_tasks_lock,
 )
 from backend.data.execution import NodeExecutionEntry
-from backend.data.model import NodeExecutionStats
+from backend.data.model import NodeExecutionStats, is_platform_funded_managed
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
@@ -234,10 +234,19 @@ async def log_system_credential_cost(
                 provider_name == ProviderName.CODEX.value
                 and cred_data.get("type") == "oauth2"
             )
-            if not cred_id or not (is_system_credential(cred_id) or is_subscription):
+            if not cred_id or not (
+                is_system_credential(cred_id)
+                or is_platform_funded_managed(cred_id)
+                or is_subscription
+            ):
                 continue
 
-            model_name = _extract_model_name(input_data.get("model"))
+            # The model that ran: the one the run resolved when it started.
+            model_name = _extract_model_name(
+                block.with_retired_models_replaced(
+                    input_data, stats.resolved_model
+                ).get("model")
+            )
 
             # Pass stats so post-flight branches (SECOND/ITEMS/COST_USD/TOKENS)
             # compute the *actual* charge from the captured stats. Without this

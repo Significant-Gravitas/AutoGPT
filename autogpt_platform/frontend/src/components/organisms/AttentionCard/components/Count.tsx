@@ -9,7 +9,8 @@ export function Count({ className, children, ...rest }: CountProps) {
   return (
     <Text
       data-slot="attention-card-count"
-      variant="small-tight"
+      variant="small"
+      leading="4"
       as="span"
       tone="secondary"
       className={className}

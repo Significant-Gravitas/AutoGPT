@@ -103,7 +103,8 @@ export const TimeInput: React.FC<TimeInputProps> = ({
       >
         <Text
           data-slot="time-input-error"
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="span"
           tone="error"
           className="block"
@@ -123,7 +124,12 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         data-slot="time-input-header"
         className="flex items-center justify-between"
       >
-        <Text data-slot="time-input-label" variant="body-medium" as="span">
+        <Text
+          data-slot="time-input-label"
+          variant="body"
+          weight="medium"
+          as="span"
+        >
           {label}
         </Text>
         {hint ? (

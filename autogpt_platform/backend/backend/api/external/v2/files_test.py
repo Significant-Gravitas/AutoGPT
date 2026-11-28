@@ -107,6 +107,9 @@ async def test_deleting_a_file_removes_its_stored_content(
         new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
     )
     manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.get_file_info = mock.AsyncMock(
+        return_value=mock.Mock(path="/report.txt")
+    )
     manager_cls.return_value.delete_file = mock.AsyncMock(return_value=True)
 
     await delete_file(file_id="file-1", auth=_auth())
@@ -115,14 +118,19 @@ async def test_deleting_a_file_removes_its_stored_content(
     manager_cls.return_value.delete_file.assert_awaited_once_with("file-1")
 
 
+@pytest.mark.parametrize("found_first", [False, True])
 async def test_deleting_a_missing_file_is_a_404(
     mocker: pytest_mock.MockerFixture,
+    found_first: bool,
 ) -> None:
     mocker.patch(
         "backend.api.external.v2.files.get_workspace",
         new=mock.AsyncMock(return_value=mock.Mock(id=WORKSPACE_ID)),
     )
     manager_cls = mocker.patch("backend.api.external.v2.files.WorkspaceManager")
+    manager_cls.return_value.get_file_info = mock.AsyncMock(
+        return_value=mock.Mock(path="/report.txt") if found_first else None
+    )
     manager_cls.return_value.delete_file = mock.AsyncMock(return_value=False)
 
     with pytest.raises(HTTPException) as raised:

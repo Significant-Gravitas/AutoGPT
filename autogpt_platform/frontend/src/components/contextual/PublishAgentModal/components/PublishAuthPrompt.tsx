@@ -9,7 +9,9 @@ export const PublishAuthPrompt = () => {
     <div>
       <div className="mx-auto inline-flex h-[370px] w-full flex-col items-center justify-center gap-6 px-4 py-5 sm:px-6">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Text variant="h3-semibold">Share your AI creations</Text>
+          <Text variant="h3" weight="semibold">
+            Share your AI creations
+          </Text>
           <Text variant="lead" tone="secondary" className="max-w-[80%]">
             Log in or create an account to publish your workflows to the
             marketplace and join a community of creators

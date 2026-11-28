@@ -1072,3 +1072,33 @@ async def test_builtin_tool_spans_turned_off_send_none(_spans):
     )
 
     _spans.assert_not_called()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_a_credit_billed_turn_holds_more_at_a_tool_call_then_is_refused(
+    growing_turn,
+):
+    from backend.copilot.credit_billing_test import _Meter
+
+    from .governor import TurnGovernor
+
+    governor = TurnGovernor(
+        budget=growing_turn.budget, step_checkin=450, grow=growing_turn.grow
+    )
+    governor.meter = meter = _Meter(spent=0.99, last=0.01)
+    pre = create_security_hooks(
+        "u1", sdk_cwd=SDK_CWD, governor=governor, allowed_tools=ALLOWED
+    )["PreToolUse"][0].hooks[0]
+    tool = sorted(set(ALLOWED) - set(get_sdk_disallowed_tools()))[0]
+
+    async def call() -> dict:
+        return await pre({"tool_name": tool, "tool_input": {}}, None, {})
+
+    # Near its first dollar, the turn takes the dollar its ledger has left.
+    assert not _is_denied(await call())
+    assert growing_turn.held_credits == 200
+
+    meter.spent = 1.99
+    assert _is_denied(await call())
+    assert growing_turn.held_credits == 200

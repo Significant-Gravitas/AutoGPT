@@ -42,19 +42,31 @@ import {
   type StreamdownComponents,
 } from "./streamdown-components";
 
+// How a message comes in: `rise` fades it up from just below.
+const MESSAGE_ENTRANCES = {
+  rise: "duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2",
+} as const;
+
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
+  entrance?: keyof typeof MESSAGE_ENTRANCES;
 };
 
 const MessageRoleContext = createContext<MessageProps["from"]>("assistant");
 
-export const Message = ({ className, from, ...props }: MessageProps) => (
+export const Message = ({
+  className,
+  from,
+  entrance,
+  ...props
+}: MessageProps) => (
   <MessageRoleContext value={from}>
     <div
       className={cn(
         "group flex w-full max-w-[95%] flex-col gap-2",
         // oxlint-disable-next-line design-system/no-unknown-classes -- is-user and is-assistant are markers the group-[.is-*] variants below match
         from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+        entrance && MESSAGE_ENTRANCES[entrance],
         className,
       )}
       {...props}
@@ -62,11 +74,21 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   </MessageRoleContext>
 );
 
-export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
+// The transcript's type: `large` in a full-page chat, `compact` in a chat
+// in a side panel.
+const MESSAGE_CONTENT_SIZES = {
+  large: "text-body-lg leading-relaxed",
+  compact: "text-body leading-6",
+} as const;
+
+export type MessageContentProps = HTMLAttributes<HTMLDivElement> & {
+  size?: keyof typeof MESSAGE_CONTENT_SIZES;
+};
 
 export const MessageContent = ({
   children,
   className,
+  size,
   ...props
 }: MessageContentProps) => (
   <div
@@ -75,6 +97,7 @@ export const MessageContent = ({
       "group-[.is-user]:w-fit",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-surface-hover group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground-base",
       "group-[.is-assistant]:text-foreground-base",
+      size && MESSAGE_CONTENT_SIZES[size],
       className,
     )}
     {...props}
@@ -83,14 +106,31 @@ export const MessageContent = ({
   </div>
 );
 
-export type MessageActionsProps = ComponentProps<"div">;
+// `hover`: hidden until the message is hovered or an action takes focus,
+// and always shown on a device that cannot hover.
+const MESSAGE_ACTIONS_REVEALS = {
+  hover:
+    "opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+} as const;
+
+export type MessageActionsProps = ComponentProps<"div"> & {
+  reveal?: keyof typeof MESSAGE_ACTIONS_REVEALS;
+};
 
 export const MessageActions = ({
   className,
   children,
+  reveal,
   ...props
 }: MessageActionsProps) => (
-  <div className={cn("flex items-center gap-1", className)} {...props}>
+  <div
+    className={cn(
+      "flex items-center gap-1",
+      reveal && MESSAGE_ACTIONS_REVEALS[reveal],
+      className,
+    )}
+    {...props}
+  >
     {children}
   </div>
 );
@@ -330,7 +370,7 @@ export const MessageBranchPage = ({
 
   return (
     <div className={cn("flex items-center px-4", className)} {...props}>
-      <Text variant="body-medium-tight" tone="muted" as="span">
+      <Text variant="body" weight="medium" leading="5" tone="muted" as="span">
         {currentBranch + 1} of {totalBranches}
       </Text>
     </div>

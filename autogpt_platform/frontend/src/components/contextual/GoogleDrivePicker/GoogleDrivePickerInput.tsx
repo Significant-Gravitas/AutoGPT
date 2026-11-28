@@ -152,12 +152,12 @@ export function GoogleDrivePickerInput({
 
       {/* Error Messages */}
       {error && (
-        <Text variant="body-tight" as="span" tone="error">
+        <Text variant="body" leading="5" as="span" tone="error">
           {error}
         </Text>
       )}
       {pickerError && (
-        <Text variant="body-tight" as="span" tone="error">
+        <Text variant="body" leading="5" as="span" tone="error">
           {pickerError}
         </Text>
       )}

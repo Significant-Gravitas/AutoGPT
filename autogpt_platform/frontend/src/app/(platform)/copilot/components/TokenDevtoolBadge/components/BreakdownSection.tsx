@@ -6,6 +6,7 @@ import {
 } from "../../../tokenDevtool/tokenMath";
 import { BREAKDOWN_COLORS } from "../helpers";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 
 interface Props {
   breakdown: ContextBreakdown;
@@ -39,12 +40,16 @@ export function BreakdownSection({ breakdown }: Props) {
 
   return (
     <div className="pb-2.5">
-      <div className="flex h-1.5 w-full gap-px overflow-hidden rounded-full">
+      <div className="flex h-1.5 w-full gap-px overflow-hidden rounded-pill">
         {rows.map((row) => (
           <div
             key={row.label}
-            className={row.color}
-            style={{ width: `${(row.tokens / total) * 100}%` }}
+            className={cn("w-(--share)", row.color)}
+            style={
+              {
+                "--share": `${(row.tokens / total) * 100}%`,
+              } as React.CSSProperties
+            }
           />
         ))}
       </div>
@@ -57,7 +62,7 @@ export function BreakdownSection({ breakdown }: Props) {
             <span className={`size-1.5 shrink-0 rounded-full ${row.color}`} />
             <span className="text-foreground-secondary">{row.label}</span>
             {row.note && (
-              <Text variant="tiny-inherit" tone="subtle">
+              <Text variant="tiny" leading="inherit" tone="subtle">
                 {row.note}
               </Text>
             )}

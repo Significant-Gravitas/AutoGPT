@@ -39,7 +39,7 @@ export function BotCard({ platform }: Props) {
             height={32}
             className="rounded-md"
           />
-          <Text variant="large-medium" as="h2">
+          <Text variant="large" weight="medium" as="h2">
             {platform.display_name}
           </Text>
           {pendingInstall ? (
@@ -96,7 +96,8 @@ export function BotCard({ platform }: Props) {
 
       <section className="flex flex-col gap-2">
         <Text
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="span"
           tone="muted"
           transform="uppercase"
@@ -116,7 +117,8 @@ export function BotCard({ platform }: Props) {
 
       <section className="flex flex-col gap-2">
         <Text
-          variant="small-medium"
+          variant="small"
+          weight="medium"
           as="span"
           tone="muted"
           transform="uppercase"

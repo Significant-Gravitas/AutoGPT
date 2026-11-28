@@ -19,15 +19,14 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border-base/70 bg-surface p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant="large" weight="medium" tone="primary">
           {agent.name}
         </Text>
         <span
           className={cn(
-            "relative isolate flex shrink-0 items-center gap-2 rounded-full bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
+            "relative isolate flex shrink-0 items-center gap-2 rounded-pill bg-success-surface px-3 py-1.5 text-body font-semibold text-success-foreground",
             !runCompleted &&
-              // oxlint-disable-next-line design-system/no-arbitrary-values -- the live run's emerald glow, no shadow token
-              "shadow-[0_0_14px_-2px_rgba(16,185,129,0.65),0_0_28px_-4px_rgba(16,185,129,0.5)] ring-1 ring-success/70",
+              "shadow-beacon ring-1 shadow-success/60 ring-success/70",
           )}
         >
           {runCompleted ? (
@@ -40,7 +39,7 @@ export function TourAgentCard({ agent, runCompleted }: Props) {
               {/* Breathing halo behind the badge while the run is live. */}
               <span
                 aria-hidden="true"
-                className="absolute -inset-1.5 -z-10 animate-pulse rounded-full bg-success/50 blur-md"
+                className="absolute -inset-1.5 z-behind animate-pulse rounded-full bg-success/50 blur-md"
               />
               <span className="relative flex size-2 shrink-0">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />

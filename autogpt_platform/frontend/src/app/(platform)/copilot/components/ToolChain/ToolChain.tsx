@@ -55,20 +55,35 @@ import {
 } from "./helpers";
 import { SwapText } from "./SwapText";
 import { ToolResult } from "./ToolResult";
+import { duration, ease } from "@/components/styles/motion";
 
 const COLLAPSED_WINDOW = 2;
+
+/** Answers to a pending clarifying question go out under that question's own
+ *  rule (see getPendingQuestions), never the chain's latest-answer gate. */
+function answersAQuestion(entry: ChainActionEntry) {
+  return entry.questions !== undefined;
+}
 
 async function sendOnce(
   sending: { current: boolean },
   entries: ChainActionEntry[],
-  message: string,
   sendReply: (message: string) => void,
+  canStillSend: () => boolean,
 ) {
-  if (sending.current) return;
+  if (sending.current || !buildChainReply(entries)) return;
   sending.current = true;
   try {
     await Promise.all(entries.map((entry) => entry.beforeSend?.()));
-    entries.forEach((entry) => entry.onSent?.());
+    // A new message may have arrived while the picks were saved, leaving
+    // this chain in an earlier answer, whose cards send nothing.
+    const stillLatest = canStillSend();
+    const sent = entries.filter(
+      (entry) => stillLatest || answersAQuestion(entry),
+    );
+    const message = buildChainReply(sent);
+    if (!message) return;
+    sent.forEach((entry) => entry.onSent?.());
     sendReply(message);
   } finally {
     sending.current = false;
@@ -82,9 +97,22 @@ interface Props {
    *  cards and Proceed are the owner's work — a reader gets no Connect
    *  prompt and no way to send a follow-up turn. */
   readOnly?: boolean;
+  /** The chain belongs to the newest answer. Only its cards send: an
+   *  earlier answer's step has already run or been passed over, and a send
+   *  from it would ask Otto to run that step again. So an earlier answer's
+   *  cards offer no Proceed, though an account picked on one is still saved
+   *  for the chat (see SetupRequirementsCard). Answering a pending question
+   *  is not gated by this. The default is for direct renders only; the
+   *  transcript always passes it. */
+  isLatestAnswer?: boolean;
 }
 
-export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
+export function ToolChain({
+  parts,
+  isStreaming,
+  readOnly = false,
+  isLatestAnswer = true,
+}: Props) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
   const panelId = useId();
   const reducedMotion = useReducedMotion();
@@ -106,8 +134,11 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   const [registrations, setRegistrations] = useState<
     ReadonlyMap<string, ChainActionEntry>
   >(new Map());
+  const canSend = !readOnly && isLatestAnswer;
   // Kept as memos with the compiler on: the cards' register effects depend on
   // this context value, and re-running them would re-register every card.
+  // `canSend` only changes with `readOnly`, or when the chain's answer stops
+  // being the newest.
   const register = useCallback((owner: string, entry: ChainActionEntry) => {
     setRegistrations((prev) => {
       const next = new Map(prev);
@@ -124,8 +155,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     });
   }, []);
   const chainActions = useMemo(
-    () => ({ register, unregister }),
-    [register, unregister],
+    () => ({ register, unregister, canSend }),
+    [register, unregister, canSend],
   );
 
   const pendingActions = uniqueChainEntries(registrations);
@@ -160,7 +191,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // stream owes no more results, however its calls ended.
   const awaitingToolResult = isStreaming && parts.some(isToolCallPending);
   const canAutoSend =
-    !readOnly &&
+    canSend &&
     !awaitingToolResult &&
     !autoSent &&
     allActionsReady &&
@@ -168,14 +199,17 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     justConnectedHere;
   // Nothing to sign in to and nothing to fill in: without a button this card
   // has no way forward at all — a card that lands after the send is spent
-  // included. Only asks that build a message qualify — an MCP row builds none,
-  // so offering one there is a button that does nothing.
+  // included. Only asks that build a message qualify — an MCP row builds one
+  // only right after its own sign-in, so an already connected one would be a
+  // button that does nothing.
   const offerProceed =
-    !readOnly &&
+    canSend &&
     !awaitingToolResult &&
     !canAutoSend &&
     allActionsReady &&
-    (connectorRequests.length > 0 || inputRequests.length > 0);
+    (connectorRequests.length > 0 ||
+      inputRequests.length > 0 ||
+      pendingActions.some((entry) => entry.mcp && entry.justConnected));
 
   // The cards are already gone by the time a send can fail — the user's
   // message is appended optimistically and the chat's error banner offers
@@ -193,20 +227,20 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
     );
   }
 
+  // Read after beforeSend's await, so it sees the chain as it is then.
+  const canStillSend = useStableCallback(() => canSend);
   // Proceed stays clickable while beforeSend runs, and a second click would
   // send the same reply again. The ref is set before the first await, so the
   // second click sees it in time.
-  function sendAfter(entries: ChainActionEntry[], message: string) {
-    return sendOnce(sendingRef, entries, message, sendReply);
+  function sendAfter(entries: ChainActionEntry[]) {
+    return sendOnce(sendingRef, entries, sendReply, canStillSend);
   }
 
   const autoSendOnce = useStableCallback(() => {
     if (!canAutoSend || autoSentRef.current) return;
     autoSentRef.current = true;
     setAutoSent(true);
-    const message = buildChainReply(pendingActions);
-    if (!message) return;
-    void sendAfter(pendingActions, message);
+    void sendAfter(pendingActions);
   });
   // pendingActions is rebuilt every render; the ref makes this once-per-chain.
   useEffect(
@@ -297,11 +331,13 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // Proceed sends the combined reply of every READY card as one message,
   // and their onSent callbacks fire at that moment. Unready cards (e.g. an
   // unconnected MCP server) are left out instead of blocking the ready ones.
+  // In an earlier answer only a pending question's answers go.
   function handleProceed() {
-    const readyActions = pendingActions.filter((entry) => entry.ready);
-    const message = buildChainReply(readyActions);
-    if (!message) return;
-    void sendAfter(readyActions, message);
+    void sendAfter(
+      pendingActions.filter(
+        (entry) => entry.ready && (canSend || answersAQuestion(entry)),
+      ),
+    );
   }
 
   return (
@@ -378,30 +414,30 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                                   y: -6,
                                   scale: 0.985,
                                   transition: {
-                                    duration: 0.12,
-                                    ease: [0.22, 1, 0.36, 1],
+                                    duration: duration.instant,
+                                    ease: ease.glide,
                                   },
                                 }
                           }
                           transition={{
                             opacity: {
-                              duration: reducedMotion ? 0 : 0.18,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             y: {
-                              duration: reducedMotion ? 0 : 0.22,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             scale: {
-                              duration: reducedMotion ? 0 : 0.22,
+                              duration: reducedMotion ? 0 : duration.base,
                               delay: stagger,
-                              ease: [0.22, 1, 0.36, 1],
+                              ease: ease.glide,
                             },
                             layout: {
-                              duration: reducedMotion ? 0 : 0.22,
-                              ease: [0.22, 1, 0.36, 1],
+                              duration: reducedMotion ? 0 : duration.base,
+                              ease: ease.glide,
                             },
                           }}
                         >
@@ -465,14 +501,16 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
             inputs={inputRequests}
             questions={questionRequests}
             manualProceed={needsManualProceed || offerProceed}
+            canProceed={canSend}
             isReady={allActionsReady}
             onProceed={handleProceed}
           />
         )}
 
         {/* Cards with nothing to connect, fill in or answer (confirm-only)
-            still need somewhere to send from. */}
-        {!readOnly && pendingActions.length > 0 && !hasCardWork && (
+            still need somewhere to send from. An earlier answer's send
+            nothing, so they get no step at all. */}
+        {canSend && pendingActions.length > 0 && !hasCardWork && (
           <div className="mt-1 flex flex-col items-start gap-2">
             <span className="flex items-center gap-1.5 text-body text-foreground-secondary">
               <Icon icon={SentIcon} size={16} tone="subtle" />

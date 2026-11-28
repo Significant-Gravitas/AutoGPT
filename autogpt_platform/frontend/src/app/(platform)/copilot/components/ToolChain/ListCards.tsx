@@ -51,20 +51,27 @@ export function FeatureRequestList({ results }: ResultsProps) {
         >
           <div className="min-w-0 flex-1">
             <Text
-              variant="body-sm-medium-inherit"
+              variant="body-sm"
+              weight="medium"
+              leading="inherit"
               tone="emphasis"
               className="truncate"
             >
               {str(request, "title") ?? inline(request)}
             </Text>
             {str(request, "description") && (
-              <Text variant="small-tight" tone="muted" className="truncate">
+              <Text
+                variant="small"
+                leading="4"
+                tone="muted"
+                className="truncate"
+              >
                 {str(request, "description")}
               </Text>
             )}
           </div>
           {str(request, "identifier") && (
-            <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+            <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
               {str(request, "identifier")}
             </span>
           )}
@@ -90,7 +97,9 @@ export function ScheduleList({ schedules }: SchedulesProps) {
             </div>
             <div className="min-w-0 flex-1">
               <Text
-                variant="body-sm-medium-inherit"
+                variant="body-sm"
+                weight="medium"
+                leading="inherit"
                 tone="emphasis"
                 className="truncate"
               >
@@ -104,7 +113,7 @@ export function ScheduleList({ schedules }: SchedulesProps) {
               )}
             </div>
             {str(schedule, "kind") && (
-              <span className="shrink-0 rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
+              <span className="shrink-0 rounded-pill bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-tertiary">
                 {str(schedule, "kind") === "copilot_turn" ? "chat" : "workflow"}
               </span>
             )}
@@ -124,7 +133,9 @@ export function ScheduleCreatedCard({ output }: OutputProps) {
       </div>
       <div className="min-w-0 flex-1">
         <Text
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          weight="medium"
+          leading="inherit"
           tone="emphasis"
           className="truncate"
         >
@@ -158,7 +169,9 @@ export function FolderList({ folders }: FoldersProps) {
               <Icon icon={FolderIcon} size={15} tone="secondary" />
             </div>
             <Text
-              variant="body-sm-medium-inherit"
+              variant="body-sm"
+              weight="medium"
+              leading="inherit"
               tone="emphasis"
               className="min-w-0 flex-1 truncate"
             >
@@ -166,7 +179,8 @@ export function FolderList({ folders }: FoldersProps) {
             </Text>
             {count !== null && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="subtle"
                 className="shrink-0"
@@ -201,7 +215,9 @@ export function FileList({ files }: FilesProps) {
               className="shrink-0"
             />
             <Text
-              variant="small-mono-tight"
+              variant="small"
+              mono
+              leading="4"
               as="p"
               tone="body"
               className="min-w-0 flex-1 truncate"
@@ -210,7 +226,8 @@ export function FileList({ files }: FilesProps) {
             </Text>
             {size !== null && (
               <Text
-                variant="small-tight"
+                variant="small"
+                leading="4"
                 as="span"
                 tone="subtle"
                 className="shrink-0"
@@ -242,7 +259,9 @@ export function DocsList({ results }: ResultsProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <Text
-                  variant="body-sm-medium-inherit"
+                  variant="body-sm"
+                  weight="medium"
+                  leading="inherit"
                   tone="emphasis"
                   className="min-w-0 truncate"
                 >
@@ -255,7 +274,12 @@ export function DocsList({ results }: ResultsProps) {
                 )}
               </div>
               {str(doc, "snippet") && (
-                <Text variant="small-tight" tone="muted" className="truncate">
+                <Text
+                  variant="small"
+                  leading="4"
+                  tone="muted"
+                  className="truncate"
+                >
                   {str(doc, "snippet")}
                 </Text>
               )}
@@ -266,7 +290,7 @@ export function DocsList({ results }: ResultsProps) {
                 target="_blank"
                 rel="noreferrer"
                 aria-label="Open doc"
-                className="shrink-0 rounded-full p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+                className="shrink-0 rounded-pill p-1 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
               >
                 <Icon icon={LinkSquare01Icon} size={14} />
               </Link>

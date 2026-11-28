@@ -11,8 +11,9 @@ import pytest
 from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks._base import BlockCost, BlockCostType
-from backend.blocks.llm import AITextGeneratorBlock
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.blocks.ai_condition import AIConditionBlock
+from backend.blocks.llm import AITextGeneratorBlock, LLMModel
+from backend.data.block_cost_config import BLOCK_COSTS, MODEL_COST
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
     GraphExecutionStats,
@@ -22,6 +23,7 @@ from backend.data.model import (
 )
 from backend.executor import billing
 from backend.executor import utils as executor_utils
+from backend.integrations.credentials_store import anthropic_credentials
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -1338,6 +1340,8 @@ async def _run_nested_tool(
     dry_run: bool = False,
     tool_error: Exception | None = None,
     settle=None,
+    tool_block_id: str = "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+    tool_input: dict | None = None,
 ) -> GraphExecutionStats:
     """Run ``_execute_single_tool_with_manager`` against a tool node, with the
     charge and the node run replaced by fakes that record what the executor
@@ -1346,7 +1350,8 @@ async def _run_nested_tool(
     the ``pre_flight_charge`` each run was started with. ``settle``, if given,
     is awaited with the entry after the run, where the executor reconciles,
     and the delta it returns is added to the run's stats as the manager does.
-    Returns the run's stats.
+    ``tool_block_id`` and ``tool_input`` are the tool node's block and the
+    input it is queued with. Returns the run's stats.
     """
     from backend.blocks.orchestrator import ExecutionParams, OrchestratorBlock, ToolInfo
 
@@ -1354,13 +1359,13 @@ async def _run_nested_tool(
     mock_db_client = AsyncMock()
     target_node = MagicMock()
     target_node.input_default = {"model": "gpt-5.5-pro"}
-    target_node.block_id = "1f292d4a-41a4-4977-9684-7c8d560b9f91"
+    target_node.block_id = tool_block_id
     mock_db_client.get_node.return_value = target_node
     node_exec_result = MagicMock()
     node_exec_result.node_exec_id = "nested-exec-id"
     mock_db_client.upsert_execution_input.return_value = (
         node_exec_result,
-        {"model": "gpt-5.5-pro", "prompt": "x"},
+        tool_input or {"model": "gpt-5.5-pro", "prompt": "x"},
     )
     mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {}
 
@@ -1438,6 +1443,38 @@ async def test_nested_tool_reconciles_against_the_charge_actually_collected():
 
     assert events == ["charge", "run"]
     assert seen_baseline == [60]
+
+
+@pytest.mark.asyncio
+async def test_nested_tool_is_charged_for_the_model_it_runs():
+    """A tool call's arguments reach the charge before the block coerces them
+    to its input types, so a model named as the block resolves it from a
+    provider prefix is charged as that model, through the real charge."""
+    wallet = MagicMock()
+    wallet.spend_credits.return_value = 1_000
+    events: list[str] = []
+
+    with patch("backend.executor.billing.get_db_client", return_value=wallet):
+        await _run_nested_tool(
+            events=events,
+            seen_baseline=[],
+            charge_side_effect=billing.charge_node_usage,
+            tool_block_id=AIConditionBlock().id,
+            tool_input={
+                "input_value": "hi",
+                "condition": "is a greeting",
+                "model": "anthropic/claude-opus-4-5",
+                "credentials": {
+                    "id": anthropic_credentials.id,
+                    "provider": anthropic_credentials.provider,
+                    "type": anthropic_credentials.type,
+                },
+            },
+        )
+
+    assert events == ["charge", "run"]
+    [spend] = wallet.spend_credits.call_args_list
+    assert spend.kwargs["cost"] == MODEL_COST[LLMModel.CLAUDE_4_5_OPUS] > 0
 
 
 @pytest.mark.asyncio

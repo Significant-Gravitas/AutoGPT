@@ -80,11 +80,12 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         role="alert"
         className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center"
       >
-        <Text variant="body-medium-tight" tone="body">
+        <Text variant="body" weight="medium" leading="5" tone="body">
           This artifact couldn&apos;t be rendered
         </Text>
         <Text
-          variant="small-tight"
+          variant="small"
+          leading="4"
           tone="muted"
           className="max-w-md break-words"
         >
@@ -102,7 +103,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
         >
           Copy error details
         </button>
-        <Text variant="small-tight" tone="subtle" className="max-w-md">
+        <Text variant="small" leading="4" tone="subtle" className="max-w-md">
           Paste this into the chat so a working version can be regenerated.
         </Text>
       </div>

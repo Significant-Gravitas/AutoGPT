@@ -1,0 +1,165 @@
+/*
+  Shape: corner radii, shadows, stacking layers and the app shell's sizes.
+  Like the colour roles and the type scale, the values live here and nowhere
+  else.
+
+  globals.css registers the radii and layers in its `@theme inline reference`
+  block, so `rounded-lg` is `var(--radius-lg)` and `z-overlay` is
+  `var(--z-overlay)`, and both follow these values at runtime. The shadows are
+  registered in this file instead (see below).
+*/
+:root {
+  /* Radius. `rounded` is --radius. sm and md are lg less 4px and 2px, as
+     shadcn's steps were, so they render as before at any root font size.
+     A named step aliases the scale step of the same size. */
+  --radius-none: 0px;
+  --radius-sm: calc(var(--radius-lg) - 4px); /* 4px */
+  --radius: 0.25rem; /* 4px */
+  --radius-md: calc(var(--radius-lg) - 2px); /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-3xl: 1.5rem; /* 24px */
+  --radius-4xl: 2rem; /* 32px: the chat composer, the raise preview */
+  --radius-5xl: 2.5rem; /* 40px: the raise flow's stage */
+  /* A 2xl card's surface drawn inside its 1px gradient border. */
+  --radius-2xl-inner: calc(var(--radius-2xl) - 1px); /* 15px */
+  /* Circles: avatars, dots, spinners, thumbs. Round in every look. */
+  --radius-full: 9999px;
+  /* Pills: buttons, chips, badges, tabs, tracks. A look may square them. */
+  --radius-pill: 9999px;
+  --radius-xsmall: var(--radius);
+  --radius-small: var(--radius-lg);
+  --radius-medium: var(--radius-xl);
+  --radius-large: var(--radius-2xl);
+  --radius-xlarge: 1.25rem; /* 20px */
+  --radius-2xlarge: var(--radius-3xl);
+
+  /* The colour of every shadow below, an RGB triplet. */
+  --shadow-color: 0 0 0;
+  /* The hairline ring of the smooth-shadow-ring-* utilities. */
+  --smooth-ring-color: rgb(var(--shadow-color) / 0.05);
+
+  /* Layers, lowest first. Every z-index in src is one of these names
+     (design-system/no-raw-z-index). Two names share a number only where
+     two different layers happen to sit at the same height. */
+  --z-behind: -10; /* decoration behind its own content */
+  --z-base: 0;
+  --z-raised: 10; /* lifted over a sibling in the same component */
+  --z-sticky: 20; /* search bars, banners and bars pinned in a pane */
+  --z-search-bar: 21; /* the library search bar, over the sticky bars it overlaps */
+  --z-floating: 30; /* buttons floating over a pane (jump to bottom) */
+  --z-header: 40; /* the inset header floating over the chat */
+  --z-prompt: 40; /* a feedback prompt fixed in a corner, under dialogs */
+  --z-overlay: 50; /* dialogs, sheets, menus, popovers, tooltips */
+  --z-drawer-scrim: 60; /* the backdrop of a drawer above dialogs */
+  --z-drawer: 70; /* the artifact panel on a phone */
+  --z-command: 80; /* the command palette; popovers over a drawer */
+  --z-canvas-loading: 99; /* the builder's loading box, over the nodes */
+  --z-canvas-toolbar: 100; /* the builder's run toolbar, over the nodes and the loading box */
+  --z-blocking: 100; /* modals that must cover everything else */
+  --z-tour-scrim: 110;
+  --z-tour: 120; /* the tour's spotlight card and contextual tips */
+
+  /* The app shell. The Sidebar's provider reads the widths. */
+  --shell-sidebar-width: 18.25rem; /* the app's sidebar */
+  --shell-sidebar-width-tour: 19rem; /* the tour's and the logged-out marketplace's */
+  --shell-sidebar-width-default: 20rem; /* a provider that sets no width */
+  --shell-sidebar-width-collapsed: 3rem;
+  --shell-sidebar-width-mobile: 20rem;
+  --shell-content-max: 80rem;
+}
+
+[data-theme="dark"] {
+  --smooth-ring-color: rgb(255 255 255 / 0.18);
+}
+
+/*
+  The shadow steps. They are theme entries, not variables on `:root`, because
+  Tailwind finds each shadow's colour in the value: `shadow-md shadow-scrim/10`
+  swaps that colour for the scrim's. A `var(--shadow-md)` would hide it, and
+  the coloured shadows would lose their colour. So `inline` writes each value
+  into its class, and the colour still follows --shadow-color (or the colour
+  role a step reads) at runtime. A shadow colour class sets every layer to
+  one colour and alpha, so a step with a white edge and a tinted glow names
+  its colours itself.
+*/
+@theme inline reference {
+  --shadow-sm: 0 1px 2px 0 rgb(var(--shadow-color) / 0.05);
+  --shadow:
+    0 1px 3px 0 rgb(var(--shadow-color) / 0.1),
+    0 1px 2px -1px rgb(var(--shadow-color) / 0.1);
+  --shadow-md:
+    0 4px 6px -1px rgb(var(--shadow-color) / 0.1),
+    0 2px 4px -2px rgb(var(--shadow-color) / 0.1);
+  --shadow-lg:
+    0 10px 15px -3px rgb(var(--shadow-color) / 0.1),
+    0 4px 6px -4px rgb(var(--shadow-color) / 0.1);
+  --shadow-xl:
+    0 20px 25px -5px rgb(var(--shadow-color) / 0.1),
+    0 8px 10px -6px rgb(var(--shadow-color) / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(var(--shadow-color) / 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgb(var(--shadow-color) / 0.05);
+  --shadow-subtle: 0px 1px 2px 0px rgb(var(--shadow-color) / 0.05);
+  --shadow-message-table: 0 1px 2px rgb(var(--shadow-color) / 0.04);
+
+  /* Named effects, each for one purpose. A step with a single colour takes
+     another from a shadow colour class: `shadow-drop shadow-brand/45`. */
+  /* A card raised on hover. */
+  --shadow-lift: 0 16px 40px -16px rgb(var(--shadow-color) / 0.18);
+  /* A card floating over the composer. */
+  --shadow-popover-raised: 0 16px 40px -24px rgb(var(--shadow-color) / 0.25);
+  /* The chat composer. */
+  --shadow-composer:
+    0 1px 2px rgb(var(--shadow-color) / 0.04),
+    0 4px 20px rgb(var(--shadow-color) / 0.08);
+  /* Under a badge, an avatar or a filled button. */
+  --shadow-drop: 0 8px 24px -8px rgb(var(--shadow-color) / 0.25);
+  /* Above a footer that content scrolls under. */
+  --shadow-scroll-edge: 0 -2px 8px rgb(var(--shadow-color) / 0.04);
+  /* A keyboard key. */
+  --shadow-keycap:
+    inset 0 -1px 0 rgb(var(--shadow-color) / 0.04),
+    0 1px 1px rgb(var(--shadow-color) / 0.04);
+  /* A glossy pill: a white top edge and a hairline drop. */
+  --shadow-gloss:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.9),
+    0 1px 2px rgb(var(--shadow-color) / 0.05);
+  /* The inner sheen of a tab that joins the composer. */
+  --shadow-sheen:
+    inset 0 1px 0 0 rgb(var(--color-surface) / 0.9),
+    inset 0 5px 6px -4px rgb(var(--color-surface) / 0.7);
+  /* A 1px edge drawn as a shadow, which leaves `ring` to the focus ring. */
+  --shadow-outline: 0 0 0 1px rgb(var(--color-border-base) / 1);
+  /* The halo round a selected card. */
+  --shadow-halo: 0 0 0 3px rgb(var(--color-brand) / 0.12);
+  /* The tour's spotlight edge over the dimmed page. */
+  --shadow-spotlight:
+    0 0 0 1.5px rgb(var(--color-surface) / 0.9),
+    0 0 0 6px rgb(var(--color-surface) / 0.14);
+  /* A call to action's glow. */
+  --shadow-glow: 0 0 20px -6px rgb(var(--color-brand) / 0.6);
+  /* A status chip's glow, in the status colour. */
+  --shadow-status-glow: 0 0 8px -1px rgb(var(--shadow-color) / 0.7);
+  /* The tour's glow on what to click next. */
+  --shadow-beacon: 0 0 32px -4px rgb(var(--shadow-color) / 0.4);
+  /* The marketplace's glossy accent chips: a white top edge and a glow in
+     the accent, one step per accent, since a shadow colour class would
+     recolour the white edge too. */
+  --shadow-chip-glow-brand:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-brand) / 0.12),
+    0 0 18px -4px rgb(var(--color-brand) / 0.45);
+  --shadow-chip-glow-warning:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-warning) / 0.12),
+    0 0 18px -4px rgb(var(--color-warning) / 0.45);
+  --shadow-chip-glow-sky:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-sky) / 0.12),
+    0 0 18px -4px rgb(var(--color-sky) / 0.45);
+  --shadow-chip-glow-neutral:
+    inset 0 1px 0 rgb(var(--color-surface) / 0.95),
+    0 1px 2px rgb(var(--color-foreground-tertiary) / 0.12),
+    0 0 18px -4px rgb(var(--color-foreground-tertiary) / 0.45);
+}

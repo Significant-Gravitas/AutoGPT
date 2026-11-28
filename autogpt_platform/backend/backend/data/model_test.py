@@ -6,11 +6,13 @@ from pydantic import SecretStr
 
 from backend.data.credential_scope import ServerTarget
 from backend.data.model import (
+    APIKeyCredentials,
     HostScopedCredentials,
     NodeExecutionStats,
     User,
     UserPasswordCredentials,
 )
+from backend.util.exceptions import CredentialsExpiredError
 
 
 class TestHostScopedCredentials:
@@ -377,3 +379,62 @@ class TestUserFromDbConsent:
         assert user.terms_version is None
         assert user.marketing_opt_out_at is None
         assert user.marketing_opt_out_source is None
+
+
+@pytest.mark.parametrize(
+    "expires_at, expired",
+    [(None, False), (1_001, False), (999, True), (1_000, True)],
+    ids=["none", "future", "past", "exactly-now"],
+)
+def test_api_key_is_expired(expires_at: int | None, expired: bool):
+    creds = APIKeyCredentials(
+        provider="openai", api_key=SecretStr("k"), expires_at=expires_at
+    )
+    assert creds.is_expired(now=1_000) is expired
+
+
+@pytest.mark.parametrize(
+    "expires_at, expired_on",
+    [
+        (1798675200, "2026-12-31 00:00"),
+        # Out of datetime's range; the v1 API once stored any integer.
+        (-(10**15), "1970-01-01 00:00"),
+    ],
+    ids=["date", "out-of-range"],
+)
+def test_api_key_expired_error_names_key_and_date(expires_at: int, expired_on: str):
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("sk-secret"),
+        title="Work key",
+        expires_at=expires_at,
+    )
+    error = creds.expired_error()
+    assert isinstance(error, CredentialsExpiredError)
+    assert str(error) == (
+        f"API key 'Work key' expired on {expired_on} UTC. Add a new key."
+    )
+    assert "sk-secret" not in str(error)
+
+
+@pytest.mark.parametrize(
+    "zone, expired_on",
+    [
+        # The end of 31 December picked in Chicago is 05:59 UTC on 1 January.
+        ("America/Chicago", "2026-12-31 23:59 CST"),
+        ("UTC", "2027-01-01 05:59 UTC"),
+        # Unset, or not a zone we know: UTC rather than no message at all.
+        ("not-set", "2027-01-01 05:59 UTC"),
+        ("../etc", "2027-01-01 05:59 UTC"),
+    ],
+)
+def test_api_key_expired_error_is_dated_in_the_users_zone(zone: str, expired_on: str):
+    creds = APIKeyCredentials(
+        provider="openai",
+        api_key=SecretStr("k"),
+        title="Work key",
+        expires_at=1798783199,
+    )
+    assert str(creds.expired_error(zone)) == (
+        f"API key 'Work key' expired on {expired_on}. Add a new key."
+    )

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { http, HttpResponse } from "msw";
+import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import {
   fireEvent,
@@ -11,7 +12,11 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { getGetV1ListProvidersMockHandler } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import {
+  getGetV1ListCredentialsMockHandler,
+  getGetV1ListProvidersMockHandler,
+} from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
+import { getPostV2StoreABearerTokenForAnMcpServerMockHandler200 } from "@/app/api/__generated__/endpoints/mcp/mcp.msw";
 import SettingsIntegrationsPage from "../page";
 import {
   authProviders,
@@ -116,6 +121,76 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
       expect(oauthRequest).toHaveBeenCalledWith({
         server_url: "https://openseo.example.workers.dev/mcp",
       });
+    });
+  });
+
+  test("AnySearch is one row under its brand name, and a pasted token connects its server", async () => {
+    const connection: CredentialsMetaResponse = {
+      id: "anysearch-token",
+      provider: "mcp",
+      type: "oauth2",
+      title: "MCP: api.anysearch.com",
+      scopes: null,
+      username: null,
+      host: null,
+      is_managed: false,
+      service: "anysearch",
+      service_name: "AnySearch",
+      service_icon: "anysearch",
+    };
+    let saved = false;
+    server.use(
+      getGetV1ListProvidersMockHandler([
+        {
+          name: "anysearch",
+          description: "AI-native web search",
+          supported_auth_types: ["api_key"],
+          service: "anysearch",
+          service_icon: "anysearch",
+        },
+        shippedCatalogProvider("mcp_anysearch"),
+      ]),
+      getGetV1ListCredentialsMockHandler(() => (saved ? [connection] : [])),
+      getPostV2StoreABearerTokenForAnMcpServerMockHandler200(
+        async ({ request }) => {
+          tokenRequest(await request.json());
+          saved = true;
+          return connection;
+        },
+      ),
+    );
+
+    render(<SettingsIntegrationsPage />);
+    const rows = await screen.findAllByRole("button", { name: /^anysearch/i });
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText("AnySearch")).toBeDefined();
+    fireEvent.click(rows[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: "Use an AnySearch token instead",
+      }),
+    );
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://api.anysearch.com/mcp");
+    fireEvent.change(within(dialog).getByPlaceholderText("Paste API token"), {
+      target: { value: "anysearch-access-token" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /save token/i }),
+    );
+
+    expect(await screen.findByText("api.anysearch.com")).toBeDefined();
+    expect(
+      screen.getByText(
+        "AnySearch blocks in workflows need their own connection.",
+      ),
+    ).toBeDefined();
+    expect(tokenRequest).toHaveBeenCalledWith({
+      server_url: "https://api.anysearch.com/mcp",
+      token: "Bearer anysearch-access-token",
     });
   });
 

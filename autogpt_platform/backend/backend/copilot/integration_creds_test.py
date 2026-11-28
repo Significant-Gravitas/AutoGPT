@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import shutil
 import subprocess
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -218,6 +219,29 @@ class TestGetProviderToken:
 
         assert result == "my-api-key"
         assert _token_cache.get((_USER, _PROVIDER)) == "my-api-key"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expired_api_key_is_skipped(self):
+        """#16234: an API key past its expiry is never handed out."""
+        expired = _make_api_key_creds("expired-key")
+        expired.expires_at = int(time.time()) - 60
+        live = _make_api_key_creds("live-key")
+        live.expires_at = int(time.time()) + 3600
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[expired, live]
+        )
+
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
+                == "live-key"
+            )
+
+        _token_cache.clear()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[expired])
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
+            assert await get_provider_token(_USER, _PROVIDER, allowed_ids=None) is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth2_preferred_over_api_key(self):
@@ -600,6 +624,25 @@ class TestCacheInvalidationListener:
         assert _token_cache[("other-user", "github")] == "untouched"
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_resync_drops_every_cached_entry(self):
+        """``None`` means changes may have been missed while unsubscribed, so
+        no entry, for any user or provider, can be trusted."""
+        _token_cache[(_USER, "github")] = "maybe-revoked"
+        _token_cache[("other-user", "notion")] = "maybe-revoked"
+        _null_cache[(_USER, "linear")] = True
+        _credential_id_cache[(_USER, "github")] = "cred-1"
+        _gh_identity_cache[(_USER, "cred-1", None)] = MagicMock()
+        _gh_identity_null_cache[("other-user", None, None)] = True
+
+        await _consume(None)
+
+        assert not _token_cache
+        assert not _null_cache
+        assert not _credential_id_cache
+        assert not _gh_identity_cache
+        assert not _gh_identity_null_cache
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_resubscribes_when_the_stream_ends(self):
         """A closed subscription must not leave the cache unwatched."""
         streams = 0
@@ -648,7 +691,7 @@ class TestCacheInvalidationListener:
             )
 
 
-async def _consume(*events: CredentialsChangedEvent) -> None:
+async def _consume(*events: CredentialsChangedEvent | None) -> None:
     """Run the listener over *events*, then stop it."""
 
     async def stream():

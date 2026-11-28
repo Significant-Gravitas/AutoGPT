@@ -44,6 +44,10 @@ interface Props {
   /** Last rendered row and an assistant one. Only this row gets `onRetry`
    *  and keeps its actions visible without hover. */
   isLastAssistant: boolean;
+  /** Rendered from the newest message, an assistant one: only its cards
+   *  can send. True for every row a mid-turn follow-up split it into, not
+   *  just the last one. */
+  isLatestAnswer: boolean;
   /** `isLastAssistant` while the chat status is streaming or submitted. */
   isCurrentlyStreaming: boolean;
   /** Assistant row that closes its turn: shows the stats bar and actions. */
@@ -84,6 +88,7 @@ interface Props {
 export const MessageRow = memo(function MessageRow({
   message,
   isLastAssistant,
+  isLatestAnswer,
   isCurrentlyStreaming,
   isLastInTurn,
   isLatestTurn,
@@ -129,11 +134,7 @@ export const MessageRow = memo(function MessageRow({
   // fall through to normal rendering).
   if (runMetadata) {
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <WorkCard metadata={runMetadata} preview={runPreview} />
         </MessageContent>
@@ -147,11 +148,7 @@ export const MessageRow = memo(function MessageRow({
   if (notice) {
     if (readOnly) return null;
     return (
-      <Message
-        from={message.role}
-        data-message-id={message.id}
-        className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-      >
+      <Message from={message.role} data-message-id={message.id} entrance="rise">
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
@@ -182,11 +179,7 @@ export const MessageRow = memo(function MessageRow({
     !hasErrorMarker;
 
   return (
-    <Message
-      from={message.role}
-      data-message-id={message.id}
-      className="duration-300 animate-in fade-in fill-mode-both slide-in-from-bottom-2"
-    >
+    <Message from={message.role} data-message-id={message.id} entrance="rise">
       <MessageContent className={getMessageContentClassName(compact)}>
         {isAssistant ? (
           <ChainMessageParts
@@ -194,6 +187,7 @@ export const MessageRow = memo(function MessageRow({
             messageID={message.id}
             isCurrentlyStreaming={isCurrentlyStreaming}
             canActOnCards={isLastAssistant && !isTurnSettling}
+            isLatestAnswer={isLatestAnswer}
             onRetry={isLastAssistant ? onRetry : undefined}
             fileUrlBuilder={fileUrlBuilder}
             readOnly={readOnly}

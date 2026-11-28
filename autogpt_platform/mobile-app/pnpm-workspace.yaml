@@ -1,0 +1,2 @@
+patchedDependencies:
+  react-native-drawer-layout@4.2.12: patches/react-native-drawer-layout@4.2.12.patch

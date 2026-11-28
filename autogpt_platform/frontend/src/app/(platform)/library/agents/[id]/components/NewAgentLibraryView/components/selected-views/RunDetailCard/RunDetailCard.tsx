@@ -17,7 +17,9 @@ export function RunDetailCard({ children, className, title }: Props) {
     >
       {title ? (
         typeof title === "string" ? (
-          <Text variant="lead-semibold">{title}</Text>
+          <Text variant="lead" weight="semibold">
+            {title}
+          </Text>
         ) : (
           title
         )

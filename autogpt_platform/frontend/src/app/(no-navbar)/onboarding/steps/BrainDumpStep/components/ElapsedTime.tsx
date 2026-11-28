@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { formatElapsed } from "../helpers";
+import { spring } from "@/components/styles/motion";
 
 // Each digit is its own slot, so only the digits that actually changed pop:
 // the seconds tick every second while the minutes sit still.
@@ -45,8 +46,7 @@ export function ElapsedTime({ seconds }: { seconds: number }) {
               }
               transition={{
                 type: "spring",
-                stiffness: 520,
-                damping: 28,
+                ...spring.snappy,
                 mass: 0.6,
               }}
             >

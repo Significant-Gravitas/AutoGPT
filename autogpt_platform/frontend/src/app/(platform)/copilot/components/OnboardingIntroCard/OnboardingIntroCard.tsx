@@ -21,6 +21,7 @@ import { useState } from "react";
 import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import type { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import type { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
+import { duration, ease } from "@/components/styles/motion";
 
 interface Props {
   name: string | null;
@@ -90,13 +91,13 @@ export function OnboardingIntroCard({
       return {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
-        transition: { duration: 0.3, delay },
+        transition: { duration: duration.slow, delay },
       };
     }
     return {
       initial: { opacity: 0, y: 10, filter: "blur(4px)" },
       animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-      transition: { duration: 0.45, ease: [0, 0, 0.2, 1] as const, delay },
+      transition: { duration: duration.slower, ease: ease.out, delay },
     };
   }
 
@@ -120,7 +121,7 @@ export function OnboardingIntroCard({
           <AutopilotAvatar size={40} transparent className="size-full" />
         </motion.span>
         <motion.div {...reveal(HEADING_START)}>
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             Hey
             {name ? (
               <>
@@ -139,7 +140,7 @@ export function OnboardingIntroCard({
                   type="button"
                   onClick={handleCopyTranscript}
                   aria-label="Copy your recording's transcript"
-                  className="rounded-full p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
+                  className="rounded-pill p-2 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground-body"
                 >
                   {isCopied ? (
                     <Icon icon={Tick02Icon} size={16} tone="success" />

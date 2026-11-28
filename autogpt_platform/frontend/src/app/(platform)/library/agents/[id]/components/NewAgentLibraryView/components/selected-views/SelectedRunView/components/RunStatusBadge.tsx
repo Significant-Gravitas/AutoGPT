@@ -78,7 +78,7 @@ export function RunStatusBadge({ status, completedWithErrors = false }: Props) {
       )}
     >
       {style.icon}
-      <Text variant="small-medium" tone="inherit">
+      <Text variant="small" weight="medium" tone="inherit">
         {label}
       </Text>
     </div>

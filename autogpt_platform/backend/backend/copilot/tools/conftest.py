@@ -94,6 +94,7 @@ def stub_learning_registry(monkeypatch):
         "backend.copilot.tools.skills.mark_index_revision_seen", mark_seen
     )
     for target in (
+        "backend.copilot.learning.content_approvals.skill_versions_db",
         "backend.copilot.learning.retrieval.skill_versions_db",
         "backend.copilot.learning.retrieval.skill_use_db",
         "backend.copilot.learning.history.skill_versions_db",

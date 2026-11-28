@@ -26,6 +26,7 @@ from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
+    ConflictError,
     DatabaseError,
     ExpertLimitExceededError,
     ExpertNotFoundError,
@@ -41,6 +42,7 @@ from backend.util.service import (
     HTTPClientError,
     HTTPServerError,
     RemoteCallError,
+    UnhealthyServiceError,
     _build_return_adapter,
     _usable_adapter,
     endpoint_to_async,
@@ -195,6 +197,25 @@ async def test_service_creation(server):
         assert await client.subtract_async(10, 4) == 6
 
 
+def test_a_failed_health_check_is_a_503_logged_once(caplog):
+    """A 503, not the 400 every ``ValueError`` gets; and the error, which logs
+    itself when raised, is not logged again by the handler."""
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.get("/health_check")
+    async def health_check():
+        raise UnhealthyServiceError("Database is not connected", log=False)
+
+    with contextlib.closing(TestClient(app, raise_server_exceptions=False)) as raw:
+        with caplog.at_level(logging.WARNING, logger=service_module.logger.name):
+            response = raw.get("/health_check")
+
+    assert response.status_code == 503
+    assert response.json()["type"] == "UnhealthyServiceError"
+    assert [r for r in caplog.records if r.name == service_module.logger.name] == []
+
+
 def test_expert_lookup_errors_preserve_rpc_status_and_type():
     app = FastAPI()
     AppService._register_exception_handlers(app)
@@ -234,6 +255,33 @@ def test_expert_lookup_errors_preserve_rpc_status_and_type():
         client._handle_call_method_response(
             response=missing_tenancy_response,
             method_name="resolve_private_expert_tenancy",
+        )
+
+
+def test_a_conflict_is_answered_as_a_409_not_a_server_error():
+    """A conflict is the caller's to resolve, as a 409. Left to the catch-all
+    it was a 500: logged as an error, and the server dropped the connection
+    after it, which failed the caller's next call on that pooled connection."""
+    app = FastAPI()
+    AppService._register_exception_handlers(app)
+
+    @app.post("/add_graph_execution_schedule")
+    def add_graph_execution_schedule():
+        raise ConflictError("Taken")
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/add_graph_execution_schedule"
+    )
+
+    assert response.status_code == 409
+    assert response.json()["type"] == "ConflictError"
+    client = cast(
+        _SupportsHandleCallMethodResponse,
+        get_service_client(ServiceTestClient, request_retry=False),
+    )
+    with pytest.raises(ConflictError, match="Taken"):
+        client._handle_call_method_response(
+            response=response, method_name="add_graph_execution_schedule"
         )
 
 
@@ -1665,6 +1713,7 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "BlockOutputError",
     "BlockUnknownError",
     "ConflictError",
+    "CredentialsExpiredError",
     "DuplicateChatMessageError",
     "EmailUndeliverableError",
     "ExpertLimitExceededError",
@@ -1693,6 +1742,8 @@ _ANSWERED_AT_ONCE_SHARED_ERRORS = {
     "RaisedExpertLifetimeLimitExceededError",
     "RoutineNotFoundError",
     "RoutineUnansweredAsksError",
+    "ScheduleLimitError",
+    "SchedulerUnavailableError",
     "SharedCredentialsRefusedError",
     "UserBannedError",
     "UserPaywalledError",
