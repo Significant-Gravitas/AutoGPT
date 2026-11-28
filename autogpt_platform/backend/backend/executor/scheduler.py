@@ -2916,6 +2916,25 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
         )
 
 
+class StoredCronTrigger(BaseModel):
+    fields: dict[str, str]
+    start_date: datetime | None
+    end_date: datetime | None
+
+    @classmethod
+    def from_trigger(cls, trigger: CronTrigger) -> "StoredCronTrigger":
+        return cls(
+            fields={field.name: str(field) for field in trigger.fields},
+            start_date=trigger.start_date,
+            end_date=trigger.end_date,
+        )
+
+
+class GraphScheduleDiagnostics(BaseModel):
+    schedule: GraphExecutionJobInfo
+    trigger: StoredCronTrigger | None
+
+
 class CopilotTurnJobInfo(CopilotTurnJobArgs):
     id: str
     name: str
@@ -4414,6 +4433,34 @@ class Scheduler(AppService):
             if isinstance(info, GraphExecutionJobInfo)
         ]
 
+    @expose
+    def get_graph_schedule_diagnostics(self) -> list[GraphScheduleDiagnostics]:
+        """Return active graph schedules with the cron settings they actually use."""
+        jobs = self._get_schedule_jobs(
+            user_id=None,
+            graph_id=None,
+            session_id=None,
+            kind="graph",
+            organization_id=None,
+        )
+        result = []
+        for job in jobs:
+            info = _job_to_info(job)
+            if not isinstance(info, GraphExecutionJobInfo):
+                continue
+            trigger = job.trigger
+            result.append(
+                GraphScheduleDiagnostics(
+                    schedule=info,
+                    trigger=(
+                        StoredCronTrigger.from_trigger(trigger)
+                        if isinstance(trigger, CronTrigger)
+                        else None
+                    ),
+                )
+            )
+        return result
+
     # Two cached reads of the EXECUTION jobstore (``_read_job_list``):
     # ``_get_jobs_cached`` unpickles every row, paused and fired-once included,
     # for the ``include_paused=True`` lookups; ``_get_active_jobs_cached`` filters
@@ -5680,6 +5727,9 @@ class SchedulerClient(AppServiceClient):
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.
     get_graph_execution_schedules = endpoint_to_async(
         Scheduler.get_graph_execution_schedules
+    )
+    get_graph_schedule_diagnostics = endpoint_to_async(
+        Scheduler.get_graph_schedule_diagnostics
     )
     # Polymorphic list — preferred for new callers; returns both kinds.
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
