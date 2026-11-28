@@ -198,11 +198,11 @@ class _Node:
                 "backend.executor.manager.get_db_async_client", return_value=db_client
             ),
             patch(
-                "backend.executor.manager._get_node_credentials",
+                "backend.executor.block_credentials._get_node_credentials",
                 AsyncMock(return_value=(key, None)),
             ),
             patch(
-                "backend.executor.manager.acquire_auto_credentials",
+                "backend.executor.block_credentials.acquire_auto_credentials",
                 AsyncMock(return_value=({}, [])),
             ),
             patch(
