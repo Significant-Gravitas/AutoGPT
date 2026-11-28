@@ -1,11 +1,31 @@
 """Tests for the connected-or-RPC database accessor helpers."""
 
+import inspect
+from types import ModuleType
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from backend.api.features.orgs import db as orgs_module
 from backend.data import bot_installs as bot_installs_module
 from backend.data import db_accessors
 from backend.data import dream_pass as dream_pass_module
+
+_ACCESSORS = sorted(
+    name
+    for name, member in vars(db_accessors).items()
+    if inspect.isfunction(member)
+    and member.__module__ == db_accessors.__name__
+    and name not in ("db_for", "chat_db_is_local")
+)
+
+
+@pytest.mark.parametrize("accessor", _ACCESSORS)
+def test_every_accessor_hands_out_a_module_when_connected(accessor: str):
+    """Each imports its module only when called, so one whose module moved
+    would break nothing until a process with Prisma called it."""
+    with patch("backend.data.db_accessors.db.is_connected", return_value=True):
+        assert isinstance(getattr(db_accessors, accessor)(), ModuleType)
 
 
 def test_orgs_db_uses_direct_module_when_connected():
