@@ -48,7 +48,7 @@ A task is one reply that Otto or an Expert is working on, in any chat. When 5 ar
 While a reply is in progress you can keep sending follow-up messages, which Otto reads as it works.
 
 - **Up to 30 a minute** per account, across all your chats. The minute starts with your first follow-up. Past that, the follow-up is still delivered, but the response is `429` so the app slows down.
-- **Up to 10 waiting** per chat. A newer follow-up pushes out the oldest one still waiting.
+- **Up to 10 waiting** per chat. While 10 are waiting, a new follow-up isn't sent: the chat says the conversation has too many messages waiting, and your message stays in the message box, to send again once Otto has read some. The API answers `429` with "Pending message buffer is full. Retry after messages are delivered.", `Retry-After: 5` and `X-Error-Code: pending_buffer_full`.
 
 Neither is configurable.
 
