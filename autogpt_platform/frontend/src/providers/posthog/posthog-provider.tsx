@@ -10,6 +10,10 @@ import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-prop
 import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
 import { PageEvent } from "@/services/analytics/posthog-events";
 import { markImpersonatedEvent } from "@/services/analytics/posthog-request-context";
+import {
+  CREDENTIAL_PARAMS,
+  stripURLCredentials,
+} from "@/services/analytics/url-credentials";
 import { useConsent } from "@/services/consent/useConsent";
 import { environment } from "@/services/environment";
 import { PostHogProvider as PHProvider } from "@posthog/react";
@@ -51,7 +55,15 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
         ...getConsentGatedConfig(),
-        before_send: [dropWithoutConsent, markImpersonatedEvent],
+        // The first page it stores goes out with every /flags/ request, which
+        // skips before_send. This also masks posthog-js's own ad click IDs.
+        mask_personal_data_properties: true,
+        custom_personal_data_properties: CREDENTIAL_PARAMS,
+        before_send: [
+          dropWithoutConsent,
+          stripURLCredentials,
+          markImpersonatedEvent,
+        ],
       });
       posthog.register(getPostHogBaseProperties());
       unfollowConsent = followAnalyticsConsent();
