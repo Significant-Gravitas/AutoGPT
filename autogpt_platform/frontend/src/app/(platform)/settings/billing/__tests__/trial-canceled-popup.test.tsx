@@ -2,6 +2,7 @@ import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/cred
 import {
   getGetTrialsGetTrialStatusMockHandler200,
   getPostTrialsCancelTrialMockHandler200,
+  getPostTrialsResumeTrialMockHandler200,
 } from "@/app/api/__generated__/endpoints/trials/trials.msw";
 import {
   formatTrialEnd,
@@ -172,6 +173,23 @@ describe("post-cancel popup", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
     expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
+  });
+
+  it("closes from Done and keeps the trial cancel-pending, without a resume", async () => {
+    mockCancelFlow();
+    const resume = vi.fn(() => active());
+    server.use(getPostTrialsResumeTrialMockHandler200(resume));
+    render(<TrialCard />);
+    const popup = await cancelThroughConfirmation();
+    fireEvent.click(within(popup).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("Cancellation pending")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
+    expect(resume).not.toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalledWith(
+      "trial_resume_clicked",
+      expect.anything(),
+    );
   });
 
   it("does not open when the cancel finds the trial already over", async () => {
