@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
 import { isKey } from "@/lib/keyboard";
+import { Button } from "@/components/atoms/Button/Button";
 
 interface Props {
   question: ClarifyingQuestion;
@@ -18,9 +19,10 @@ interface Props {
 
 /** The answer input for one question: options render as tappable rows with a
  *  trailing "Type something…" escape hatch into free text; questions without
- *  options go straight to the textarea. The options stay on screen while the
- *  user types, and each one can be copied into the textarea to reword it or
- *  merge it with others.
+ *  options go straight to the textarea, with a "Use example" button that
+ *  copies the example in while the answer is empty. The options stay on
+ *  screen while the user types, and each one can be copied into the textarea
+ *  to reword it or merge it with others.
  *  Mounted per-question — the parent keys this component on the question's
  *  pager id, so the typing toggle resets between questions instead of leaking
  *  across them. */
@@ -67,7 +69,30 @@ export function QuestionAnswerField({
     />
   );
 
-  if (options.length === 0) return textarea;
+  if (options.length === 0) {
+    const example = question.example;
+    // One wrapper whether or not the button shows, so the first keystroke
+    // doesn't remount the textarea and drop its focus.
+    return (
+      <div className="flex flex-col gap-2">
+        {textarea}
+        {example && !value.trim() ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            className="self-start"
+            onClick={() => {
+              onChange(example);
+              textareaRef.current?.focus();
+            }}
+          >
+            Use example
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
 
   // Choosing an option replaces whatever was typed, so the textarea closes
   // rather than echoing the option's text back as if the user had written it.

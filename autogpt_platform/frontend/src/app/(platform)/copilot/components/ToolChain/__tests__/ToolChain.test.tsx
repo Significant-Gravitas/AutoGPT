@@ -486,6 +486,48 @@ describe("ToolChain", () => {
     await expectTypingKept(field, " 日本語");
   });
 
+  it("sends the example as the answer after Use example", async () => {
+    const user = userEvent.setup();
+    const pending: PendingQuestions = {
+      dockId: "m1:call-ask_question",
+      callIds: ["call-ask_question"],
+      questions: [
+        { question: "Which region?", keyword: "region", example: "Europe" },
+      ],
+    };
+
+    render(
+      <CopilotChatActionsProvider onSend={onSend}>
+        <PendingQuestionsContext.Provider value={pending}>
+          <ToolChain
+            parts={[
+              toolPart("ask_question", "output-available", {
+                output: {
+                  type: "agent_builder_clarification_needed",
+                  questions: pending.questions,
+                },
+              }),
+            ]}
+            isStreaming={false}
+          />
+        </PendingQuestionsContext.Provider>
+      </CopilotChatActionsProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Use example" }));
+
+    const field = screen.getByPlaceholderText("e.g. Europe");
+    expect((field as HTMLTextAreaElement).value).toBe("Europe");
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByRole("button", { name: "Use example" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Send answers" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "**Here are my answers:**\n\n> Which region?\n\nEurope\n\nPlease proceed.",
+    );
+  });
+
   it("keeps an answered question and its answer on screen once the chain settles", () => {
     render(
       <AnsweredQuestionsContext.Provider
