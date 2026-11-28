@@ -4,10 +4,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.model import ChatSession, clear_pending_question
+from backend.copilot.model import (
+    PENDING_QUESTION_MAX_LENGTH,
+    ChatSession,
+    clear_pending_question,
+)
 from backend.copilot.tools.ask_question import (
+    MAX_KEYWORD_LENGTH,
     MAX_OPTION_LENGTH,
     MAX_OPTIONS,
+    MAX_QUESTION_LENGTH,
     MAX_QUESTIONS,
     AskQuestionTool,
 )
@@ -357,6 +363,29 @@ async def test_questions_are_capped(tool: AskQuestionTool, session: ChatSession)
 
     assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == MAX_QUESTIONS
+
+
+@pytest.mark.asyncio
+async def test_question_text_and_keyword_are_capped(
+    tool: AskQuestionTool, session: ChatSession
+):
+    db = MagicMock()
+    db.set_session_pending_question = AsyncMock()
+    with patch(
+        "backend.copilot.tools.ask_question.chat_db", MagicMock(return_value=db)
+    ):
+        result = await tool._execute(
+            user_id=None,
+            session=session,
+            questions=[{"question": "q" * 5_000, "keyword": "k" * 500}] * 3,
+        )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert [q.question for q in result.questions] == ["q" * MAX_QUESTION_LENGTH] * 3
+    assert result.questions[0].keyword == "k" * MAX_KEYWORD_LENGTH
+    pending = session.metadata.pending_question
+    assert pending is not None
+    assert len(pending.text) == PENDING_QUESTION_MAX_LENGTH
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ from backend.util.sql import escape_like
 from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
+    PENDING_QUESTION_MAX_LENGTH,
     ChatMessage,
     ChatSessionGroup,
     ChatSessionInfo,
@@ -1133,8 +1134,9 @@ async def set_session_pending_question(
     metadata is otherwise immutable after creation, and a concurrent turn
     must not be able to clobber unrelated flags by round-tripping a stale
     copy of it. Scoped to *user_id* so a caller can never mark another
-    user's session.
+    user's session. *text* is cut to ``PENDING_QUESTION_MAX_LENGTH``.
     """
+    text = text[:PENDING_QUESTION_MAX_LENGTH]
     await db.execute_raw_with_schema(
         'UPDATE {schema_prefix}"ChatSession" SET "metadata" = '
         "COALESCE(\"metadata\", '{{}}'::jsonb) || "

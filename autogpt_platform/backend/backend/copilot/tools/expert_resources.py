@@ -587,10 +587,15 @@ class RequestCredentialGrantTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "credential_id": {"type": "string", "description": "Credential id."},
+                "credential_id": {
+                    "type": "string",
+                    "description": "Credential id.",
+                    "maxLength": 128,
+                },
                 "provider": {
                     "type": "string",
                     "description": "Provider slug, for the note.",
+                    "maxLength": 64,
                 },
                 "reason": {
                     "type": "string",
@@ -643,12 +648,12 @@ class RequestCredentialGrantTool(BaseTool):
                 error="not_an_expert_session",
                 session_id=session_id,
             )
-        credential_id = credential_id.strip()
+        credential_id = credential_id.strip()[:128]
         if not credential_id:
             return ErrorResponse(
                 message="credential_id is required", session_id=session_id
             )
-        provider_slug = provider.strip().lower() or None
+        provider_slug = provider.strip().lower()[:64] or None
         reason = reason.strip()[:300]
         text = (
             f"Grant me the {provider_slug or 'integration'} credential "
