@@ -15,7 +15,7 @@ import pytest
 from openpyxl import Workbook
 
 from backend.blocks.spreadsheet_test import GRAPH_EXEC_ID, read_rows
-from backend.util.file import get_exec_file_path
+from backend.util.file import get_exec_file_path, separate_exec_files
 from backend.util.type import MediaFileType
 
 
@@ -149,7 +149,32 @@ async def test_whitespace_headers_are_kept_without_stripping():
     assert rows == [{" ": "a", " _2": "b"}, {" ": "c", " _2": "d"}]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("from_file", [False, True], ids=["inline", "file"])
+async def test_leading_csv_bom_keeps_quoted_header_and_following_columns(
+    from_file: bool,
+):
+    contents = '\ufeff"Last, First",City\n"Doe, Jane",\ufeffKyoto\n'
+    if from_file:
+        with separate_exec_files(GRAPH_EXEC_ID):
+            path = Path(get_exec_file_path(GRAPH_EXEC_ID, "spreadsheet.csv"))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents, encoding="utf-8")
+            rows = await read_rows(file_input=MediaFileType(path.name))
+    else:
+        rows = await read_rows(contents=contents)
+
+    assert rows == [{"Last, First": "Doe, Jane", "City": "\ufeffKyoto"}]
+
+
 # --- Excel goes through the same header handling as CSV --------------------
+
+
+@pytest.mark.asyncio
+async def test_excel_keeps_bom_inside_spreadsheet_data():
+    rows = await read_sheet_rows([["Name", "City"], ["Jane", "\ufeffKyoto"]])
+
+    assert rows == [{"Name": "Jane", "City": "\ufeffKyoto"}]
 
 
 @pytest.mark.asyncio
