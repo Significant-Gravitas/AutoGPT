@@ -178,6 +178,11 @@ describe("getCatalogLabel", () => {
     ],
     ["add_understanding", {}, "done", "Noted context"],
     ["enter_agent_building_mode", {}, "running", "Entering building mode…"],
+    ["create_agent", {}, "running", "Creating workflow…"],
+    ["create_agent", {}, "error", "Failed while creating workflow"],
+    ["edit_agent", {}, "running", "Editing workflow…"],
+    ["edit_agent", {}, "error", "Failed while editing workflow"],
+    ["move_agents_to_folder", {}, "running", "Moving workflows to folder…"],
   ])("labels agent tool %s", (tool, input, state, expected) => {
     expect(
       getCatalogLabel(tool, input, state as "running" | "done" | "error")?.text,

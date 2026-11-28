@@ -165,9 +165,6 @@
   "src/app/(platform)/copilot/components/ChatMessagesContainer/components/VirtualTranscript/VirtualTranscript.tsx": {
     "no-inline-styles": 4
   },
-  "src/app/(platform)/copilot/components/ClarificationQuestionsCard/ClarificationQuestionsCard.tsx": {
-    "no-restyle": 3
-  },
   "src/app/(platform)/copilot/components/CompactionCard/CompactionCard.tsx": {
     "no-inline-styles": 1,
     "no-restyle": 1
@@ -219,12 +216,6 @@
   },
   "src/app/(platform)/copilot/styleguide/page.tsx": {
     "no-restyle": 56
-  },
-  "src/app/(platform)/copilot/tools/AskQuestion/AskQuestion.tsx": {
-    "no-restyle": 1
-  },
-  "src/app/(platform)/copilot/tools/RunBlock/components/BlockOutputCard/BlockOutputCard.tsx": {
-    "no-restyle": 4
   },
   "src/app/(platform)/copilot/voice/components/VoiceModeButton.tsx": {
     "no-restyle": 4

@@ -19,6 +19,8 @@ import {
 import { BuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/BuilderChatPanel";
 import { useBuilderChatPanel } from "@/app/(platform)/build/components/BuilderChatPanel/useBuilderChatPanel";
 import { ChatContainer } from "../components/ChatContainer/ChatContainer";
+import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatMessagesContainer";
+import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { LIVE_STATUS_POLL_MS } from "../components/ToolChain/liveRunStatus";
 
 vi.mock("@/app/(platform)/copilot/components/ChatInput/ChatInput", () => ({
@@ -165,6 +167,22 @@ function renderBuilderChat(messages: Messages) {
   return render(<BuilderChatPanel />);
 }
 
+/** Mounted as the public share page mounts it: read-only, on the share surface. */
+function renderSharedChat(messages: Messages) {
+  return render(
+    <CopilotChatActionsProvider onSend={vi.fn()} chatSurface="share">
+      <ChatMessagesContainer
+        messages={messages}
+        status="idle"
+        error={undefined}
+        isLoading={false}
+        isTurnSettling={false}
+        readOnly
+      />
+    </CopilotChatActionsProvider>,
+  );
+}
+
 /** Opens the finished chain, then the run's row, the way a user reaches the
  *  run card after the turn. Returns the card. */
 function openRunCard() {
@@ -277,6 +295,37 @@ describe("run card in the chat thread", () => {
 
     expect(requests).toHaveLength(0);
     expect(within(card).getByText("queued")).toBeDefined();
+  });
+
+  it("makes no request on the public share page, which can't call the API", async () => {
+    const requests = serveRuns([makeRun("FAILED", "should not show")]);
+    renderSharedChat(transcript("QUEUED"));
+    const card = openRunCard();
+
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS * 2));
+
+    expect(requests).toHaveLength(0);
+    expect(within(card).getByText("queued")).toBeDefined();
+  });
+
+  it("keeps following a run through a server error", async () => {
+    let calls = 0;
+    server.use(
+      http.get(EXECUTION_URL, () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json({ detail: "Bad gateway" }, { status: 502 })
+          : HttpResponse.json(makeRun("FAILED", RUN_ERROR));
+      }),
+    );
+    renderMainChat(transcript("QUEUED"));
+    const card = openRunCard();
+
+    await waitFor(() => expect(calls).toBeGreaterThanOrEqual(1));
+    await act(() => vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS));
+
+    expect(await within(card).findByText("failed")).toBeDefined();
+    expect(within(card).getByText(RUN_ERROR)).toBeDefined();
   });
 
   it("keeps the started status when the run can't be read", async () => {

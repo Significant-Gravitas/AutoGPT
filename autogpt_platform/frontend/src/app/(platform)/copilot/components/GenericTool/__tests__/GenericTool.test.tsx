@@ -14,6 +14,23 @@ function makePart(overrides: Record<string, unknown> = {}): ToolUIPart {
 }
 
 describe("GenericTool", () => {
+  it("shows a failed call's status and icon in the error colour", () => {
+    const { container } = render(
+      <GenericTool
+        part={makePart({
+          state: "output-error",
+          input: {},
+          errorText: "Something went wrong",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Command failed").classList.contains("text-error"),
+    ).toBe(true);
+    expect(container.querySelector("svg.text-error")).not.toBeNull();
+  });
+
   it("shows a subtitle and no accordion while the tool is streaming", () => {
     const { container } = render(
       <GenericTool part={makePart({ state: "input-streaming" })} />,

@@ -245,6 +245,26 @@ describe("toChainRow", () => {
     });
   });
 
+  it.each(["input-available", "approval-requested", "approval-responded"])(
+    "reads a %s call as still running",
+    (state) => {
+      const row = toChainRow(
+        {
+          type: "tool-create_agent",
+          state,
+          toolCallId: "call-pending",
+          input: {},
+        } as MessagePart,
+        0,
+      );
+
+      expect(row).toMatchObject({
+        state: "running",
+        text: "Creating workflow…",
+      });
+    },
+  );
+
   it("falls back to generic categorization for non-catalog tools", () => {
     const grep = toChainRow(
       toolPart("Grep", { pattern: "TODO" }, "3 matches"),
@@ -298,6 +318,13 @@ describe("toChainRow", () => {
     [{ type: "need_login", message: "Log in first" }, "Log in first"],
     [{ type: "need_login" }, "Action required"],
     [{ type: "setup_requirements" }, "Complete setup to continue"],
+    [
+      {
+        type: "trigger_config_required",
+        message: "Ask the user which repo and events to use.",
+      },
+      "Ask the user which repo and events to use.",
+    ],
   ])("labels action-required output %j", (output, expected) => {
     const row = toChainRow(toolPart("run_block", {}, output), 0);
 

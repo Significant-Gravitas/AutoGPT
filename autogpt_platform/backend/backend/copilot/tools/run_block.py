@@ -373,11 +373,8 @@ def _offered_models_only(node: Any) -> Any:
 
 
 def _derived_title(property_name: str) -> str:
-    """The label BlockDetailsCard renders when a property carries no title.
-
-    Must stay in step with ``deriveFieldTitle`` in that component: a title this
-    reproduces is dropped, so any drift changes what the card displays.
-    """
+    """The title a property gets from re-casing its name; one equal to it tells
+    the model nothing the name does not, so it is dropped."""
     return " ".join(w[:1].upper() + w[1:] for w in property_name.split("_"))
 
 
