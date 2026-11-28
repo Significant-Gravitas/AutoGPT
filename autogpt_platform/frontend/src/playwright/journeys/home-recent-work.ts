@@ -143,6 +143,18 @@ export async function deleteSchedule(
   );
 }
 
+/** Retires Otto's first greeting, as sending the first message does. Until
+ * then Home shows the greeting in place of its cards, so a user who has never
+ * chatted sees no Recent work card. */
+export async function finishOttosGreeting(page: Page) {
+  const response = await page.request.post(
+    "/api/proxy/api/onboarding/brain-dump/intro/complete",
+  );
+  expect(response.ok(), `finishing Otto's greeting: ${response.status()}`).toBe(
+    true,
+  );
+}
+
 /** Opens Home and returns its Recent work card. The card draws only once the
  * dashboard has loaded, so what it shows comes from this visit's read. */
 export async function openHome(page: Page) {

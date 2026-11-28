@@ -4,6 +4,7 @@ import {
   createWorkflow,
   deleteSchedule,
   deleteScheduleInLibrary,
+  finishOttosGreeting,
   groupsListing,
   issue,
   openHome,
@@ -43,6 +44,12 @@ const test = journeyTest.extend<{ schedulesToDelete: string[] }>({
 });
 
 test.describe("Home recent work journey", () => {
+  // Someone who has chatted with Otto once: before that, Home shows Otto's
+  // greeting instead of its cards.
+  test.beforeEach(async ({ page, journeyUser: _user }) => {
+    await finishOttosGreeting(page);
+  });
+
   test(
     "two runs started in the Library are listed on Home in one group with the workflow's name, each with the status the Library shows",
     { annotation: issue(17357) },
