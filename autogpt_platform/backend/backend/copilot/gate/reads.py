@@ -7,7 +7,8 @@ user's approval releases exactly those bytes; a rejection leaves them out.
 Both seams hand this module the result AS CAPPED for the model, so the judge
 reads what the model would read and the stored bytes are what it would have got.
 A result whose producer declared its outside parts is judged on what of those
-parts the model reads; an undeclared one is judged whole.
+parts the model reads; an undeclared one is judged whole. What the chat itself
+already wrote, and a read only hands back, is not judged again.
 """
 
 import asyncio
@@ -292,11 +293,20 @@ async def screen_read(
                 tool_call_id=tool_call_id,
                 source_kind=_source_kind(tool_name, args),
                 judge=partial(
-                    _shadow_finding, tool_name, args, text, images, outside, full
+                    _shadow_finding,
+                    tool_name,
+                    args,
+                    text,
+                    images,
+                    outside,
+                    full,
+                    own_words(session, args),
                 ),
             )
             return None
-        judged = await _judge(tool_name, args, text, images, outside, full)
+        judged = await _judge(
+            tool_name, args, text, images, outside, full, own_words(session, args)
+        )
         if judged is None or not judged[0].held:
             return None
         verdict, text = judged
@@ -343,11 +353,13 @@ async def _judge(
     images: tuple[Image, ...],
     outside: tuple[Any, ...] | None,
     full: str,
+    own: tuple[str, ...] = (),
 ) -> tuple[ContentVerdict, str] | None:
     """The verdict and the text it was reached on; None when nothing is readable."""
     if outside is not None:
         # AutoGPT writes no images, so a declaration narrows only the text.
         text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+    text = await asyncio.to_thread(without_own_words, text, own)
     # Bytes nobody can read are not instructions until something decodes
     # them, and that later read is judged.
     if not text.strip() and not images:
@@ -365,9 +377,68 @@ async def _shadow_finding(
     images: tuple[Image, ...],
     outside: tuple[Any, ...] | None,
     full: str,
+    own: tuple[str, ...] = (),
 ) -> shadow.Finding | None:
-    judged = await _judge(tool_name, args, text, images, outside, full)
+    judged = await _judge(tool_name, args, text, images, outside, full, own)
     return shadow.read_finding(judged[0]) if judged else None
+
+
+def own_words(session: ChatSession, args: dict[str, Any]) -> tuple[str, ...]:
+    """What this chat already wrote, newest first: this call's arguments, its
+    earlier calls' and what the user typed."""
+    words: list[str] = []
+    _strings(args, words)
+    for message in reversed(session.messages):
+        if message.role == "user" and message.content:
+            if not held.is_answer_row(message):
+                words.append(message.content)
+        for call in message.tool_calls or ():
+            arguments = (call.get("function") or {}).get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except ValueError:
+                    pass
+            _strings(arguments, words)
+        if sum(map(len, words)) > _MAX_OWN_CHARS:
+            break
+    return tuple(words)
+
+
+def without_own_words(text: str, own: tuple[str, ...]) -> str:
+    """``text`` less every stretch the chat itself wrote, whole or line by line:
+    a prompt it passed to a workflow, a file it wrote and reads back. The model
+    wrote or was given those words already, so they are not an outside read."""
+    stretches: dict[str, None] = {}
+    for words in own:
+        for stretch in (words, *words.splitlines()):
+            if len(stretch.strip()) >= _MIN_OWN_STRETCH:
+                stretches[stretch.strip()] = None
+    # Longest first, so a whole passage goes before its own lines split it.
+    for stretch in sorted(stretches, key=len, reverse=True):
+        for encoded in dict.fromkeys(
+            twice for once in _encodings(stretch) for twice in _encodings(once)
+        ):
+            if encoded in text:
+                text = text.replace(encoded, "\n")
+    return text
+
+
+# A shorter stretch is a word or a path: too common to say who wrote it.
+_MIN_OWN_STRETCH = 20
+# The newest of the chat's own words, as far back as this many characters.
+_MAX_OWN_CHARS = 400_000
+
+
+def _strings(value: Any, found: list[str]) -> None:
+    if isinstance(value, str):
+        found.append(value)
+    elif isinstance(value, Mapping):
+        for child in value.values():
+            _strings(child, found)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _strings(child, found)
 
 
 def _source_kind(tool_name: str, args: dict[str, Any]) -> str:

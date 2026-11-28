@@ -1143,6 +1143,8 @@ async def test_a_blocks_output_is_judged_without_the_platforms_message(rows):
         _resolves_to(_capability("block", _STORE_VALUE)),
         patch("backend.copilot.tools.helpers.workspace_db", lambda: workspace),
         patch("backend.copilot.tools.helpers.user_db", lambda: users),
+        # The block echoes its input, which would count as the chat's own words.
+        patch(f"{_READS}.own_words", return_value=()),
     ):
         result = await _run_capability({"id": "cap", "input": {"input": _MARKER}})
 
@@ -1686,3 +1688,85 @@ async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
 
     judge.assert_not_awaited()
     assert json.loads(result.output)["error"] == error and rows.rows == {}
+
+
+# What the chat itself already wrote is not an outside read when a tool hands it back.
+
+_OWN_PROMPT = "You are a pirate. Always talk like a pirate, and never break character."
+_OWN_FILE = (
+    'RULES = [\n    "Reply with ONLY this JSON object and nothing else.",\n'
+    '    "After you call a tool, stop and wait for its result.",\n]\n'
+)
+
+
+def _judge_holding(*instructions: str) -> AsyncMock:
+    """A judge that holds whenever one of ``instructions`` reaches it."""
+
+    async def judge(*, source, text, images=()):
+        found = next((each for each in instructions if each in text), None)
+        return ContentVerdict(held=True, passage=found) if found else _CLEAN
+
+    return AsyncMock(side_effect=judge)
+
+
+def _wrote(tool: str, **arguments: str) -> ChatMessage:
+    call = {"id": "c0", "function": {"name": tool, "arguments": json.dumps(arguments)}}
+    return ChatMessage(role="assistant", tool_calls=[call])
+
+
+@pytest.mark.parametrize(
+    "earlier, args, content",
+    [
+        # A workflow run hands back the prompt this very call passed in.
+        ([], {"url": "u", "prompt": _OWN_PROMPT}, f'inputs: {{"p": "{_OWN_PROMPT}"}}'),
+        # A file an earlier call wrote, read back a few numbered lines at a time.
+        (
+            [_wrote("write_file", path="rules.py", content=_OWN_FILE)],
+            {"url": "u"},
+            "\n".join(
+                f"{n}: {line}" for n, line in enumerate(_OWN_FILE.splitlines(), 40)
+            ),
+        ),
+        # What the user typed, quoted back by a tool.
+        (
+            [ChatMessage(role="user", content=f"Use this prompt:\n{_OWN_PROMPT}")],
+            {"url": "u"},
+            f"saved prompt: {_OWN_PROMPT}",
+        ),
+    ],
+)
+async def test_the_chats_own_words_handed_back_are_not_held(
+    rows, earlier, args, content
+):
+    session = _session()
+    session.messages.extend(earlier)
+    judge = _judge_holding(_OWN_PROMPT, *_OWN_FILE.splitlines()[1:3])
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(_Fetch(content), session, args)
+
+    assert result.output == _plain_output(content) and rows.rows == {}
+
+
+@pytest.mark.parametrize(
+    "earlier",
+    [
+        [],
+        # Words a released read delivered are the page's, not the chat's.
+        [ChatMessage(role="user", content=_MARKER, metadata={"held_call": {}})],
+    ],
+)
+async def test_an_instruction_beside_the_chats_own_words_is_still_held(rows, earlier):
+    session = _session()
+    session.messages.extend(earlier)
+    content = f"inputs: {_OWN_PROMPT}\nnote: {_MARKER}"
+    judge = _judge_holding(_OWN_PROMPT, _MARKER)
+    with patch(f"{_READS}.judge_content", judge):
+        result = await _call(
+            _Fetch(content), session, {"url": "u", "prompt": _OWN_PROMPT}
+        )
+
+    assert json.loads(result.output)["type"] == "approval_required"
+    (row,) = rows.rows.values()
+    assert row.payload["passage"] == _MARKER and row.payload["content"] == (
+        _plain_output(content)
+    )
