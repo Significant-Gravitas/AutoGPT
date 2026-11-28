@@ -24,6 +24,7 @@ from backend.api.features.store.skill_catalog_release import load_release
 from backend.api.features.store.skill_db_test import _make_listing
 from backend.api.features.store.skill_submission_db import snapshot_version_files
 from backend.copilot.tools.skills import ParsedSkill
+from backend.data import db as database
 from backend.util.test import SpinTestServer
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -309,22 +310,27 @@ async def test_a_publish_the_creator_has_begun_finishes_before_the_move(
 
     async def catalog_publishes_meanwhile(tx, listing_id):
         catalog.append(asyncio.create_task(_publish(tmp_path)))
-        await asyncio.wait(catalog, timeout=2)
+        await _done_or_waiting_on_creator(catalog[0], listing_owner)
         return await pending_version(tx, listing_id)
 
     monkeypatch.setattr(
         skill_submission_db, "_pending_version", catalog_publishes_meanwhile
     )
 
-    await skill_submission_db.submit_skill_package(
-        listing_owner,
-        skill_model.SkillSubmissionRequest(
-            skill_name="cold-email", categories=["content"]
-        ),
-        ParsedSkill(name="cold-email", description="mine", body="# mine, again\n"),
-        [],
-    )
-    await catalog[0]
+    try:
+        await skill_submission_db.submit_skill_package(
+            listing_owner,
+            skill_model.SkillSubmissionRequest(
+                skill_name="cold-email", categories=["content"]
+            ),
+            ParsedSkill(name="cold-email", description="mine", body="# mine, again\n"),
+            [],
+        )
+        await catalog[0]
+    finally:
+        for task in catalog:
+            task.cancel()
+        await asyncio.gather(*catalog, return_exceptions=True)
 
     versions = await prisma.models.SkillListingVersion.prisma().find_many(
         where={"skillListingId": held.id}
@@ -333,6 +339,24 @@ async def test_a_publish_the_creator_has_begun_finishes_before_the_move(
         prisma.enums.SubmissionStatus.REJECTED
     ]
     assert (await _listing("cold-email")).owningUserId is None
+
+
+async def _done_or_waiting_on_creator(task: asyncio.Task, owner: str) -> None:
+    """Return once *task* has finished, or is waiting on *owner*'s submission
+    lock; a stalled test fails after 30 s."""
+    key = f"skill-submissions:{owner}"
+    async with asyncio.timeout(30):
+        while not task.done():
+            [row] = await database.prisma.query_raw(
+                "SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'"
+                " AND NOT granted AND objsubid = 1"
+                " AND classid::bigint = (hashtextextended($1, 0) >> 32) & 4294967295"
+                " AND objid::bigint = hashtextextended($1, 0) & 4294967295",
+                key,
+            )
+            if row["n"]:
+                return
+            await asyncio.sleep(0.05)
 
 
 async def _unapproved_listing(
