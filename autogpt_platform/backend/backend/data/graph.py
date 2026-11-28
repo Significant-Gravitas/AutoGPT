@@ -45,6 +45,7 @@ from backend.blocks._base import Block, BlockType, EmptySchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.data.db_endpoints import db_endpoint
 from backend.data.llm_registry.llm_models import is_llm_model_field
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
@@ -1581,6 +1582,7 @@ class GraphModelWithoutNodes(GraphModel):
 # --------------------- CRUD functions --------------------- #
 
 
+@db_endpoint
 async def get_node(node_id: str) -> NodeModel:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     node = await AgentNode.prisma().find_unique_or_raise(
@@ -1665,6 +1667,7 @@ async def list_graphs_paginated(
     )
 
 
+@db_endpoint
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
@@ -1690,6 +1693,7 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     )
 
 
+@db_endpoint
 async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
     """The ids in ``graph_ids`` with any version copied from another graph."""
     # A version saved in the builder drops ``forkedFromId``, so the latest
@@ -1701,6 +1705,7 @@ async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
     return [copy.id for copy in copies]
 
 
+@db_endpoint
 async def get_graph(
     graph_id: str,
     version: int | None,
@@ -1851,6 +1856,7 @@ def graph_in_library_filter(
     return where
 
 
+@db_endpoint
 async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]:
     """Batch-fetch multiple store-listed graphs by their IDs.
 
@@ -2137,6 +2143,7 @@ def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, i
     ]
 
 
+@db_endpoint
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     """Each distinct outgoing link of the node, paired with its sink node.
 
@@ -2194,6 +2201,7 @@ async def get_graph_version_owners(graph_id: str) -> set[tuple[str, str | None]]
     return {(version.userId, version.organizationId) for version in versions}
 
 
+@db_endpoint
 async def is_graph_version_owner(graph_id: str, version: int, user_id: str) -> bool:
     """Whether *user_id* saved this version of the graph."""
     return (
@@ -2468,6 +2476,7 @@ async def delete_graph_permanently(
         ) from e
 
 
+@db_endpoint
 async def get_graph_settings(
     user_id: str, graph_id: str, graph_version: int | None = None
 ) -> GraphSettings:
@@ -2511,6 +2520,7 @@ async def get_graph_settings(
         return GraphSettings()
 
 
+@db_endpoint
 async def validate_graph_execution_permissions(
     user_id: str,
     graph_id: str,

@@ -12,8 +12,12 @@ call in other packages.
 
 import ast
 import pathlib
+import sys
 
 import pytest
+
+from backend.data.db_manager import DatabaseManager
+from backend.util.service import EXPOSED_FLAG
 
 _BACKEND = pathlib.Path(__file__).parent.parent
 
@@ -114,25 +118,21 @@ def _resolve(node: ast.AST, bound: dict[str, str]) -> str | None:
 
 
 def _served_functions() -> set[str]:
-    """Dotted names of the functions DatabaseManager exposes over RPC."""
-    path = _BACKEND / "data" / "db_manager.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    bound = _bindings(_imports(tree, path))
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            bound[node.name] = f"backend.data.db_manager.{node.name}"
-    served = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_"
-            and node.args
-        ):
-            target = _resolve(node.args[0], bound)
-            if target:
-                served.add(target)
-    return served
+    """Dotted names of the functions DatabaseManager exposes over RPC, under
+    every backend module that holds one: where it is defined, and any module
+    that re-exports it."""
+    exposed = {
+        id(endpoint)
+        for endpoint in vars(DatabaseManager).values()
+        if getattr(endpoint, EXPOSED_FLAG, False)
+    }
+    return {
+        f"{name}.{attribute}"
+        for name, module in list(sys.modules.items())
+        if name.startswith("backend.") and not name.endswith("_test")
+        for attribute, value in list(vars(module).items())
+        if id(value) in exposed
+    }
 
 
 _SERVED = _served_functions()
@@ -179,6 +179,9 @@ def test_query_modules_are_recognised():
 
 def test_database_manager_endpoints_are_found():
     assert "backend.copilot.db.get_chat_session_metadata" in _SERVED
+    # One a module declares itself, and one behind a caching decorator.
+    assert "backend.data.graph.get_graph" in _SERVED
+    assert "backend.data.user.get_user_by_id" in _SERVED
     assert len(_SERVED) > 300
 
 
