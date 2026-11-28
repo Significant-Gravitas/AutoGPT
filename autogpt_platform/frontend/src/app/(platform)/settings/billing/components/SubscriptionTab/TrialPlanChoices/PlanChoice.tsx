@@ -22,7 +22,7 @@ export function PlanChoice({
 }: Props) {
   return (
     <li className="flex flex-col gap-3 rounded-large border border-border-base bg-surface p-5 shadow-message-table">
-      <Text variant="body-medium" as="h3">
+      <Text variant="body" weight="medium" as="h3">
         {plan.label}
       </Text>
       <div className="flex flex-col gap-1">

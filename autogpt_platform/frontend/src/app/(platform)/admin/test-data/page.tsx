@@ -29,13 +29,13 @@ function TestDataDashboard() {
           </Text>
 
           <div className="mb-6">
-            <Text variant="body-medium" className="mb-2">
+            <Text variant="body" weight="medium" className="mb-2">
               Available Script Types:
             </Text>
             <ul className="list-inside list-disc space-y-2 text-foreground-secondary">
               <li>
                 <Text variant="body" as="span">
-                  <Text variant="body-medium" as="span">
+                  <Text variant="body" weight="medium" as="span">
                     E2E Test Data:
                   </Text>{" "}
                   Creates up to 15 test users with graphs, library agents,
@@ -45,7 +45,7 @@ function TestDataDashboard() {
               </li>
               <li>
                 <Text variant="body" as="span">
-                  <Text variant="body-medium" as="span">
+                  <Text variant="body" weight="medium" as="span">
                     Full Test Data:
                   </Text>{" "}
                   Creates 100+ users with comprehensive test data including
@@ -60,12 +60,14 @@ function TestDataDashboard() {
         </div>
 
         <div className="rounded-lg border bg-surface-muted p-6">
-          <Text variant="body-medium" className="mb-2" tone="body">
+          <Text variant="body" weight="medium" className="mb-2" tone="body">
             What data is created?
           </Text>
           <div className="grid gap-4 text-body text-foreground-secondary md:grid-cols-2">
             <div>
-              <Text variant="body-medium">E2E Script:</Text>
+              <Text variant="body" weight="medium">
+                E2E Script:
+              </Text>
               <ul className="mt-1 list-inside list-disc">
                 <li>
                   <Text variant="small" as="span">
@@ -105,7 +107,9 @@ function TestDataDashboard() {
               </ul>
             </div>
             <div>
-              <Text variant="body-medium">Full Script:</Text>
+              <Text variant="body" weight="medium">
+                Full Script:
+              </Text>
               <ul className="mt-1 list-inside list-disc">
                 <li>
                   <Text variant="small" as="span">

@@ -216,6 +216,22 @@ export function getRemovedCredentialMessage(
   return `${removedCredentialTitle} was removed — now using ${replacement}.`;
 }
 
+export function getRefusedPlatformKeyMessage(
+  selectedCredential:
+    | { id: string; title?: string | null; username?: string }
+    | undefined,
+  providerName: string,
+  hasOwnCredentials: boolean,
+): string {
+  const reason = `This step keeps what it creates in your ${providerName} account, so it can't use the platform's ${providerName} key.`;
+  if (selectedCredential?.id) {
+    return `${reason} Now using ${getCredentialDisplayName(selectedCredential, providerName)}.`;
+  }
+  return hasOwnCredentials
+    ? `${reason} Choose one of your own ${providerName} keys.`
+    : `${reason} Add your own ${providerName} key.`;
+}
+
 export function getMissingScopes(
   requiredScopes: string[],
   grantedScopes: string[] | null | undefined,
@@ -240,7 +256,8 @@ export function isSystemCredential(credential: {
   title?: string | null;
   is_system?: boolean;
 }): boolean {
-  if (credential.is_system === true) return true;
+  // The backend sets the flag from the key's id; the title is only a guess
+  if (typeof credential.is_system === "boolean") return credential.is_system;
   if (!credential.title) return false;
   const titleLower = credential.title.toLowerCase();
   return (

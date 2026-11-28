@@ -10,7 +10,7 @@ export function DreamEntityInvalidationRow({ item }: Props) {
   const touched = item.edges_touched ?? [];
   return (
     <li className="border-l-2 border-error/20 py-1.5 pl-3">
-      <Text variant="small-medium" className="break-words">
+      <Text variant="small" weight="medium" className="break-words">
         {item.reason}
       </Text>
       <div className="mt-1 flex flex-wrap items-center gap-2 text-foreground-tertiary">

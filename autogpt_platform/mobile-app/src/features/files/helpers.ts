@@ -1,6 +1,6 @@
 import type { FileText, WorkspaceFile } from "@/lib/api/workspace";
 
-export type FileKind = "markdown" | "text" | "image" | "other";
+export type FileKind = "markdown" | "text" | "table" | "image" | "pdf" | "other";
 
 // Workflow files the builder tools save as `agent.json` are plumbing, not
 // something the user made, so the web leaves them out of file lists too.
@@ -12,6 +12,8 @@ const TOOL_RESULT_PATH = /^\/sessions\/[^/]+\/tool-(?:results|outputs)\/[^/]+$/i
 
 const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mdx"]);
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+const TABLE_EXTENSIONS = new Set(["csv", "tsv"]);
+const TABLE_MIMES = new Set(["text/csv", "text/tab-separated-values"]);
 const TEXT_EXTENSIONS = new Set([
   "txt", "log", "ics", "vcf", "json", "jsonl", "csv", "tsv", "xml", "html",
   "htm", "yaml", "yml", "toml", "ini", "cfg", "conf", "properties", "env",
@@ -54,10 +56,14 @@ function isToolOutput(file: WorkspaceFile) {
 export function fileKind(file: Pick<WorkspaceFile, "name" | "mime_type">): FileKind {
   const extension = readExtension(file.name);
   if (MARKDOWN_EXTENSIONS.has(extension)) return "markdown";
+  if (TABLE_EXTENSIONS.has(extension)) return "table";
+  if (extension === "pdf") return "pdf";
   if (IMAGE_EXTENSIONS.has(extension)) return "image";
   if (TEXT_EXTENSIONS.has(extension)) return "text";
   const mime = (file.mime_type ?? "").toLowerCase().split(";")[0].trim();
   if (mime === "text/markdown" || mime === "text/x-markdown") return "markdown";
+  if (TABLE_MIMES.has(mime)) return "table";
+  if (mime === "application/pdf") return "pdf";
   if (IMAGE_MIMES.has(mime)) return "image";
   if (mime.startsWith("text/") || TEXT_MIMES.has(mime)) return "text";
   return "other";

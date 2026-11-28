@@ -37,7 +37,8 @@ export function NodeAdvancedToggle({
         aria-expanded={showAdvanced}
       >
         <Text
-          variant="body-semibold"
+          variant="body"
+          weight="semibold"
           tone="body"
           as="span"
           className="flex items-center gap-2"

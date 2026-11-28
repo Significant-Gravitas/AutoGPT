@@ -28,7 +28,12 @@ export function MarketplaceBanners({
         <div className="mb-6 rounded-lg bg-surface-muted p-4">
           <div className="flex flex-col gap-3">
             <div>
-              <Text variant="large-medium" tone="primary" className="mb-2">
+              <Text
+                variant="large"
+                weight="medium"
+                tone="primary"
+                className="mb-2"
+              >
                 Update available
               </Text>
               <Text variant="body" tone="body">
@@ -56,7 +61,12 @@ export function MarketplaceBanners({
         <div className="mb-6 rounded-lg bg-surface-muted p-4">
           <div className="flex flex-col gap-3">
             <div>
-              <Text variant="large-medium" tone="primary" className="mb-2">
+              <Text
+                variant="large"
+                weight="medium"
+                tone="primary"
+                className="mb-2"
+              >
                 Unpublished changes
               </Text>
               <Text variant="body" tone="body">

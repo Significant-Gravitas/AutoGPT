@@ -9,12 +9,13 @@ export function StoppedTaskCard() {
         <Icon icon={SquareIcon} size={16} tone="brand" />
       </div>
       <div className="min-w-0 flex-1">
-        <Text tone="primary" variant="body-medium">
+        <Text tone="primary" variant="body" weight="medium">
           Task stopped
         </Text>
         <Text
           tone="secondary"
-          variant="body-sm-medium-inherit"
+          variant="body-sm"
+          leading="inherit"
           weight="normal"
           className="mt-1"
         >

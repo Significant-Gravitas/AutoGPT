@@ -22,7 +22,7 @@ interface Props {
 // Continue drives the same submit (Enter still works via the form).
 export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
   return (
-    <Form form={form} onSubmit={onSubmit} className="space-y-2.5">
+    <Form form={form} onSubmit={onSubmit} spacing="compact">
       <FormField
         control={form.control}
         name="title"
@@ -34,7 +34,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 id={field.name}
                 autoComplete="off"
                 label="Name"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 placeholder={`My ${providerName} key`}
                 wrapperClassName="!mb-0"
@@ -58,7 +58,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 autoComplete="new-password"
                 spellCheck={false}
                 label="API key"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 placeholder="sk-..."
                 wrapperClassName="!mb-0"
@@ -81,7 +81,7 @@ export function InlineApiKeyForm({ form, providerName, onSubmit }: Props) {
                 id={field.name}
                 type="date"
                 label="Expires (optional)"
-                labelVariant="small-medium"
+                labelVariant="small"
                 size="small"
                 wrapperClassName="!mb-0"
               />

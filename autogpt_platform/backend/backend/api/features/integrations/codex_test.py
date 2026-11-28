@@ -266,6 +266,7 @@ def test_codex_callback_persists_one_safe_credential():
         "service": "codex",
         "service_name": None,
         "service_icon": "codex",
+        "mcp_catalog_entry": None,
         "microsoft_identity": None,
     }
     raw_response = response.text

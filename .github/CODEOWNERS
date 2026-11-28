@@ -27,4 +27,12 @@ autogpt_platform/frontend/scripts/check-token-equivalence.ts @Significant-Gravit
 autogpt_platform/frontend/scripts/screenshot-pages.ts @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
 docs/engineering/design-system.md @Significant-Gravitas/frontend-maintainers @Significant-Gravitas/design
 
+# Mobile app: the mobile owners review every change to the app. This file only
+# asks for their review; a repository ruleset on dev, master and mobile-release/*
+# makes their approval required. See the Notion page "Mobile App" > "Owners and access".
+autogpt_platform/mobile-app/ @Significant-Gravitas/mobile-maintainers
+.easignore @Significant-Gravitas/mobile-maintainers
+docs/engineering/native-mobile/ @Significant-Gravitas/mobile-maintainers
+autogpt_platform/backend/test/native_mobile/ @Significant-Gravitas/mobile-maintainers
+
 .github/CODEOWNERS @Significant-Gravitas/admins

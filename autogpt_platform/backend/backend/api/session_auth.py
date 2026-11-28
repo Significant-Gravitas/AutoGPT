@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any
 
+from autogpt_libs.auth.closed_accounts import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -12,6 +13,11 @@ from backend.data.db_accessors import auth_session_db, user_db
 logger = logging.getLogger(__name__)
 _SESSION_LOOKUP_TIMEOUT = 5.0
 SESSION_TOKEN_RENEWAL_REQUIRED = "session_token_renewal_required"
+# The frontend signs out on this code (lib/auth/account-banned.ts).
+SESSION_REVOKED_DETAIL = {
+    "code": "session_revoked",
+    "message": "Session expired or revoked",
+}
 
 
 class SessionTokenClaims(BaseModel):
@@ -49,7 +55,10 @@ async def require_active_auth_session(payload: dict[str, Any]) -> None:
             headers={"Retry-After": "5"},
         ) from exc
     if not active:
-        raise HTTPException(status_code=401, detail="Session expired or revoked")
+        # Closing an account ends every session, so its tokens land here: they
+        # get the closed account's 401, as the WebSocket and routes answer it.
+        await reject_closed_account(claims.sub)
+        raise HTTPException(status_code=401, detail=SESSION_REVOKED_DETAIL)
 
 
 async def _session_is_active(claims: SessionTokenClaims) -> bool:

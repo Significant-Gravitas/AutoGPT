@@ -68,7 +68,9 @@ export function ContentCardTitle({
 }) {
   return (
     <Text
-      variant={size === "small" ? "small-medium-tight" : "body-medium"}
+      variant={size === "small" ? "small" : "body"}
+      weight="medium"
+      leading={size === "small" ? "4" : undefined}
       tone="emphasis"
       className={cn("truncate", className)}
     >
@@ -107,7 +109,8 @@ export function ContentCardDescription({
 }) {
   return (
     <Text
-      variant={size === "small" ? "small-tight" : "body"}
+      variant={size === "small" ? "small" : "body"}
+      leading={size === "small" ? "4" : undefined}
       tone="emphasis"
       className={cn("mt-2", className)}
     >
@@ -184,10 +187,12 @@ export function ContentBadge({
 }) {
   return (
     <Text
-      variant="small"
+      variant="caption-sm"
       as="span"
+      tone="emphasis"
+      leading="inherit"
       className={cn(
-        "shrink-0 rounded-full border bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
+        "shrink-0 rounded-pill border bg-surface-hover px-2 py-0.5",
         className,
       )}
     >

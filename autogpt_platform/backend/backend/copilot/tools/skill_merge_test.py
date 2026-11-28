@@ -2,13 +2,23 @@
 edit (which re-renders the frontmatter) never masks a catalog change to a
 field, and a field nobody touched keeps the catalog's bytes."""
 
+import math
+
+import pytest
 import yaml
 
 from backend.copilot.tools.skill_merge import merge_skill_markdown
 from backend.copilot.tools.skills import (
     ParsedSkill,
+    _merge_copy,
     parse_skill_markdown,
     render_skill_markdown,
+)
+from backend.data.skill_package import (
+    MAX_MERGE_COMPARISONS,
+    SKILL_MD,
+    MergeBudget,
+    PackageFile,
 )
 
 CATALOG_V1 = "---\nname: demo\ndescription: First description\nversion: 1\n---\n\n# Demo\n\nintro\nkeep\n"
@@ -123,3 +133,48 @@ def test_a_side_whose_frontmatter_cannot_be_read_merges_as_plain_text():
 
     assert merged.conflicted
     assert "version: &v 1" in merged.text
+
+
+@pytest.mark.parametrize(
+    "base, ours, theirs",
+    [
+        pytest.param("a\nb\nc\n", "a\nb\nC\n", "A\nb\nc\n", id="plain text"),
+        pytest.param(
+            "---\nname: demo\n---\nintro\nmiddle\nkeep\n",
+            "---\nname: demo\n---\nintro\nmiddle\nkept\n",
+            "---\nname: demo\n---\nnew intro\nmiddle\nkeep\n",
+            id="body",
+        ),
+        pytest.param(
+            "---\nname: demo\ndescription: First\nlicense: MIT\nversion: 1\n---\nbody\n",
+            "---\nname: demo\ndescription: First\nlicense: MIT\nversion: &v 1\n---\nbody\n",
+            "---\nname: demo\ndescription: Second\nlicense: MIT\nversion: 1\n---\nbody\n",
+            id="unreadable frontmatter",
+        ),
+    ],
+)
+def test_every_part_of_a_skill_md_spends_the_budget_it_is_given(
+    base: str, ours: str, theirs: str
+):
+    assert not merge_skill_markdown(base, ours, theirs).conflicted
+    spent = MergeBudget(comparisons=0)
+    assert merge_skill_markdown(base, ours, theirs, spent).conflicted
+
+
+def test_a_copys_files_and_its_skill_md_share_one_budget():
+    """The sibling costs 60% of the budget to align, so a SKILL.md that needs
+    as much again keeps the owner's copy."""
+    rows = math.isqrt(MAX_MERGE_COMPARISONS * 6 // 10)
+
+    def package(first: str, middle: str, last: str) -> dict[str, PackageFile]:
+        lines = [first, *["x"] * (rows // 2), middle, *["x"] * (rows // 2), last]
+        text = PackageFile(content="\n".join(lines).encode())
+        return {SKILL_MD: text, "notes.md": text}
+
+    ours = package("H", "x", "T")
+
+    merged = _merge_copy(package("h", "x", "t"), ours, package("h", "Y", "t"))
+
+    assert merged.conflicts == [SKILL_MD]
+    assert merged.files["notes.md"] == package("H", "Y", "T")["notes.md"]
+    assert merged.files[SKILL_MD] == ours[SKILL_MD]

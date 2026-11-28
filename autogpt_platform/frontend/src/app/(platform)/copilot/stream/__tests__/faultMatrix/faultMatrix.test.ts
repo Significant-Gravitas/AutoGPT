@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CONTINUATION_PROBES, SendInFlightError } from "../../turnRuntime";
+import { CANCELLED_MARKER } from "../../../useCopilotStop";
+import { createTailRenderer } from "../../renderTail";
+import {
+  CONTINUATION_PROBES,
+  SendInFlightError,
+  UnconfirmedSendError,
+} from "../../turnRuntime";
 import { FaultServer } from "./faultServer";
 import { Tab, type Screen } from "./tab";
 
@@ -9,14 +15,17 @@ import { Tab, type Screen } from "./tab";
 const KNOWN_WRONG: Record<string, string> = {
   F1: "a server-started turn that registers after the probes is not followed",
   F3: "an idle visible tab is not told of a turn another device starts",
+  V1i: "the server does not say again that a stopped turn ended once its last rows are saved (backend follow-up)",
 };
 const CASES = new Set<string>();
 
+const SESSION = "session-1";
 const P1 = "What does example.com say?";
 const P2 = "And what about example.org?";
 const P3 = "Then compare the two.";
 const ANSWER = "assistant: Let me fetch that page.It says Example Domain.";
 const FIRST_BLOCK = "assistant: Let me fetch that page.";
+const STOPPED = `${FIRST_BLOCK}${CANCELLED_MARKER}`;
 const SIGN_IN_AGAIN = "Authentication failed — please sign in again.";
 const UNCONFIRMED =
   "The connection stalled before the server confirmed your message.";
@@ -398,6 +407,112 @@ describe("a send", () => {
       setOnline(true);
       await advance(15_000);
       expectScreen({ error: "Failed to fetch", notice: null });
+    },
+  );
+
+  cell(
+    "S15r",
+    "while offline, once reported, is sent again under its first id and answered once",
+    async () => {
+      server.postMode = "lost-before-send";
+      setOnline(false);
+      tab.send(P1);
+      await advance(30_000);
+      setOnline(true);
+      await advance(15_000);
+      // The check read the chat and found no row for it.
+      expectScreen({ error: "Failed to fetch", notice: null, phase: "failed" });
+      expect(tab.runtime.getSnapshot().error?.cause).toBeInstanceOf(TypeError);
+      expect(server.history).toEqual([]);
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({
+        error: null,
+        notice: null,
+        chat: [`user: ${P1}`, ANSWER],
+      });
+      const [first, again] = server.posts;
+      expect(server.posts).toHaveLength(2);
+      expect(again.message_id).toBe(first.message_id);
+      expect(server.turns).toHaveLength(1);
+    },
+  );
+
+  cell(
+    "S15a",
+    "dropped, its request reaching the server only after it was reported, sent again, shows once with its answer",
+    async () => {
+      server.postMode = "lost-late-receive";
+      tab.send(P1);
+      await advance(10_000);
+      expectScreen({ error: "Failed to fetch", phase: "failed" });
+      // The server takes the first request at 40 s and starts its turn.
+      await advance(32_000);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+      server.postMode = "stream";
+      expect(tab.runtime.resendUnconfirmed(undefined)).not.toBeNull();
+      await advance(0);
+      server.publish();
+      await advance(30_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(server.posts).toHaveLength(2);
+      expect(server.posts[1].message_id).toBe(server.posts[0].message_id);
+      expect(server.turns).toHaveLength(1);
+      expect(server.history.filter((row) => row.content === P1)).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "S15l",
+    "dropped, its request answered after it was reported, no longer offers to send it again",
+    async () => {
+      server.postMode = "lost-late-receive";
+      tab.send(P1);
+      await advance(10_000);
+      expectScreen({ error: "Failed to fetch" });
+      // The server took it at 40 s and answered; the page reads the chat.
+      await advance(32_000);
+      server.publish();
+      await advance(1_000);
+      tab.runtime.observe(server.view());
+      await advance(1_000);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+    },
+  );
+
+  cell(
+    "S15q",
+    "queued behind another tab's turn, its response then cut off, does not offer to send it again",
+    async () => {
+      const other = openTab();
+      other.send(P1);
+      await advance(0);
+      server.publish(9);
+      await advance(100);
+      // The server says it queued P2, so the chat drops P2's bubble; then the
+      // response fails, and no bubble is left for Send again to post.
+      server.postMode = "lost-after-follow-up";
+      tab.send(P2);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      server.publish();
+      await advance(30_000);
+      // P2's own turn answered it.
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+      expect(tab.runtime.getSnapshot().error).not.toBeInstanceOf(
+        UnconfirmedSendError,
+      );
+      expect(tab.runtime.resendUnconfirmed(undefined)).toBeNull();
+      expect(server.posts.map((post) => post.message)).toEqual([P1, P2]);
     },
   );
 
@@ -1532,6 +1647,669 @@ describe("two tabs on one chat", () => {
       );
     },
   );
+
+  cell(
+    "M6",
+    "a send from a tab that missed the other tab's whole turn shows that turn above its own",
+    async () => {
+      const stale = openTab();
+      await finishFirstTurn();
+      stale.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  cell(
+    "M6n",
+    "a tab's next send after the other tab's whole turn shows that turn between its own",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      tab.send(P3);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen({
+        error: null,
+        chat: [
+          `user: ${P1}`,
+          ANSWER,
+          `user: ${P2}`,
+          ANSWER,
+          `user: ${P3}`,
+          ANSWER,
+        ],
+      });
+    },
+  );
+
+  cell(
+    "M6l",
+    "a stale tab's send whose answer was lost, and whose turn ended while the tab was hidden, shows the other tab's turn above it",
+    async () => {
+      const stale = openTab();
+      await finishFirstTurn();
+      setVisibility("hidden");
+      server.postMode = "lost-after-receive";
+      stale.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(60_000);
+      setVisibility("visible");
+      await advance(5_000);
+      expectScreen(
+        {
+          error: null,
+          chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+        },
+        stale,
+      );
+    },
+  );
+
+  // What the page does when the server says a turn in the chat ended.
+  cell(
+    "M7",
+    "a turn the other tab ends while this tab is idle and visible shows once the server says so",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER] });
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "M7p",
+    "a turn the other tab ends while this tab's end-of-turn read is on the wire shows once that read lands",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      tab.viewAnswerDelayMs = 2_000;
+      await advance(700);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+    },
+  );
+
+  cell(
+    "M7d",
+    "a second word that a turn ended, while the first re-read is out, puts no second read on the wire and is read after it",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      tab.viewAnswerDelayMs = 1_000;
+      const reads = tab.reads;
+      tab.runtime.rereadIfIdle();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(100);
+      expect(tab.reads - reads).toBe(1);
+      await advance(5_000);
+      expectScreen({
+        error: null,
+        chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER],
+      });
+      // The first read and the one owed read, then nothing more.
+      await advance(30_000);
+      expect(tab.reads - reads).toBe(2);
+    },
+  );
+
+  cell(
+    "M7e",
+    "a turn the other tab ends while every end-of-turn read of this tab fails still shows once a read works",
+    async () => {
+      const other = openTab();
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      server.viewsDown = true;
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      server.viewsDown = false;
+      await advance(20_000);
+      expectScreen(
+        { chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] },
+        tab,
+      );
+    },
+  );
+
+  cell(
+    "M7w",
+    "a tab coming back after a long time away while a re-read is out puts no second read on the wire",
+    async () => {
+      await finishFirstTurn();
+      tab.viewAnswerDelayMs = 40_000;
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      setVisibility("hidden");
+      await advance(31_000);
+      setVisibility("visible");
+      await advance(100);
+      expect(server.viewReads - reads).toBe(1);
+    },
+  );
+
+  cell(
+    "M7q",
+    "a turn the other tab ends while this tab's send is out still shows when that send is refused",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      server.postMode = { status: 429, body: { detail: "Too many requests" } };
+      server.respondAfterMs = 2_000;
+      tab.send(P3);
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expect(tab.screen().chat.slice(0, 4)).toEqual([
+        `user: ${P1}`,
+        ANSWER,
+        `user: ${P2}`,
+        ANSWER,
+      ]);
+    },
+  );
+
+  cell(
+    "M7f",
+    "the server's word that a turn ended reads nothing while this tab follows a turn",
+    async () => {
+      await streamFirstBlock();
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      expect(server.viewReads).toBe(reads);
+    },
+  );
+
+  cell(
+    "M7s",
+    "the server's word that this tab's own turn ended adds nothing to the turn's own read",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      expect(server.viewReads - reads).toBe(1);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
+
+  // A slow Stop: the server ends the turn and says so when the worker gives
+  // up on the cancel, and the engine saves the turn's last rows after that.
+  cell(
+    "V1",
+    "a turn stopped here, its end said before its last rows are saved, still lets the other tab's next turn show",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      saveStoppedTurnRows();
+      await otherTabRunsATurnAndTheServerSaysSo();
+      expectScreen({ chat: [`user: ${P1}`, STOPPED, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "V1c",
+    "(control) a turn stopped here, its end said after its last rows are saved, lets the other tab's next turn show",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      saveStoppedTurnRows();
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      await otherTabRunsATurnAndTheServerSaysSo();
+      expectScreen({ chat: [`user: ${P1}`, STOPPED, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "V1s",
+    "a turn stopped here, its end said before its last rows are saved, then a send: the other tab's turn shows above it",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      saveStoppedTurnRows();
+      await otherTabRunsATurnAndTheServerSaysSo();
+      tab.send(P3);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      expectScreen({
+        chat: [
+          `user: ${P1}`,
+          STOPPED,
+          `user: ${P2}`,
+          ANSWER,
+          `user: ${P3}`,
+          ANSWER,
+        ],
+      });
+    },
+  );
+
+  cell(
+    "V1r",
+    "a turn stopped here, its end said before its last rows are saved, shows the other tab's turn once when that turn runs as this tab reads again",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      saveStoppedTurnRows();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      // Through its checkpoint: the turn's first rows are saved, and it runs on.
+      server.publish(19);
+      await advance(3_000);
+      server.publish();
+      await advance(5_000);
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      expectScreen({ chat: [`user: ${P1}`, STOPPED, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "V1t",
+    "a turn stopped here, its end said before its last rows are saved, is read again until they are, and no more",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      saveStoppedTurnRows();
+      await advance(30_000);
+      // The word's read, then the first retry, which finds the rows.
+      expect(server.viewReads - reads).toBe(2);
+      expect(
+        tab.runtime.getSnapshot().segments.find((s) => s.kind === "turn"),
+      ).toMatchObject({ stopped: true, reconciled: true });
+    },
+  );
+
+  cell(
+    "V1n",
+    "a turn stopped here whose last rows are never saved is read again three times, then left as it is",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(60_000);
+      expect(server.viewReads - reads).toBe(4);
+      expectScreen({ error: null, chat: [`user: ${P1}`, STOPPED] });
+    },
+  );
+
+  cell(
+    "V1i",
+    "an idle tab told a turn stopped elsewhere ended, before its last rows are saved, shows those rows once they are",
+    async () => {
+      const idle = openTab();
+      await stopFirstTurnMidAnswer();
+      idle.runtime.rereadIfIdle();
+      await advance(1_000);
+      saveStoppedTurnRows();
+      await advance(30_000);
+      expect(idle.screen().chat.join("\n")).toContain(
+        "Let me fetch that page.",
+      );
+    },
+  );
+
+  cell(
+    "V2",
+    "an idle tab told of another tab's turn longer than the session window shows it whole or not at all",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      // The window holds 3 rows; the other tab's turn writes 4.
+      server.window = 3;
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      tab.runtime.rereadIfIdle();
+      await advance(5_000);
+      const whole = [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER];
+      const none = [`user: ${P1}`, ANSWER];
+      expect([whole, none]).toContainEqual(tab.screen().chat);
+    },
+  );
+
+  cell(
+    "V3",
+    "a word said while this tab's send is out is still read when that send is stopped before its turn is named",
+    async () => {
+      await finishFirstTurn();
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish();
+      await advance(5_000);
+      server.postMode = "hang-before-send";
+      tab.send(P3);
+      await advance(100);
+      tab.runtime.rereadIfIdle();
+      await advance(100);
+      tab.runtime.stop();
+      await advance(30_000);
+      expect(tab.screen().chat.slice(0, 4)).toEqual([
+        `user: ${P1}`,
+        ANSWER,
+        `user: ${P2}`,
+        ANSWER,
+      ]);
+    },
+  );
+
+  // A stop that saves no cancelled marker: the baseline engine's, the SDK's
+  // generator close, or a Stop pressed as the answer finishes.
+  cell(
+    "W1",
+    "the baseline engine's stop (the partial answer, no marker) settles, and a later re-read is one read",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      // `baseline/service_cancellation_test.py`: a cancelled baseline turn saves
+      // its rows and no marker row.
+      savePartialAnswerOnly();
+      await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      expect({ second, turn: stoppedTurn() }).toMatchObject({
+        second: 1,
+        turn: { stopped: true, reconciled: true },
+      });
+    },
+  );
+
+  cell("W2", "its saved reply can be rated", async () => {
+    await stopFirstTurnMidAnswer();
+    savePartialAnswerOnly();
+    await awayAndBack();
+    await advance(30_000);
+    expect(savedIdOfLastReply()).toBe(`${SESSION}-seq-1`);
+  });
+
+  cell(
+    "W3",
+    "a Stop pressed as the answer finishes (every row streamed, the turn ends normally) settles, a later re-read is one read, and its reply can be rated",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // Every entry but the finish: the answer is whole on screen.
+      server.publish(server.turns[0].frames.length - 2);
+      await advance(100);
+      tab.runtime.stop();
+      // The cancel loses the race: the turn ends as any other, with no marker.
+      server.publish();
+      await advance(100);
+      await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      expect({
+        second,
+        turn: stoppedTurn(),
+        rated: savedIdOfLastReply(),
+      }).toMatchObject({
+        second: 1,
+        turn: { stopped: true, reconciled: true },
+        rated: expect.stringMatching(/^session-1-seq-\d+$/),
+      });
+    },
+  );
+
+  cell(
+    "W4",
+    "the other tab's turn, running when this tab reads again, is not drawn twice",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      savePartialAnswerOnly();
+      await awayAndBack();
+      await advance(30_000);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      // Through its checkpoint: the turn's rows so far are saved, and it runs on.
+      server.publish(19);
+      await advance(1_000);
+      await awayAndBack();
+      server.publish();
+      await advance(10_000);
+      const text = tab.screen().chat.join("\n");
+      expect(text.split("It says Example Domain.").length - 1).toBe(1);
+    },
+  );
+
+  cell(
+    "W5",
+    "with nothing saved for the stopped turn, its partial answer stays on screen when the other tab's turn runs",
+    async () => {
+      await stopFirstTurnMidAnswer();
+      await awayAndBack();
+      await advance(30_000);
+      const other = openTab();
+      other.send(P2);
+      await advance(0);
+      server.publish(19);
+      await advance(1_000);
+      await awayAndBack();
+      server.publish();
+      await advance(10_000);
+      const chat = tab.screen().chat;
+      expect(chat[1]).toContain(STOPPED);
+      expect(chat.join("\n").split("It says Example Domain.").length - 1).toBe(
+        1,
+      );
+    },
+  );
+
+  cell(
+    "W6",
+    "a long stopped turn, its marker saved, whose start is before the session window costs one read per re-read",
+    async () => {
+      tab.send(P1);
+      await advance(0);
+      // Through its checkpoint: rows 1 to 3 are saved, and the turn runs on.
+      server.publish(19);
+      await advance(100);
+      tab.runtime.stop();
+      server.stopWithoutFinish();
+      await advance(100);
+      const at = server.history.length;
+      server.history.push({
+        id: `row-${at}`,
+        role: "assistant",
+        content: CANCELLED_MARKER,
+        sequence: at,
+      });
+      // The window holds the turn's last 3 rows; the turn has 4, and its prompt.
+      server.window = 3;
+      const first = await readsOf(() => awayAndBack());
+      const second = await readsOf(() => awayAndBack());
+      expect({ first, second }).toEqual({ first: 1, second: 1 });
+    },
+  );
+
+  cell(
+    "X1",
+    "a word said during a re-read's last try, which fails as the tries before it did, is read once the server answers again",
+    async () => {
+      await finishFirstTurn();
+      server.viewsDown = true;
+      tab.runtime.rereadIfIdle();
+      // Another device's turn runs and ends while the tries fail.
+      server.startTurn(P2);
+      server.publish();
+      // The first try, then retries 2 and 4 s apart; the last comes 8 s later.
+      await advance(6_100);
+      // The server says that turn ended as the last try reads.
+      onRead(1, () => tab.runtime.rereadIfIdle());
+      await advance(8_000);
+      server.viewsDown = false;
+      await advance(30_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X1c",
+    "(control) a word said during a re-read's first try adds no tries when every try fails",
+    async () => {
+      await finishFirstTurn();
+      server.viewsDown = true;
+      const reads = server.viewReads;
+      onRead(1, () => tab.runtime.rereadIfIdle());
+      tab.runtime.rereadIfIdle();
+      await advance(60_000);
+      expect(server.viewReads - reads).toBe(4);
+    },
+  );
+
+  cell(
+    "X2",
+    "a turn the other tab ends while this tab rebuilds its expired turn from the session shows once that rebuild lands",
+    async () => {
+      await streamFirstBlock();
+      // The stream drops and the turn ends meanwhile; its stream is gone
+      // when the tab asks for it again.
+      server.connections[0].fail();
+      server.publish();
+      server.resumeMode = { status: 410, body: { reason: "expired" } };
+      // The rebuild's read is taken as it starts and lands 2 s later.
+      tab.viewAnswerDelayMs = 2_000;
+      await advance(1_500);
+      // Another device's turn runs and ends, and the server says so.
+      server.startTurn(P2);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X2c",
+    "(control) a word said before the rebuild of this tab's expired turn reads adds no read to the rebuild's own",
+    async () => {
+      await streamFirstBlock();
+      server.connections[0].fail();
+      server.publish();
+      server.resumeMode = { status: 410, body: { reason: "expired" } };
+      server.startTurn(P2);
+      server.publish();
+      // Said while this tab still follows its turn, before the rebuild reads.
+      tab.runtime.rereadIfIdle();
+      const reads = tab.reads;
+      await advance(30_000);
+      expect(tab.reads - reads).toBe(1);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X3",
+    "a turn the other tab ends while this tab's end-of-turn read is out shows when the response to this tab's turn closes after that read",
+    async () => {
+      server.closeAfterFinishMs = 3_000;
+      tab.send(P1);
+      await advance(0);
+      // The end-of-turn read is taken as it starts and lands 1 s later.
+      tab.viewAnswerDelayMs = 1_000;
+      server.publish();
+      await advance(700);
+      // Another device's turn runs and ends, and the server says so.
+      server.startTurn(P2);
+      server.publish();
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P2}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X3c",
+    "(control) the server's word that this tab's own turn ended adds no read when the turn's response closes after its end-of-turn read",
+    async () => {
+      server.closeAfterFinishMs = 3_000;
+      tab.send(P1);
+      await advance(0);
+      server.publish();
+      await advance(100);
+      const reads = server.viewReads;
+      tab.runtime.rereadIfIdle();
+      await advance(10_000);
+      expect(server.viewReads - reads).toBe(1);
+      expectScreen({ error: null, chat: [`user: ${P1}`, ANSWER] });
+    },
+  );
+
+  cell(
+    "X4",
+    "an idle tab that attaches to another device's running turn, from a window that starts inside the turn before it, shows the running turn whole and the cut one not at all",
+    async () => {
+      await finishFirstTurn();
+      // Another device runs a whole turn, then one more, through its checkpoint.
+      server.startTurn(P2);
+      server.publish();
+      server.startTurn(P3);
+      server.publish(19);
+      // The window holds the last 5 rows: P2's last row, then all of P3's.
+      server.window = 5;
+      tab.runtime.rereadIfIdle();
+      await advance(1_000);
+      server.publish();
+      await advance(5_000);
+      expectScreen({ chat: [`user: ${P1}`, ANSWER, `user: ${P3}`, ANSWER] });
+    },
+  );
 });
 
 describe("the page lifecycle", () => {
@@ -1631,6 +2409,44 @@ async function finishFirstTurn() {
   await advance(3_000);
 }
 
+async function stopFirstTurnMidAnswer() {
+  await streamFirstBlock();
+  tab.runtime.stop();
+  server.stopWithoutFinish();
+  await advance(100);
+}
+
+/** The engine saves a stopped turn's last rows: its partial answer and the
+ *  cancelled marker. */
+function saveStoppedTurnRows() {
+  const at = server.history.length;
+  server.history.push(
+    {
+      id: `row-${at}`,
+      role: "assistant",
+      content: "Let me fetch that page.",
+      sequence: at,
+    },
+    {
+      id: `row-${at + 1}`,
+      role: "assistant",
+      content: CANCELLED_MARKER,
+      sequence: at + 1,
+    },
+  );
+}
+
+/** Another tab runs a whole turn, and the server says it ended. */
+async function otherTabRunsATurnAndTheServerSaysSo() {
+  const other = openTab();
+  other.send(P2);
+  await advance(0);
+  server.publish();
+  await advance(5_000);
+  tab.runtime.rereadIfIdle();
+  await advance(5_000);
+}
+
 async function advance(ms: number) {
   await vi.advanceTimersByTimeAsync(ms);
 }
@@ -1646,4 +2462,40 @@ function setVisibility(state: "hidden" | "visible") {
 function setOnline(online: boolean) {
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(online);
   window.dispatchEvent(new Event(online ? "online" : "offline"));
+}
+
+function stoppedTurn() {
+  return tab.runtime.getSnapshot().segments.find((s) => s.kind === "turn");
+}
+
+function savedIdOfLastReply() {
+  const rendered = createTailRenderer(SESSION)(tab.runtime.getSnapshot());
+  const reply = rendered.messages.findLast((m) => m.role === "assistant");
+  return reply ? (rendered.stats.get(reply.id)?.savedMessageId ?? null) : null;
+}
+
+/** Session reads made while `run` and the 60 s after it pass. */
+async function readsOf(run: () => Promise<void>) {
+  const before = server.viewReads;
+  await run();
+  await advance(60_000);
+  return server.viewReads - before;
+}
+
+/** Away longer than the wake re-read's 30 s, then back: one re-read of an idle chat. */
+async function awayAndBack() {
+  setVisibility("hidden");
+  await advance(31_000);
+  setVisibility("visible");
+  await advance(100);
+}
+
+function savePartialAnswerOnly() {
+  const at = server.history.length;
+  server.history.push({
+    id: `row-${at}`,
+    role: "assistant",
+    content: "Let me fetch that page.",
+    sequence: at,
+  });
 }

@@ -84,7 +84,7 @@ function Section({
             key={className}
             className="grid grid-cols-1 gap-1 px-4 py-3 md:grid-cols-[12rem_14rem_1fr] md:items-center md:gap-4"
           >
-            <Text variant="body-medium" className="font-mono">
+            <Text variant="body" weight="medium" className="font-mono">
               {className}
             </Text>
             <Text variant="small" tone="muted" className="font-mono">

@@ -63,8 +63,8 @@ from backend.util.request import parse_url
 from backend.util.text import split_camelcase
 from backend.util.text_limits import (
     MAX_CRON_LENGTH,
+    MAX_GRAPH_NAME_LENGTH,
     MAX_INSTRUCTIONS_LENGTH,
-    MAX_LONG_NAME_LENGTH,
 )
 
 from .block import BlockInput
@@ -298,7 +298,7 @@ def _holds_picked_file(annotation: Any) -> bool:
 # Checked at the save rather than on the model, because `GraphMeta` and
 # `GraphModel` read stored rows through it.
 GRAPH_TEXT_MAX_LENGTHS = {
-    "name": MAX_LONG_NAME_LENGTH,
+    "name": MAX_GRAPH_NAME_LENGTH,
     "description": MAX_INSTRUCTIONS_LENGTH,
     "instructions": MAX_INSTRUCTIONS_LENGTH,
     "recommended_schedule_cron": MAX_CRON_LENGTH,
@@ -551,6 +551,20 @@ def _mappable_discriminator_default(
     return default if default in mapping else None
 
 
+def _refuses_platform_credentials(
+    nodes: Mapping[str, Node], node_field_pairs: Iterable[tuple[str, str]]
+) -> bool:
+    """Whether a step behind an aggregated credentials field refuses the
+    platform's shared keys, by the check graph validation makes on the step's
+    saved inputs. The run form and schedule dialog then keep the field off the
+    platform's key, as the builder does from the block's own schema."""
+    return any(
+        (node := nodes.get(node_id)) is not None
+        and node.block.refuses_platform_credentials_for(node.input_default)
+        for node_id, _ in node_field_pairs
+    )
+
+
 class GraphModel(Graph, GraphMeta):
     """
     Full graph model representing an existing graph from the database.
@@ -597,10 +611,13 @@ class GraphModel(Graph, GraphMeta):
         # Build JSON schema directly to avoid expensive create_model + validation overhead
         properties = {}
         required_fields = []
+        nodes_by_id = {
+            node.id: node for graph in (self, *self.sub_graphs) for node in graph.nodes
+        }
 
         for agg_field_key, (
             field_info,
-            _,
+            node_field_pairs,
             is_required,
         ) in graph_credentials_inputs.items():
             providers = list(field_info.provider)
@@ -659,6 +676,8 @@ class GraphModel(Graph, GraphMeta):
                     exclude={"provider", "supported_types"},  # already included above
                 )
             )
+            if _refuses_platform_credentials(nodes_by_id, node_field_pairs):
+                field_schema["refuses_platform_credentials"] = True
 
             # Ensure field schema is well-formed
             CredentialsMetaInput.validate_credentials_field_schema(
@@ -2734,6 +2753,7 @@ async def fork_graph(
 
     record_copy_sources([graph, *graph.sub_graphs])
     graph.name = fork_name(graph.name)
+    _fit_names(graph.sub_graphs)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
@@ -2777,6 +2797,7 @@ async def copy_graph(
 
     record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
+    _fit_names([graph, *graph.sub_graphs])
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
@@ -2793,6 +2814,14 @@ async def copy_graph(
         )
 
     return graph
+
+
+def _fit_names(graphs: Iterable[BaseGraph]) -> None:
+    """Cut a stored name over the saved-name bound to fit, ending it with "…"."""
+    limit = GRAPH_TEXT_MAX_LENGTHS["name"]
+    for graph in graphs:
+        if len(graph.name) > limit:
+            graph.name = graph.name[: limit - 1].rstrip() + "…"
 
 
 def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:

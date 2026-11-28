@@ -10,7 +10,7 @@ export function EmptySubmissions() {
           <Icon icon={InboxIcon} className="h-8 w-8" />
         </div>
         <div className="space-y-2">
-          <Text variant="large-medium" tone="primary">
+          <Text variant="large" weight="medium" tone="primary">
             No workflows submitted yet
           </Text>
           <Text variant="body" tone="secondary">

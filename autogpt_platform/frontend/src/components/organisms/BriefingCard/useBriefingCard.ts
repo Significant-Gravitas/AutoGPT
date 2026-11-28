@@ -3,6 +3,7 @@
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useCardLayout } from "./useCardLayout";
+import { duration, ease } from "@/components/styles/motion";
 
 export function useBriefingCard(rowsKey: string) {
   const listRef = useRef<HTMLUListElement>(null);
@@ -44,7 +45,7 @@ export function useBriefingCard(rowsKey: string) {
   const heightTransition =
     shouldReduceMotion || !hasPaintedRef.current
       ? { duration: 0 }
-      : { duration: 0.32, ease: [0.32, 0.72, 0, 1] as const };
+      : { duration: duration.slow, ease: ease.drawer };
 
   return {
     listRef,

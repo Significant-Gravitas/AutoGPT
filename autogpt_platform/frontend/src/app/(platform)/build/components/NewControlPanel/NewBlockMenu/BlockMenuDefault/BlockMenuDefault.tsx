@@ -8,7 +8,7 @@ export const BlockMenuDefault = () => {
   return (
     <div className="flex flex-1 overflow-y-auto">
       <BlockMenuSidebar />
-      <Separator className="h-full w-[1px] text-foreground-disabled" />
+      <Separator className="h-full w-[1px]" />
       <BlockMenuDefaultContent />
     </div>
   );

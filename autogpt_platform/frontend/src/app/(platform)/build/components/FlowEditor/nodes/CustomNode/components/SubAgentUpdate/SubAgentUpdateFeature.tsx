@@ -87,7 +87,7 @@ function SubAgentUpdateAvailableBar({
     <div className="flex items-center justify-between gap-2 rounded-t-xl bg-info-surface px-3 py-2">
       <div className="flex items-center gap-2">
         <Icon icon={ArrowUp02Icon} tone="info-strong" className="h-4 w-4" />
-        <Text variant="body-tight" as="span" tone="info-strong">
+        <Text variant="body" leading="5" as="span" tone="info-strong">
           Update available (v{currentVersion} → v{latestVersion})
         </Text>
         {!isCompatible && (
@@ -100,10 +100,15 @@ function SubAgentUpdateAvailableBar({
               />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <Text variant="small-medium-lh-normal" tone="inherit">
+              <Text
+                variant="small"
+                weight="medium"
+                leading="normal"
+                tone="inherit"
+              >
                 Incompatible changes detected
               </Text>
-              <Text variant="small-tight" tone="subtle">
+              <Text variant="small" leading="4" tone="subtle">
                 Click Update to see details
               </Text>
             </TooltipContent>
@@ -120,7 +125,13 @@ function SubAgentUpdateAvailableBar({
           !isCompatible && "border-warning hover:bg-warning-surface",
         )}
       >
-        <Text variant="small-medium-tight" as="span" tone="inherit">
+        <Text
+          variant="small"
+          weight="medium"
+          leading="4"
+          as="span"
+          tone="inherit"
+        >
           Update
         </Text>
       </Button>

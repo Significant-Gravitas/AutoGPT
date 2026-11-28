@@ -49,7 +49,7 @@ export function ExpertDayOne({ name, items, accent }: Props) {
                 ) : null}
               </div>
               {item.timing ? (
-                <span className="shrink-0 self-start rounded-full border border-border-base bg-gradient-to-b from-surface to-surface-muted px-2.5 py-0.5 text-caption leading-5 font-medium whitespace-nowrap text-foreground-secondary">
+                <span className="shrink-0 self-start rounded-pill border border-border-base bg-gradient-to-b from-surface to-surface-muted px-2.5 py-0.5 text-caption leading-5 font-medium whitespace-nowrap text-foreground-secondary">
                   {item.timing}
                 </span>
               ) : null}

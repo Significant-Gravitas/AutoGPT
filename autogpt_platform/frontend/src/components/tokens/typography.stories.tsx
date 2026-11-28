@@ -147,29 +147,37 @@ export function AllVariants() {
         <StoryCode code="<Text variant='lead'>Lead</Text>" />
         <div className="flex flex-row gap-8">
           <Text variant="large">Large</Text>
-          <Text variant="large-medium">Large Medium</Text>
-          <Text variant="large-semibold">Large Semibold</Text>
+          <Text variant="large" weight="medium">
+            Large Medium
+          </Text>
+          <Text variant="large" weight="semibold">
+            Large Semibold
+          </Text>
         </div>
         <StoryCode
           code={`<Text variant="large">Large</Text>
-<Text variant="large-medium">Large Medium</Text>
-<Text variant="large-semibold">Large Semibold</Text>`}
+<Text variant="large" weight="medium">Large Medium</Text>
+<Text variant="large" weight="semibold">Large Semibold</Text>`}
         />
         <div className="flex flex-row gap-8">
           <Text variant="body">Body</Text>
-          <Text variant="body-medium">Body Medium</Text>
+          <Text variant="body" weight="medium">
+            Body Medium
+          </Text>
         </div>
         <StoryCode
           code={`<Text variant="body">Body</Text>
-<Text variant="body-medium">Body Medium</Text>`}
+<Text variant="body" weight="medium">Body Medium</Text>`}
         />
         <div className="flex flex-row gap-8">
           <Text variant="small">Small</Text>
-          <Text variant="small-medium">Small Medium</Text>
+          <Text variant="small" weight="medium">
+            Small Medium
+          </Text>
         </div>
         <StoryCode
           code={`<Text variant="small">Small</Text>
-<Text variant="small-medium">Small Medium</Text>`}
+<Text variant="small" weight="medium">Small Medium</Text>`}
         />
       </div>
     </div>

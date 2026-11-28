@@ -7,6 +7,8 @@ from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 
+from backend.util.exceptions import NotFoundError
+
 from . import team_db as team_db
 from .team_model import (
     AddTeamMemberRequest,
@@ -89,9 +91,7 @@ async def get_team(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> TeamResponse:
-    if ctx.org_id != org_id:
-        raise HTTPException(403, detail="Not a member of this organization")
-    return await team_db.get_team(ws_id, expected_org_id=org_id)
+    return await _get_visible_team(ctx, org_id, ws_id)
 
 
 @router.patch(
@@ -188,9 +188,7 @@ async def list_members(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[TeamMemberResponse]:
-    if ctx.org_id != org_id:
-        raise HTTPException(403, detail="Not a member of this organization")
-    await team_db.get_team(ws_id, expected_org_id=org_id)
+    await _get_visible_team(ctx, org_id, ws_id)
     return await team_db.list_team_members(ws_id)
 
 
@@ -251,3 +249,23 @@ async def remove_member(
 ) -> None:
     await _authorize_team_management(ctx, org_id, ws_id)
     await team_db.remove_team_member(ws_id, uid)
+
+
+async def _get_visible_team(
+    ctx: RequestContext, org_id: str, ws_id: str
+) -> TeamResponse:
+    """The workspace from the URL path, for a caller who may see it.
+
+    An OPEN workspace, one the caller is an active member of, or any for a
+    caller with org-level MANAGE_WORKSPACES; any other answers like an unknown id.
+    """
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+    team = await team_db.get_team(ws_id, expected_org_id=org_id)
+    if (
+        team.join_policy == "OPEN"
+        or check_org_permission(ctx, OrgAction.MANAGE_WORKSPACES)
+        or await team_db.is_member_of_team(ws_id, ctx.user_id)
+    ):
+        return team
+    raise NotFoundError(f"Workspace {ws_id} not found")

@@ -17,7 +17,7 @@ from backend.blocks.code_executor import (
 )
 from backend.blocks.exa.search import ExaSearchBlock
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
-from backend.blocks.jina.search import SearchTheWebBlock
+from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import DEFAULT_LLM_MODEL, AITextGeneratorBlock, LLMModel
 from backend.data.block_cost_config import (
     BLOCK_COSTS,
@@ -28,12 +28,14 @@ from backend.data.block_cost_config import (
 from backend.data.llm_registry import llm_models
 from backend.data.model import NodeExecutionStats
 from backend.executor import utils as executor_utils
+from backend.executor.billing import _block_has_paid_cost_entry
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     anthropic_credentials,
     e2b_credentials,
     exa_credentials,
     fal_credentials,
+    jina_credentials,
     openai_credentials,
 )
 from backend.sdk.cost_integration import register_provider_costs_for_block
@@ -416,6 +418,61 @@ def test_a_switched_off_model_is_charged_as_the_model_it_runs(
     assert executor_utils._with_schema_defaults(block, stored, None)["model"] == runs
 
 
+def _credentials(credentials) -> dict:
+    return {
+        "id": credentials.id,
+        "provider": credentials.provider,
+        "type": credentials.type,
+    }
+
+
+@pytest.mark.parametrize(
+    ("block", "as_it_runs", "as_sent"),
+    [
+        pytest.param(
+            AITextGeneratorBlock(),
+            {
+                "model": LLMModel.CLAUDE_4_5_OPUS.value,
+                "credentials": _credentials(anthropic_credentials),
+            },
+            {"model": "anthropic/claude-opus-4-5"},
+            id="provider-prefixed-model",
+        ),
+        pytest.param(
+            ExtractWebsiteContentBlock(),
+            {
+                "url": "https://example.com",
+                "raw_content": False,
+                "credentials": _credentials(jina_credentials),
+            },
+            {"raw_content": "false"},
+            id="flag-as-string",
+        ),
+    ],
+)
+def test_price_follows_the_value_the_run_coerces(block, as_it_runs, as_sent):
+    """Input not yet coerced to the block's types, as an Orchestrator tool
+    call's arguments reach the charge, is priced as the value the block runs."""
+    sent = {**as_it_runs, **as_sent}
+    stats = NodeExecutionStats(input_token_count=200_000, output_token_count=50_000)
+
+    assert block_usage_cost(block, sent)[0] > 0
+    assert block_usage_cost(block, sent) == block_usage_cost(block, as_it_runs)
+    assert block_usage_cost(block, sent, stats=stats) == block_usage_cost(
+        block, as_it_runs, stats=stats
+    )
+    assert _block_has_paid_cost_entry(block, sent)
+    assert sent == {**as_it_runs, **as_sent}
+
+
+def test_pricing_leaves_a_value_the_run_refuses_unpriced():
+    """A value no coercion can turn into the block's type fails the run, not
+    the pricing."""
+    refused = {"model": "no-such-model", "prompt": "hi"}
+
+    assert block_usage_cost(AITextGeneratorBlock(), refused) == (0, {})
+
+
 def test_ayrshare_price_tier_follows_the_is_video_default():
     """YouTube's `is_video` default picks its price tier."""
     block = PostToYouTubeBlock()
@@ -493,6 +550,7 @@ BEFORE_A_RUN = {
     "blocks/_base.py::_execute": "the swap itself: the run starts now",
     "executor/billing.py::resolve_block_cost": "the pre-flight charge",
     "executor/billing.py::_block_has_paid_cost_entry": "the pre-flight balance check",
+    "executor/billing.py::usage_hold": "the hold taken before a run",
     "executor/billing.py::redispatch_reconcile_baseline": (
         "a run parked for review, which ran no model"
     ),

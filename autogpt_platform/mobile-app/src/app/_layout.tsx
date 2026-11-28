@@ -16,9 +16,14 @@ import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { useSession } from "@/lib/auth/nativeSession";
 import { CachePersistence } from "@/components/CachePersistence";
 import { usePlanGate } from "@/features/plan/usePlanGate";
+import { useUpdateGate } from "@/features/update/useUpdateGate";
 import { queryClient, signOutIfSessionEnded } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
+import { startMonitoring } from "@/lib/monitoring";
 import { useMountEffect } from "@/lib/useMountEffect";
+
+// Before anything renders, so a crash in the first render is reported too.
+startMonitoring();
 
 // Before the first render, so the app opens in the scheme picked last time.
 applyAppearance(readAppearance());
@@ -65,23 +70,29 @@ function RootStack() {
   const session = useSession();
   const userID = session?.user.id;
   const gate = usePlanGate(userID);
+  // An app too old for the server stops before sign-in and the plan check.
+  const update = useUpdateGate();
+  const isCurrent = update === "ok";
   return (
     <>
       {/* Keyed by user: a new account starts from its own saved copy, or none. */}
       {userID ? <CachePersistence key={userID} userID={userID} /> : null}
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={!!session && gate === "open"}>
+        <Stack.Protected guard={update === "required"}>
+          <Stack.Screen name="update-required" />
+        </Stack.Protected>
+        <Stack.Protected guard={isCurrent && !!session && gate === "open"}>
           <Stack.Screen name="(app)" />
           {/* A sign-in in the system browser comes back here. */}
           <Stack.Screen name="integrations/oauth" />
         </Stack.Protected>
-        <Stack.Protected guard={!!session && gate === "blocked"}>
+        <Stack.Protected guard={isCurrent && !!session && gate === "blocked"}>
           <Stack.Screen name="no-plan" />
         </Stack.Protected>
-        <Stack.Protected guard={!!session && gate === "loading"}>
+        <Stack.Protected guard={update === "checking" || (isCurrent && !!session && gate === "loading")}>
           <Stack.Screen name="launch" />
         </Stack.Protected>
-        <Stack.Protected guard={!session}>
+        <Stack.Protected guard={isCurrent && !session}>
           <Stack.Screen name="login" />
         </Stack.Protected>
       </Stack>

@@ -9,7 +9,7 @@ export function EmptyTeamState() {
       <span className="flex text-foreground-subtle">
         <Icon icon={UserGroupIcon} size={32} />
       </span>
-      <Text variant="large-medium" tone="primary">
+      <Text variant="large" weight="medium" tone="primary">
         No hired experts yet
       </Text>
       <Text variant="body" tone="secondary" className="max-w-prose">

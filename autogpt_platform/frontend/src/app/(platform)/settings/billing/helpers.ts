@@ -1,11 +1,11 @@
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
+import { duration, ease } from "@/components/styles/motion";
 
 const SECTION_BASE_DELAY = 0.04;
 const SECTION_STAGGER = 0.05;
-const SECTION_DURATION = 0.32;
+const SECTION_DURATION = duration.slow;
 const ROW_DELAY_CHILDREN = 0.08;
 const ROW_STAGGER = 0.035;
-const ROW_DURATION = 0.28;
+const ROW_DURATION = duration.slow;
 
 export function getSectionMotionProps(index: number, reduceMotion: boolean) {
   if (reduceMotion) {
@@ -16,7 +16,7 @@ export function getSectionMotionProps(index: number, reduceMotion: boolean) {
     animate: { opacity: 1, y: 0 },
     transition: {
       duration: SECTION_DURATION,
-      ease: EASE_OUT,
+      ease: ease.emphasized,
       delay: SECTION_BASE_DELAY + index * SECTION_STAGGER,
     },
   };
@@ -37,7 +37,7 @@ export const rowVariants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: ROW_DURATION, ease: EASE_OUT },
+    transition: { duration: ROW_DURATION, ease: ease.emphasized },
   },
 };
 
@@ -88,4 +88,17 @@ export function formatShortDate(
     day: "numeric",
     year: "numeric",
   });
+}
+
+export type BillingTab = "subscription" | "automation-credits";
+
+export function isBillingTab(value: string): value is BillingTab {
+  return value === "subscription" || value === "automation-credits";
+}
+
+// The address names the open tab, so a reload opens it again.
+export function billingTabURL(tab: BillingTab, searchParams?: URLSearchParams) {
+  const params = new URLSearchParams(searchParams);
+  params.set("tab", tab);
+  return `/settings/billing?${params}`;
 }
