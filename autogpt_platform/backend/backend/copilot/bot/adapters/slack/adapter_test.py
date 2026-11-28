@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from slack_sdk.errors import SlackApiError
 
-from backend.copilot.bot.adapters.base import EditOutcome, FileAttachment
+from backend.copilot.bot.adapters.base import (
+    EditOutcome,
+    FileAttachment,
+    MessageContext,
+)
 from backend.copilot.bot.choices import ResolvedChoice
 from backend.copilot.bot.turn_stream import _clarification_message
 from backend.data.bot_installs import BotInstallCredentials
@@ -17,18 +21,14 @@ from .adapter import SlackAdapter, _decode_target, _encode_target
 
 _SIGN = "backend.copilot.bot.adapters.slack.adapter.signing.verify"
 _SUBSCRIBED = "backend.copilot.bot.adapters.slack.adapter.threads.is_subscribed"
+_RESOLVE = "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice"
+_INSTALLS = "backend.copilot.bot.adapters.slack.adapter.bot_installs_db"
+_WEB_CLIENT = "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
+_STATIC_TOKEN = "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token"
 
 
-def _mention_in_thread() -> dict:
-    return {
-        "type": "app_mention",
-        "channel": "C1",
-        "ts": "2.0",
-        "thread_ts": "1.0",
-        "user": "U1",
-        "text": "<@UBOT> summarize",
-        "team": "T1",
-    }
+def _mention_in_thread(**fields) -> dict:
+    return _event("app_mention", thread_ts="1.0", text="<@UBOT> summarize") | fields
 
 
 def _mock_client() -> MagicMock:
@@ -82,23 +82,9 @@ class TestInboundRouting:
 
     @pytest.mark.asyncio
     async def test_app_mention_builds_channel_context(self, adapter):
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "app_mention",
-                "channel": "C1",
-                "ts": "1.2",
-                "user": "U1",
-                "text": "<@UBOT> hi there",
-                "team": "T1",
-            }
+        ctx = await _dispatch(
+            adapter, _event("app_mention", ts="1.2", text="<@UBOT> hi there")
         )
-        ctx = captured["ctx"]
         assert ctx.platform == "slack"
         assert ctx.channel_type == "channel"
         assert ctx.bot_mentioned is True
@@ -115,24 +101,7 @@ class TestInboundRouting:
 
     @pytest.mark.asyncio
     async def test_thread_context_gives_the_public_thread_ts(self, adapter):
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "app_mention",
-                "channel": "C1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "<@UBOT> hi",
-                "team": "T1",
-            }
-        )
-        ctx = captured["ctx"]
+        ctx = await _dispatch(adapter, _mention_in_thread(text="<@UBOT> hi"))
         assert ctx.public_channel_id == "C1"
         assert ctx.public_thread_id == "1.0"
         # Posting with this value lands in the thread, in the right workspace.
@@ -140,25 +109,7 @@ class TestInboundRouting:
 
     @pytest.mark.asyncio
     async def test_thread_reply_is_not_bot_mentioned(self, adapter):
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "channel",
-                "channel": "C1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "follow up",
-                "team": "T1",
-            }
-        )
-        ctx = captured["ctx"]
+        ctx = await _dispatch(adapter, _thread_reply("follow up"))
         assert ctx.channel_type == "thread"
         assert ctx.bot_mentioned is False
         assert ctx.channel_id == "T1|C1|1.0"
@@ -167,25 +118,9 @@ class TestInboundRouting:
     async def test_private_channel_thread_reply_is_forwarded(self, adapter):
         # Slack delivers private-channel messages as channel_type "group" —
         # dropping them killed every thread follow-up in private channels.
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "group",
-                "channel": "G1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "follow up",
-                "team": "T1",
-            }
+        ctx = await _dispatch(
+            adapter, _thread_reply("follow up", channel_type="group", channel="G1")
         )
-        ctx = captured["ctx"]
         assert ctx.channel_type == "thread"
         assert ctx.bot_mentioned is False
         assert ctx.channel_id == "T1|G1|1.0"
@@ -201,15 +136,7 @@ class TestInboundRouting:
             contexts.append(ctx)
 
         adapter.on_message(cb)
-        mention = {
-            "type": "app_mention",
-            "channel": "C1",
-            "ts": "2.0",
-            "thread_ts": "1.0",
-            "user": "U1",
-            "text": "<@UBOT> what now",
-            "team": "T1",
-        }
+        mention = _mention_in_thread(text="<@UBOT> what now")
         with patch(_SUBSCRIBED, new=AsyncMock(return_value=True)):
             await adapter._dispatch_event(mention)
             await adapter._dispatch_event(
@@ -226,15 +153,7 @@ class TestInboundRouting:
             contexts.append(ctx)
 
         adapter.on_message(cb)
-        mention = {
-            "type": "app_mention",
-            "channel": "G1",
-            "ts": "2.0",
-            "thread_ts": "1.0",
-            "user": "U1",
-            "text": "hey <@UBOT> look",
-            "team": "T1",
-        }
+        mention = _mention_in_thread(channel="G1", text="hey <@UBOT> look")
         with patch(_SUBSCRIBED, new=AsyncMock(return_value=True)):
             await adapter._dispatch_event(mention)
             await adapter._dispatch_event(
@@ -246,50 +165,15 @@ class TestInboundRouting:
     async def test_thread_reply_mentioning_someone_else_still_forwards(self, adapter):
         # Only OUR mention is a duplicate of an app_mention; a reply that pings
         # a teammate must still reach the handler.
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "channel",
-                "channel": "C1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "<@U9> can you look",
-                "team": "T1",
-            }
-        )
-        assert captured["ctx"].bot_mentioned is False
+        ctx = await _dispatch(adapter, _thread_reply("<@U9> can you look"))
+        assert ctx.bot_mentioned is False
 
     @pytest.mark.asyncio
     async def test_unknown_bot_identity_keeps_forwarding_thread_replies(self, adapter):
         # Failing open on an unresolvable identity: a duplicate turn is a much
         # smaller failure than silently swallowing the user's message.
         adapter._clients["T1"].auth_test = AsyncMock(side_effect=RuntimeError("down"))
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "channel",
-                "channel": "C1",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "<@UBOT> hi",
-                "team": "T1",
-            }
-        )
-        assert "ctx" in captured
+        assert await _dispatch(adapter, _thread_reply("<@UBOT> hi")) is not None
 
     @pytest.mark.asyncio
     async def test_mention_in_unowned_thread_pulls_history(self, adapter):
@@ -303,17 +187,11 @@ class TestInboundRouting:
                 ]
             }
         )
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
         with patch(_SUBSCRIBED, new=AsyncMock(return_value=False)):
-            await adapter._dispatch_event(_mention_in_thread())
+            ctx = await _dispatch(adapter, _mention_in_thread())
         client.conversations_replies.assert_awaited_once()
         # Bot's own message and the triggering mention are excluded.
-        assert [e.text for e in captured["ctx"].thread_history] == ["the parent"]
+        assert [e.text for e in ctx.thread_history] == ["the parent"]
 
     @pytest.mark.asyncio
     async def test_redis_blip_during_history_gate_does_not_drop_the_message(
@@ -321,15 +199,9 @@ class TestInboundRouting:
     ):
         # Optional context must never cost the user their turn — including a
         # failure in the subscription gate itself.
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
         with patch(_SUBSCRIBED, new=AsyncMock(side_effect=RuntimeError("redis down"))):
-            await adapter._dispatch_event(_mention_in_thread())
-        assert captured["ctx"].thread_history == ()
+            ctx = await _dispatch(adapter, _mention_in_thread())
+        assert ctx.thread_history == ()
 
     @pytest.mark.asyncio
     async def test_mention_in_own_thread_skips_the_history_fetch(self, adapter):
@@ -345,29 +217,9 @@ class TestInboundRouting:
         adapter.on_message(AsyncMock())
         with patch(_SUBSCRIBED, new=AsyncMock(return_value=False)):
             await adapter._dispatch_event(
-                {
-                    "type": "message",
-                    "channel_type": "im",
-                    "channel": "D1",
-                    "ts": "2.0",
-                    "thread_ts": "1.0",
-                    "user": "U1",
-                    "text": "hi",
-                    "team": "T1",
-                }
+                _thread_reply("hi", channel_type="im", channel="D1")
             )
-            await adapter._dispatch_event(
-                {
-                    "type": "message",
-                    "channel_type": "channel",
-                    "channel": "C1",
-                    "ts": "2.0",
-                    "thread_ts": "1.0",
-                    "user": "U1",
-                    "text": "follow up",
-                    "team": "T1",
-                }
-            )
+            await adapter._dispatch_event(_thread_reply("follow up"))
         adapter._clients["T1"].conversations_replies.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -376,16 +228,7 @@ class TestInboundRouting:
         cb = AsyncMock()
         adapter.on_message(cb)
         await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "mpim",
-                "channel": "G9",
-                "ts": "2.0",
-                "thread_ts": "1.0",
-                "user": "U1",
-                "text": "follow up",
-                "team": "T1",
-            }
+            _thread_reply("follow up", channel_type="mpim", channel="G9")
         )
         cb.assert_not_awaited()
 
@@ -393,108 +236,42 @@ class TestInboundRouting:
     async def test_channel_uses_top_level_team_id_for_server(self, adapter):
         # The event has no "team" — server_id must come from the payload's
         # top-level team_id (threaded via _dispatch_event).
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "app_mention",
-                "channel": "C1",
-                "ts": "1.2",
-                "user": "U1",
-                "text": "hi",
-            },
-            "T99",
+        ctx = await _dispatch(
+            adapter, _event("app_mention", ts="1.2", text="hi", team=None), "T99"
         )
-        assert captured["ctx"].server_id == "T99"
-        assert captured["ctx"].channel_id == "T99|C1|"
+        assert ctx.server_id == "T99"
+        assert ctx.channel_id == "T99|C1|"
 
     @pytest.mark.asyncio
     async def test_dm_has_no_server_id(self, adapter):
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "im",
-                "channel": "D1",
-                "ts": "1",
-                "user": "U1",
-                "text": "hi",
-            },
-            "T99",
+        dm = _event(
+            "message", channel_type="im", channel="D1", ts="1", text="hi", team=None
         )
-        assert captured["ctx"].channel_type == "dm"
-        assert captured["ctx"].server_id is None
+        ctx = await _dispatch(adapter, dm, "T99")
+        assert ctx.channel_type == "dm"
+        assert ctx.server_id is None
         # Even DMs carry the team in the target so the reply picks the token.
-        assert captured["ctx"].channel_id == "T99|D1|"
+        assert ctx.channel_id == "T99|D1|"
 
     @pytest.mark.asyncio
     async def test_event_without_team_is_dropped(self, adapter):
         # No workspace → no token to reply with → ignore rather than guess.
-        called = []
-
-        async def cb(ctx, ad):
-            called.append(ctx)
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {"type": "app_mention", "channel": "C1", "ts": "1", "user": "U1"}
-        )
-        assert called == []
+        event = _event("app_mention", ts="1", team=None)
+        assert await _dispatch(adapter, event) is None
 
     @pytest.mark.asyncio
     async def test_bot_messages_are_skipped(self, adapter):
-        called = []
-
-        async def cb(ctx, ad):
-            called.append(ctx)
-
-        adapter.on_message(cb)
         # Carries a valid team so the only thing standing between this event
         # and the callback is the bot filter itself (not the missing-team guard).
-        await adapter._dispatch_event(
-            {
-                "type": "app_mention",
-                "bot_id": "B9",
-                "channel": "C1",
-                "ts": "1",
-                "user": "U1",
-                "text": "hi",
-                "team": "T1",
-            }
-        )
-        assert called == []
+        event = _event("app_mention", bot_id="B9", ts="1", text="hi")
+        assert await _dispatch(adapter, event) is None
 
     @pytest.mark.asyncio
     async def test_inbound_files_become_attachments(self, adapter):
         adapter._download_slack_file = AsyncMock(return_value=b"filedata")
-        captured = {}
-
-        async def cb(ctx, ad):
-            captured["ctx"] = ctx
-
-        adapter.on_message(cb)
-        await adapter._dispatch_event(
-            {
-                "type": "message",
-                "channel_type": "im",
-                "channel": "D1",
-                "ts": "1",
-                "user": "U1",
-                "text": "look",
-                "team": "T1",
-                "files": [{"name": "a.txt", "size": 8, "mimetype": "text/plain"}],
-            }
-        )
-        ctx = captured["ctx"]
+        dm = _event("message", channel_type="im", channel="D1", ts="1", text="look")
+        files = [{"name": "a.txt", "size": 8, "mimetype": "text/plain"}]
+        ctx = await _dispatch(adapter, dm | {"files": files})
         assert ctx.channel_type == "dm"
         assert len(ctx.attachments) == 1
         assert ctx.attachments[0].filename == "a.txt"
@@ -507,10 +284,7 @@ class TestUninstall:
         adapter._clients["T5"] = MagicMock()
         adapter._bot_user_ids["T5"] = "UBOT"
         revoke = AsyncMock()
-        with patch(
-            "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
-            return_value=MagicMock(revoke_bot_install=revoke),
-        ):
+        with patch(_INSTALLS, return_value=MagicMock(revoke_bot_install=revoke)):
             await adapter._dispatch_event({"type": "app_uninstalled"}, "T5")
         revoke.assert_awaited_once()
         assert "T5" not in adapter._clients
@@ -533,19 +307,8 @@ class TestChoiceButtons:
         self, adapter
     ):
         adapter._on_message_callback = AsyncMock()
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "user": {"id": "U9"},
-            "container": {"type": "message", "message_ts": "111.222"},
-            "message": {"ts": "111.222"},
-            "actions": [{"action_id": "qans:abcdef012345:1"}],
-        }
-        with patch(
-            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
-        ):
+        payload = _block_action("qans:abcdef012345:1", message={"ts": "111.222"})
+        with patch(_RESOLVE, new=AsyncMock(return_value=ResolvedChoice(text="EU"))):
             await adapter._dispatch_block_action(payload)
 
         update_kwargs = adapter._clients["T1"].chat_update.await_args.kwargs
@@ -563,18 +326,9 @@ class TestChoiceButtons:
         # bypassing the mentionable_users allowlist. Every other Slack send
         # path in this file escapes; this one used to interpolate raw.
         adapter._on_message_callback = AsyncMock()
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "user": {"id": "U9"},
-            "container": {"type": "message", "message_ts": "111.222"},
-            "message": {"ts": "111.222"},
-            "actions": [{"action_id": "qans:abcdef012345:1"}],
-        }
+        payload = _block_action("qans:abcdef012345:1", message={"ts": "111.222"})
         with patch(
-            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value=ResolvedChoice(text="<!channel> ping")),
+            _RESOLVE, new=AsyncMock(return_value=ResolvedChoice(text="<!channel> ping"))
         ):
             await adapter._dispatch_block_action(payload)
 
@@ -589,19 +343,8 @@ class TestChoiceButtons:
         adapter._clients["T1"].chat_update = AsyncMock(
             side_effect=SlackApiError("nope", {"error": "message_not_found"})
         )
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "user": {"id": "U9"},
-            "container": {"type": "message", "message_ts": "111.222"},
-            "message": {"ts": "111.222"},
-            "actions": [{"action_id": "qans:abcdef012345:1"}],
-        }
-        with patch(
-            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value=ResolvedChoice(text="EU")),
-        ):
+        payload = _block_action("qans:abcdef012345:1", message={"ts": "111.222"})
+        with patch(_RESOLVE, new=AsyncMock(return_value=ResolvedChoice(text="EU"))):
             await adapter._dispatch_block_action(payload)
 
         adapter._on_message_callback.assert_awaited_once()
@@ -611,18 +354,8 @@ class TestChoiceButtons:
         self, adapter
     ):
         adapter._on_message_callback = AsyncMock()
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "user": {"id": "U9"},
-            "container": {"type": "message", "message_ts": "111.222"},
-            "actions": [{"action_id": "qans:abcdef012345:0"}],
-        }
-        with patch(
-            "backend.copilot.bot.adapters.slack.adapter.choices.resolve_choice",
-            new=AsyncMock(return_value=ResolvedChoice(text=None)),
-        ):
+        payload = _block_action("qans:abcdef012345:0")
+        with patch(_RESOLVE, new=AsyncMock(return_value=ResolvedChoice(text=None))):
             await adapter._dispatch_block_action(payload)
 
         adapter._clients["T1"].chat_postEphemeral.assert_awaited_once()
@@ -639,14 +372,7 @@ class TestChoiceButtons:
         # seen by nobody.
         adapter._on_message_callback = AsyncMock()
         adapter._api.answer_card = AsyncMock(side_effect=RuntimeError("rpc down"))
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "user": {"id": "U9"},
-            "container": {"type": "message", "message_ts": "111.222"},
-            "actions": [{"action_id": "appr:abcdef012345:0"}],
-        }
+        payload = _block_action("appr:abcdef012345:0")
 
         await adapter._dispatch_block_action(payload)
 
@@ -658,12 +384,7 @@ class TestChoiceButtons:
     @pytest.mark.asyncio
     async def test_malformed_action_id_is_a_no_op(self, adapter):
         adapter._on_message_callback = AsyncMock()
-        payload = {
-            "type": "block_actions",
-            "team": {"id": "T1"},
-            "channel": {"id": "C1"},
-            "actions": [{"action_id": "not-a-choice-action"}],
-        }
+        payload = _block_action("not-a-choice-action", user=None, container=None)
         await adapter._dispatch_block_action(payload)
         adapter._on_message_callback.assert_not_awaited()
 
@@ -894,13 +615,8 @@ class TestPerWorkspaceClient:
         )
         lookup = AsyncMock(return_value=install)
         with (
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
-                return_value=MagicMock(get_bot_install=lookup),
-            ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
-            ) as web_client,
+            patch(_INSTALLS, return_value=MagicMock(get_bot_install=lookup)),
+            patch(_WEB_CLIENT) as web_client,
         ):
             first = await a._client_for("T1")
             second = await a._client_for("T1")
@@ -914,16 +630,13 @@ class TestPerWorkspaceClient:
         a = SlackAdapter(MagicMock())
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                _INSTALLS,
                 return_value=MagicMock(
                     get_bot_install=AsyncMock(return_value=None),
                     is_install_revoked=AsyncMock(return_value=False),
                 ),
             ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
-                return_value="",
-            ),
+            patch(_STATIC_TOKEN, return_value=""),
         ):
             assert await a._client_for("T1") is None
 
@@ -940,12 +653,10 @@ class TestPerWorkspaceClient:
         install = BotInstallCredentials(team_id="T1", bot_token="xoxb-new")
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                _INSTALLS,
                 return_value=MagicMock(get_bot_install=AsyncMock(return_value=install)),
             ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
-            ) as web_client,
+            patch(_WEB_CLIENT) as web_client,
         ):
             fresh = await a._client_for("T1")
         assert fresh is not stale
@@ -958,16 +669,13 @@ class TestPerWorkspaceClient:
         a = SlackAdapter(MagicMock())
         with (
             patch(
-                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
+                _INSTALLS,
                 return_value=MagicMock(
                     get_bot_install=AsyncMock(return_value=None),
                     is_install_revoked=AsyncMock(return_value=True),
                 ),
             ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
-                return_value="xoxb-static",
-            ),
+            patch(_STATIC_TOKEN, return_value="xoxb-static"),
         ):
             assert await a._client_for("TREVOKED") is None
 
@@ -978,17 +686,9 @@ class TestPerWorkspaceClient:
         a = SlackAdapter(MagicMock())
         lookup = AsyncMock(return_value=None)
         with (
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.bot_installs_db",
-                return_value=MagicMock(get_bot_install=lookup),
-            ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.config.get_bot_token",
-                return_value="xoxb-static",
-            ),
-            patch(
-                "backend.copilot.bot.adapters.slack.adapter.AsyncWebClient"
-            ) as web_client,
+            patch(_INSTALLS, return_value=MagicMock(get_bot_install=lookup)),
+            patch(_STATIC_TOKEN, return_value="xoxb-static"),
+            patch(_WEB_CLIENT) as web_client,
         ):
             client = await a._client_for("")
         assert client is not None
@@ -1028,23 +728,10 @@ def test_target_encode_decode_roundtrip():
 
 
 class TestAddressedToOthers:
-    @staticmethod
-    def _thread_reply(text: str) -> dict:
-        return {
-            "type": "message",
-            "channel_type": "channel",
-            "channel": "C1",
-            "ts": "2.0",
-            "thread_ts": "1.0",
-            "user": "U1",
-            "text": text,
-            "team": "T1",
-        }
-
     async def _ctx_for(self, adapter: SlackAdapter, text: str):
         cb = AsyncMock()
         adapter.on_message(cb)
-        await adapter._dispatch_event(self._thread_reply(text))
+        await adapter._dispatch_event(_thread_reply(text))
         cb.assert_awaited_once()
         return cb.await_args.args[0]
 
@@ -1062,3 +749,42 @@ class TestAddressedToOthers:
     async def test_plain_thread_reply(self, adapter):
         ctx = await self._ctx_for(adapter, "and file it under Internal")
         assert ctx.addressed_to_others is False
+
+
+async def _dispatch(
+    adapter: SlackAdapter, event: dict, team_id: str | None = None
+) -> MessageContext | None:
+    """Dispatch one event; return the context the message callback got, if any."""
+    captured = {}
+
+    async def cb(ctx, ad):
+        captured["ctx"] = ctx
+
+    adapter.on_message(cb)
+    await adapter._dispatch_event(event, team_id)
+    return captured.get("ctx")
+
+
+def _thread_reply(text: str, **fields) -> dict:
+    return (
+        _event("message", channel_type="channel", thread_ts="1.0", text=text) | fields
+    )
+
+
+def _event(kind: str, **fields) -> dict:
+    """An event from U1 in C1 of workspace T1; a field passed as None is left out."""
+    event = {"type": kind, "channel": "C1", "ts": "2.0", "user": "U1", "team": "T1"}
+    return {k: v for k, v in (event | fields).items() if v is not None}
+
+
+def _block_action(action_id: str, **fields) -> dict:
+    """U9 clicking a button on message 111.222 in C1 of T1; a None field is left out."""
+    payload = {
+        "type": "block_actions",
+        "team": {"id": "T1"},
+        "channel": {"id": "C1"},
+        "user": {"id": "U9"},
+        "container": {"type": "message", "message_ts": "111.222"},
+        "actions": [{"action_id": action_id}],
+    }
+    return {k: v for k, v in (payload | fields).items() if v is not None}
