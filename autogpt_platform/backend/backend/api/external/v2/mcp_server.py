@@ -50,6 +50,7 @@ from backend.api.external.v2.mcp_calls import (
     input_schema,
     missing_scopes,
 )
+from backend.api.external.v2.mcp_scopes import mcp_scopes
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
 from backend.api.external.v2.tenancy import (
     RESOURCE_PERMISSIONS,
@@ -244,12 +245,6 @@ def protected_resource_metadata() -> ProtectedResourceMetadata:
         scopes_supported=mcp_scopes(),
         resource_name="AutoGPT Platform MCP Server",
     )
-
-
-def mcp_scopes() -> list[str]:
-    """Every permission an exposed tool can require."""
-    uses = [tool.allow_external_use for tool in TOOL_REGISTRY.values()]
-    return sorted({p.value for allowed, perms in uses if allowed for p in perms or []})
 
 
 def _platform_base_url() -> str:

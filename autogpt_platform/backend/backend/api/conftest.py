@@ -5,12 +5,15 @@ setup_test_user, and setup_admin_user are defined in the parent conftest.py
 (backend/conftest.py) and are available here automatically.
 """
 
+import uuid
 from types import SimpleNamespace
 
 import pytest
 from prisma.enums import SubscriptionTier
 from pytest_snapshot.plugin import Snapshot
 
+from backend.api.features import oauth_registration
+from backend.api.utils.rate_limit import RateLimiter
 from backend.copilot.rate_limit import is_user_paywalled as _REAL_IS_USER_PAYWALLED
 from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_account_closed as _REAL_IS_USER_ACCOUNT_CLOSED
@@ -40,6 +43,21 @@ _REFUSAL_CHECK_SITES = (
 )
 # A WebSocket's per-message check reads the ban, then the closure.
 _CLOSURE_CHECK_SITES = ("backend.api.ws_api.is_user_account_closed",)
+
+
+@pytest.fixture
+def fresh_registration_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OAuth client registrations count per address for an hour; limits of the
+    test's own keep reruns from reaching the cap."""
+    run = uuid.uuid4().hex
+    for name in ("_per_ip_limiter", "_overall_limiter"):
+        limiter: RateLimiter = getattr(oauth_registration, name)
+        fresh = RateLimiter(
+            f"{limiter.name}:test:{run}",
+            max_requests=limiter.max_requests,
+            window_seconds=limiter.window_seconds,
+        )
+        monkeypatch.setattr(oauth_registration, name, fresh)
 
 
 @pytest.fixture

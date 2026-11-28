@@ -297,6 +297,19 @@ The deprecated v1 has no limit across all calls. Instead, its endpoints share tw
 
 Running one block directly, through v1's `POST /blocks/{block_id}/execute` or the same path in the Platform's own API, allows 4 runs at once per account on each of the Platform's servers. A fifth is refused with `429` and "You already have 4 blocks running. Wait for one to finish, then try again." Not configurable.
 
+### MCP clients registering themselves
+
+On an install that lets MCP clients [register themselves to sign in](integrating/mcp-server.md#sign-in-with-oauth) (`OAUTH_DYNAMIC_CLIENT_REGISTRATION=true`; off by default, and not on AutoGPT Cloud), registrations at `POST /api/oauth/register` are limited:
+
+| Limit                     | Counted per       |
+| ------------------------- | ----------------- |
+| 10 registrations an hour  | IP address        |
+| 500 registrations an hour | everyone together |
+
+- Each hour starts on the clock hour. A request counts whether or not it registers a client, so one refused for its client metadata counts too.
+- **What you see:** `429`, with "Rate limit exceeded (10 requests per 3600s). Try again shortly." (500 for the shared limit) and a `Retry-After` header.
+- A client registers by calling the backend directly, so its IP address is the one [the backend](client-ip.md#the-backend) reads. Neither limit is configurable.
+
 ## Not on this page
 
 - Limits of other services that blocks and Otto use, such as an AI provider's own rate limits. Their errors are passed on as they come.

@@ -93,7 +93,11 @@ describe("IntegrationSetupWizardPage", () => {
     server.use(
       getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
         requested = new URL(request.url);
-        return { name: "Example App", scopes: ["IDENTITY"] };
+        return {
+          name: "Example App",
+          scopes: ["IDENTITY"],
+          self_registered: false,
+        };
       }),
     );
 
@@ -107,13 +111,39 @@ describe("IntegrationSetupWizardPage", () => {
     expect(sentTo.searchParams.get("state")).toBe("state-1");
   });
 
+  test("warns about a self-registered app without naming a button the wizard lacks", async () => {
+    openWith({
+      providers: btoa(JSON.stringify([{ provider: "github" }])),
+      redirect_uri: "http://localhost:8765/callback",
+    });
+    server.use(
+      getGetOauthGetOauthAppInfoMockHandler200({
+        name: "Totally Official",
+        scopes: ["IDENTITY"],
+        self_registered: true,
+      }),
+    );
+
+    render(<IntegrationSetupWizardPage />);
+
+    const notice = await screen.findByRole("alert");
+    expect(notice.textContent).toContain("hasn't reviewed this app");
+    expect(notice.textContent).toContain("localhost:8765");
+    expect(notice.textContent).not.toContain("Authorize");
+    expect(notice.textContent).not.toContain("sign-in");
+  });
+
   test("encodes the client id in the app-info request", async () => {
     let requested: URL | undefined;
     openWith({ client_id: "client?1" });
     server.use(
       getGetOauthGetOauthAppInfoMockHandler200(({ request }) => {
         requested = new URL(request.url);
-        return { name: "Example App", scopes: ["IDENTITY"] };
+        return {
+          name: "Example App",
+          scopes: ["IDENTITY"],
+          self_registered: false,
+        };
       }),
     );
 
@@ -131,6 +161,7 @@ describe("IntegrationSetupWizardPage", () => {
       getGetOauthGetOauthAppInfoMockHandler200({
         name: "Example App",
         scopes: ["IDENTITY"],
+        self_registered: false,
       }),
     );
 
@@ -150,6 +181,7 @@ describe("IntegrationSetupWizardPage", () => {
       getGetOauthGetOauthAppInfoMockHandler200({
         name: "Example App",
         scopes: ["IDENTITY"],
+        self_registered: false,
       }),
     );
 

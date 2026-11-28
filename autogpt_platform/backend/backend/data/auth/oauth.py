@@ -17,6 +17,7 @@ import logging
 import re
 import secrets
 import uuid
+from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
@@ -64,6 +65,9 @@ def _hash_token(token: str) -> str:
 AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+# A client that registered itself is deleted after this long without an
+# authorization or a token issued to it.
+IDLE_REGISTERED_CLIENT_TTL = timedelta(days=30)
 
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
@@ -138,7 +142,9 @@ class OAuthApplicationInfo(BaseModel):
     redirect_uris: list[str]
     grant_types: list[str]
     scopes: list[APIPermission]
-    owner_id: str
+    owner_id: Optional[str] = Field(
+        description="None for a client that registered itself"
+    )
     is_active: bool
     # Public clients (PKCE-only desktop / mobile / SPA apps) skip the
     # client_secret check. See `validate_client_credentials` for the
@@ -170,8 +176,8 @@ class OAuthApplicationInfo(BaseModel):
 class OAuthApplicationInfoWithSecret(OAuthApplicationInfo):
     """OAuth application with client secret hash (for validation)"""
 
-    client_secret_hash: str
-    client_secret_salt: str
+    client_secret_hash: Optional[str]
+    client_secret_salt: Optional[str]
 
     @staticmethod
     def from_db(app: PrismaOAuthApplication):
@@ -183,6 +189,8 @@ class OAuthApplicationInfoWithSecret(OAuthApplicationInfo):
 
     def verify_secret(self, plaintext_secret: str) -> bool:
         """Verify a plaintext client secret against the stored hash"""
+        if self.client_secret_hash is None:
+            return False
         # Use keysmith.verify_key() with stored salt
         return keysmith.verify_key(
             plaintext_secret, self.client_secret_hash, self.client_secret_salt
@@ -397,6 +405,27 @@ async def validate_client_credentials(
     )
 
 
+async def register_public_client(
+    name: str,
+    redirect_uris: list[str],
+    grant_types: list[str],
+    scopes: list[APIPermission],
+) -> OAuthApplicationInfo:
+    """Register a client that registered itself (RFC 7591): no owner, no secret."""
+    app = await PrismaOAuthApplication.prisma().create(
+        data={
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "clientId": f"agpt_client_{secrets.token_urlsafe(16)}",
+            "redirectUris": redirect_uris,
+            "grantTypes": grant_types,
+            "scopes": scopes,
+            "isPublic": True,
+        }
+    )
+    return OAuthApplicationInfo.from_db(app)
+
+
 def is_safe_oauth_redirect_uri(redirect_uri: str) -> bool:
     if not redirect_uri or len(redirect_uri) > 2048:
         return False
@@ -473,6 +502,7 @@ async def create_authorization_code(
     code = _generate_authorization_code()
     now = datetime.now(timezone.utc)
     expires_at = now + AUTHORIZATION_CODE_TTL
+    await _mark_registered_client_used(application_id, now)
 
     saved_code = await PrismaOAuthAuthorizationCode.prisma().create(
         data={
@@ -547,6 +577,9 @@ async def consume_authorization_code(
             code_verifier, auth_code.codeChallenge, auth_code.codeChallengeMethod
         ):
             raise InvalidGrantError("PKCE verification failed")
+
+    # Before the claim, so a failure here leaves the code redeemable.
+    await _mark_registered_client_used(application_id, now)
 
     # Atomically claim the code. The checks above run on a possibly stale read,
     # so two concurrent redeems can both pass them; only the request whose
@@ -789,11 +822,15 @@ async def _revoke_refresh_family(family_id: str, now: datetime) -> None:
 
 
 async def refresh_tokens(
-    refresh_token: str, application_id: str
+    refresh_token: str,
+    application_id: str,
+    grantable: Optional[Collection[str]] = None,
 ) -> tuple[OAuthAccessToken, OAuthRefreshToken]:
     """
     Use a refresh token to create new access and refresh tokens.
     Returns (new_access_token, new_refresh_token) both with plaintext tokens included.
+    With `grantable`, a token carrying a scope outside it is refused, so the
+    client has to authorize again.
 
     Raises:
         InvalidGrantError: If refresh token is invalid, expired, or revoked
@@ -836,6 +873,19 @@ async def refresh_tokens(
     if await is_user_banned(rt.userId):
         raise InvalidGrantError("the account this token belongs to is banned")
 
+    scopes = [APIPermission(s) for s in rt.scopes]
+    # Before the claim: a refused token isn't spent, so a retry isn't read as reuse.
+    if grantable is not None and (
+        outside := {s.value for s in scopes} - set(grantable)
+    ):
+        raise InvalidGrantError(
+            "refresh token carries permissions this application can no longer "
+            f"get: {', '.join(sorted(outside))}; authorize again"
+        )
+
+    # Before the claim, so a failure here leaves the refresh token usable.
+    await _mark_registered_client_used(application_id, now)
+
     # Atomically claim the one-time refresh token before minting descendants.
     # Concurrent presentations can all pass the read checks, but only one may
     # revoke it. The server can't tell a racing replay from a racing client, so
@@ -859,7 +909,6 @@ async def refresh_tokens(
         )
 
     # Create new access and refresh tokens with same scopes
-    scopes = [APIPermission(s) for s in rt.scopes]
     new_refresh_token = await create_refresh_token(
         rt.applicationId,
         rt.userId,
@@ -882,6 +931,14 @@ async def refresh_tokens(
         )
 
     return new_access_token, new_refresh_token
+
+
+async def _mark_registered_client_used(application_id: str, now: datetime) -> None:
+    # Only clients that registered themselves: an update would also move an owned
+    # app's `updatedAt`, which the owner's app list shows.
+    await PrismaOAuthApplication.prisma().update_many(
+        where={"id": application_id, "ownerId": None}, data={"lastUsedAt": now}
+    )
 
 
 async def revoke_refresh_token(
@@ -1096,6 +1153,8 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
     - Expired authorization codes (10 min TTL)
     - Expired access tokens (1 hour TTL)
     - Expired refresh tokens (30 day TTL)
+    - Clients that registered themselves and went 30 days without an authorization
+      or a token
 
     Returns a dict with counts of deleted tokens by type.
     """
@@ -1116,10 +1175,21 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
         where={"expiresAt": {"lt": now}}
     )
 
+    unused_clients_result = await PrismaOAuthApplication.prisma().delete_many(
+        where={
+            "ownerId": None,
+            "lastUsedAt": {"lt": now - IDLE_REGISTERED_CLIENT_TTL},
+            "AuthorizationCodes": {"none": {}},
+            "AccessTokens": {"none": {}},
+            "RefreshTokens": {"none": {}},
+        }
+    )
+
     deleted = {
         "authorization_codes": codes_result,
         "access_tokens": access_result,
         "refresh_tokens": refresh_result,
+        "unused_registered_clients": unused_clients_result,
     }
 
     total = sum(deleted.values())

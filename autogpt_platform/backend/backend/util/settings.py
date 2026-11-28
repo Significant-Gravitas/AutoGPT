@@ -638,6 +638,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "only when E2B's cloud cannot reach this server at platform_base_url.",
     )
 
+    oauth_dynamic_client_registration: bool = Field(
+        default=False,
+        description="Let OAuth clients register themselves (RFC 7591), as MCP "
+        "clients do to sign in without a client ID. Registered clients are public, "
+        "must use PKCE, redirect to the loopback interface and get only the MCP "
+        "server's permissions; the consent page tells users the app is unreviewed.",
+    )
+
     # Documented in docs/platform/client-ip.md: update it with any change here.
     trusted_proxies: str = Field(
         default="",

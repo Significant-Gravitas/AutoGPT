@@ -72,6 +72,7 @@ def v1_tokens(v1_key_rows):
         isPublic=False,
         createdAt=now,
         updatedAt=now,
+        lastUsedAt=now,
     )
     return {
         f"agpt_xt_test-{i}": OAuthAccessToken(
