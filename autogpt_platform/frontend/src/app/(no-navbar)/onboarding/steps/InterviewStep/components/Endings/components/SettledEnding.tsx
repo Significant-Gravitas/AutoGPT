@@ -24,7 +24,9 @@ export function SettledEnding({ view, isLeaving, onContinue }: Props) {
         "flex w-full max-w-md flex-col gap-4 rounded-large border border-border-base bg-surface p-5",
       )}
     >
-      <Text variant="large-medium">{view.heading}</Text>
+      <Text variant="large" weight="medium">
+        {view.heading}
+      </Text>
       <dl className="flex flex-col gap-3">
         {view.rows.map((row) => (
           <div key={row.label} className="flex flex-col gap-1">
@@ -34,7 +36,9 @@ export function SettledEnding({ view, isLeaving, onContinue }: Props) {
               </Text>
             </dt>
             <dd>
-              <Text variant="body-medium">{row.value}</Text>
+              <Text variant="body" weight="medium">
+                {row.value}
+              </Text>
             </dd>
           </div>
         ))}

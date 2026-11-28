@@ -38,7 +38,8 @@ export function CallCaptions({ lines, isLive }: Props) {
       {lines.map((line) => (
         <div key={line.id} className="flex gap-2">
           <Text
-            variant="body-medium"
+            variant="body"
+            weight="medium"
             as="span"
             tone={line.who === "otto" ? "brand" : "secondary"}
             className="shrink-0"

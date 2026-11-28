@@ -67,7 +67,7 @@ export function ProfileCardEnding({
         "flex w-full max-w-md flex-col gap-3 rounded-large border border-border-base bg-surface p-5",
       )}
     >
-      <Text variant="small-medium" tone="muted">
+      <Text variant="small" weight="medium" tone="muted">
         {isLive ? "What Otto has heard so far" : "Is this you?"}
       </Text>
       <dl className="flex flex-col gap-3">
@@ -92,7 +92,9 @@ export function ProfileCardEnding({
                   onBlur={() => setEditing(null)}
                 />
               ) : (
-                <Text variant="body-medium">{row.value}</Text>
+                <Text variant="body" weight="medium">
+                  {row.value}
+                </Text>
               )}
               {!isLive && editing !== index && (
                 <Button

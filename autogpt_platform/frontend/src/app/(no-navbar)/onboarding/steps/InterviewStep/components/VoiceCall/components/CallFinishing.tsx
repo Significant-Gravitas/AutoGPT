@@ -29,8 +29,8 @@ export function CallFinishing({ headline, stage }: Props) {
               key={line}
               className={cn(
                 "h-1.5 rounded-full transition-all duration-500 motion-reduce:transition-none",
-                index < stage && "w-1.5 bg-foreground-subtle",
-                index === stage && "w-5 bg-foreground-body",
+                index < stage && "w-1.5 bg-fill-subtle",
+                index === stage && "w-5 bg-fill-bold",
                 index > stage && "w-1.5 bg-surface-active",
               )}
             />
