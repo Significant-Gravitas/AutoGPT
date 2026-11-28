@@ -132,6 +132,7 @@
 * [Hacker News Users](block-integrations/hacker_news/users.md)
 * [HubSpot Company](block-integrations/hubspot/company.md)
 * [HubSpot Contact](block-integrations/hubspot/contact.md)
+* [HubSpot Deal](block-integrations/hubspot/deal.md)
 * [HubSpot Engagement](block-integrations/hubspot/engagement.md)
 * [Jina Chunking](block-integrations/jina/chunking.md)
 * [Jina Embeddings](block-integrations/jina/embeddings.md)

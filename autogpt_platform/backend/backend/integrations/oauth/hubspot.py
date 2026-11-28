@@ -35,8 +35,8 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
     """
 
     PROVIDER_NAME = ProviderName.HUBSPOT
-    # What the HubSpot blocks call: the contacts and companies CRM objects, and
-    # email engagements, which HubSpot accepts under the contacts scopes.
+    # What the HubSpot blocks call: contacts, companies, deals and their pipelines,
+    # and email engagements, which HubSpot accepts under the contacts scopes.
     # `oauth` is added to every HubSpot app and so must be requested.
     DEFAULT_SCOPES: ClassVar[list[str]] = [
         "oauth",
@@ -44,6 +44,8 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         "crm.objects.contacts.write",
         "crm.objects.companies.read",
         "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
     ]
 
     AUTHORIZE_URL = "https://app.hubspot.com/oauth/authorize"

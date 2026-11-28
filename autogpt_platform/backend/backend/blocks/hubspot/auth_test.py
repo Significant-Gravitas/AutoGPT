@@ -10,6 +10,13 @@ from backend.blocks.hubspot import _auth, _config
 from backend.blocks.hubspot._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 from backend.blocks.hubspot.company import HubSpotCompanyBlock
 from backend.blocks.hubspot.contact import HubSpotContactBlock
+from backend.blocks.hubspot.deal import (
+    HubSpotAssociateDealBlock,
+    HubSpotDealBlock,
+    HubSpotDealPipelinesBlock,
+    HubSpotGetDealBlock,
+    HubSpotSearchDealsBlock,
+)
 from backend.blocks.hubspot.engagement import HubSpotEngagementBlock
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 
@@ -94,6 +101,14 @@ def test_oauth_is_offered_next_to_the_api_key_when_configured(hubspot_oauth_env)
         (HubSpotCompanyBlock, _auth.COMPANY_SCOPES),
         (HubSpotContactBlock, _auth.CONTACT_SCOPES),
         (HubSpotEngagementBlock, _auth.CONTACT_SCOPES),
+        (HubSpotDealBlock, _auth.DEAL_SCOPES),
+        (HubSpotGetDealBlock, _auth.DEAL_READ_SCOPES),
+        (HubSpotSearchDealsBlock, _auth.DEAL_READ_SCOPES),
+        (
+            HubSpotAssociateDealBlock,
+            _auth.DEAL_SCOPES | _auth.CONTACT_SCOPES | _auth.COMPANY_SCOPES,
+        ),
+        (HubSpotDealPipelinesBlock, _auth.DEAL_READ_SCOPES),
     ],
 )
 def test_credential_field_asks_for_a_token_hubspot_still_issues(block_cls, scopes):
@@ -106,6 +121,7 @@ def test_credential_field_asks_for_a_token_hubspot_still_issues(block_cls, scope
     assert "Bearer" in description
     assert "crm.objects.companies.write" in description
     assert "crm.objects.contacts.write" in description
+    assert "crm.objects.deals.write" in description
     assert "Legacy apps" not in description
     assert "requires an API Key" not in description
     field = block_cls.Input.get_credentials_fields_info()["credentials"]

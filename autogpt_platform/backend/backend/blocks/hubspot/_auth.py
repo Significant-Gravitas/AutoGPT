@@ -28,6 +28,8 @@ HubSpotCredentialsInput = CredentialsMetaInput[
 
 CONTACT_SCOPES = {"crm.objects.contacts.read", "crm.objects.contacts.write"}
 COMPANY_SCOPES = {"crm.objects.companies.read", "crm.objects.companies.write"}
+DEAL_READ_SCOPES = {"crm.objects.deals.read"}
+DEAL_SCOPES = {"crm.objects.deals.read", "crm.objects.deals.write"}
 
 
 def HubSpotCredentialsField(scopes: set[str]) -> HubSpotCredentialsInput:
@@ -45,8 +47,10 @@ def HubSpotCredentialsField(scopes: set[str]) -> HubSpotCredentialsInput:
             "with the scopes for the objects you use: crm.objects.companies.read "
             "and crm.objects.companies.write for companies, "
             "crm.objects.contacts.read and crm.objects.contacts.write for "
-            "contacts and email engagements. An existing private app access "
-            "token works too. HubSpot no longer accepts legacy API keys."
+            "contacts and email engagements, and crm.objects.deals.read and "
+            "crm.objects.deals.write for deals and deal pipelines. An existing "
+            "private app access token works too. HubSpot no longer accepts legacy "
+            "API keys."
         ),
     )
 

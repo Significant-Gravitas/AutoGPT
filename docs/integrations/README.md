@@ -762,8 +762,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Company Enrichment](block-integrations/dataforb2b/enrich.md#company-enrichment) | Look up and enrich a company using DataForB2B's B2B database — firmographics, headcount/size, industry, domain and social profiles from a company domain, name or LinkedIn URL |
 | [Company Search](block-integrations/dataforb2b/search.md#company-search) | Search companies and accounts by structured filters — industry, headcount/size, location, funding, keywords — using DataForB2B's database |
 | [Create Campaign](block-integrations/smartlead/campaign.md#create-campaign) | Create a campaign in SmartLead |
+| [Hub Spot Associate Deal](block-integrations/hubspot/deal.md#hub-spot-associate-deal) | Associates a HubSpot deal with a contact or a company |
 | [Hub Spot Company](block-integrations/hubspot/company.md#hub-spot-company) | Manages HubSpot companies - create, update, and retrieve company information |
 | [Hub Spot Contact](block-integrations/hubspot/contact.md#hub-spot-contact) | Manages HubSpot contacts - create, update, and retrieve contact information |
+| [Hub Spot Deal](block-integrations/hubspot/deal.md#hub-spot-deal) | Creates or updates a HubSpot deal |
+| [Hub Spot Deal Pipelines](block-integrations/hubspot/deal.md#hub-spot-deal-pipelines) | Lists the HubSpot deal pipelines and their stages |
+| [Hub Spot Get Deal](block-integrations/hubspot/deal.md#hub-spot-get-deal) | Gets a HubSpot deal by ID, with its contacts and companies |
+| [Hub Spot Search Deals](block-integrations/hubspot/deal.md#hub-spot-search-deals) | Searches HubSpot deals by text, pipeline, stage or any deal property |
 | [People Search](block-integrations/dataforb2b/search.md#people-search) | Search people and B2B leads by structured filters — job title, company, location, industry, seniority, skills — using DataForB2B's database |
 | [Profile Enrichment](block-integrations/dataforb2b/enrich.md#profile-enrichment) | Look up and enrich a professional profile from a LinkedIn URL using DataForB2B's B2B database — returns the full profile (current role, experience and skills) plus work email, personal email and GitHub |
 | [Save Campaign Sequences](block-integrations/smartlead/campaign.md#save-campaign-sequences) | Save sequences within a campaign |
