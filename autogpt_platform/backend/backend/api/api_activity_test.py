@@ -47,7 +47,7 @@ def day(mocker) -> date:
 
 
 @pytest.fixture(autouse=True)
-def tally(mocker):
+async def tally(mocker):
     """A tally of the test's own, so no other test's flusher writes its counts."""
     # Earlier files' requests leave counts in the real tally, which its flushers
     # (one per test client's loop) would write through this file's patched Redis.
@@ -61,6 +61,7 @@ def tally(mocker):
     yield tally
     if tally._flusher is not None:
         tally._flusher.cancel()
+        await asyncio.gather(tally._flusher, return_exceptions=True)
 
 
 @pytest.fixture(autouse=True)
@@ -217,6 +218,8 @@ async def test_requests_answer_while_redis_fails_or_hangs(
     )
     mocker.patch.object(api_activity, "_failures", api_activity._FailureLog())
     mocker.patch.object(api_activity, "_FLUSH_TIMEOUT_SECONDS", 2.0)
+    # Only this test's own flushes may reach Redis, however slow the runner.
+    mocker.patch.object(api_activity, "_FLUSH_INTERVAL_SECONDS", 3600.0)
     path, headers = (
         (SESSION_PATH, {})
         if credential == "session"

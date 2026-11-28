@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import sys
@@ -37,6 +38,7 @@ from backend.util.url_redaction import (
     request_credentials,
 )
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 
@@ -868,7 +870,7 @@ async def discord_send_alert(
     else:
         channel_name = settings.config.platform_alert_discord_channel
 
-    return await SendDiscordMessageBlock().run_once(
+    status = await SendDiscordMessageBlock().run_once(
         SendDiscordMessageBlock.Input(
             credentials=CredentialsMetaInput(
                 id=creds.id,
@@ -882,3 +884,7 @@ async def discord_send_alert(
         "status",
         credentials=creds,
     )
+    # The block reports a failed send in its status rather than raising.
+    if status != "Message sent":
+        logger.warning(f"Discord alert to {channel_name!r} was not sent: {status}")
+    return status

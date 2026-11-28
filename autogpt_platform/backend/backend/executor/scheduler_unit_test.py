@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -3366,6 +3367,28 @@ def test_graph_schedule_rejects_blank_names_before_validation_or_persistence(nam
         )
     run.assert_not_called()
     persist.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "existing, registered",
+    [
+        (None, True),
+        (CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC")), False),
+        (CronTrigger(hour=3, minute=0, timezone=ZoneInfo("UTC")), True),
+    ],
+    ids=["missing", "unchanged", "changed"],
+)
+def test_an_unchanged_no_plan_report_job_keeps_its_overdue_run(
+    set_platform_payment, existing, registered
+):
+    set_platform_payment(True)
+    sched = Scheduler.__new__(Scheduler)
+    sched.scheduler = MagicMock()
+    sched.scheduler.get_job.return_value = existing and MagicMock(trigger=existing)
+
+    Scheduler._register_no_plan_activity_report(sched)
+
+    assert sched.scheduler.add_job.called == registered
 
 
 class TestPostHogLifecycleSweepRegistration:

@@ -1721,6 +1721,7 @@ def _morning_briefing_crontab(user_id: str) -> str:
 
 
 _POSTHOG_LIFECYCLE_JOB_ID = "sync_posthog_lifecycles"
+_NO_PLAN_ACTIVITY_REPORT_JOB_ID = "report_no_plan_api_activity"
 RECORDING_PURGE_JOB_ID = "purge_expired_brain_dump_recordings"
 
 
@@ -3310,18 +3311,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # No-plan API activity - daily, for the UTC day just ended. A cron, so
-            # it fires just after that day ends, not at the hour it was first added.
-            if no_plan_report_enabled():
-                self.scheduler.add_job(
-                    no_plan_api_activity_report,
-                    CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC")),
-                    id="report_no_plan_api_activity",
-                    replace_existing=True,
-                    max_instances=1,
-                    jobstore=Jobstores.EXECUTION.value,
-                )
-
             # Failed Push Subscription Cleanup - configurable interval
             system_jobs.add_job(
                 cleanup_failed_push_subscriptions,
@@ -3443,6 +3432,7 @@ class Scheduler(AppService):
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_idle_credential_sweep()
             self._register_posthog_lifecycle_sweep()
+            self._register_no_plan_activity_report()
             self._register_recording_purge()
             self._register_memory_cron_reconcile()
             self._register_community_sweep()
@@ -5010,6 +5000,27 @@ class Scheduler(AppService):
             sync_posthog_lifecycles,
             trigger,
             id=_POSTHOG_LIFECYCLE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_no_plan_activity_report(self) -> None:
+        """Daily just after the UTC day it reports ends, wherever it can list
+        anyone. Registered like the PostHog sweep, so a restart after 00:05
+        can't push that day's overdue report to tomorrow."""
+        if not no_plan_report_enabled():
+            return
+        trigger = CronTrigger(hour=0, minute=5, timezone=ZoneInfo("UTC"))
+        existing = self.scheduler.get_job(
+            _NO_PLAN_ACTIVITY_REPORT_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            no_plan_api_activity_report,
+            trigger,
+            id=_NO_PLAN_ACTIVITY_REPORT_JOB_ID,
             replace_existing=True,
             max_instances=1,
             jobstore=Jobstores.EXECUTION.value,

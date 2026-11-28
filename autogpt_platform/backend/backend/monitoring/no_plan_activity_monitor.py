@@ -11,6 +11,7 @@ import asyncio
 import logging
 from datetime import UTC, date, datetime, time, timedelta
 
+from prisma.enums import SubscriptionTier
 from pydantic import BaseModel
 
 from backend.copilot.rate_limit import is_user_paywalled
@@ -31,7 +32,12 @@ settings = Settings()
 # Keeps one alert readable; the admin users page has the rest.
 _MAX_ACCOUNTS_LISTED = 20
 _MAX_GROUPS_LISTED = 5
+# Discord's limit: the block splits longer content mid-line, links included.
+_MAX_MESSAGE_CHARS = 2000
+_OVERFLOW_ROOM = 80
 _PAYWALL_READS_IN_FLIGHT = 10
+# The only tiers `is_user_paywalled` can refuse; the IP query drops the rest first.
+_TIERS_WITHOUT_A_PLAN = [SubscriptionTier.NO_TIER, SubscriptionTier.TRIAL]
 
 
 class NoPlanAccount(BaseModel):
@@ -66,7 +72,10 @@ async def find_no_plan_activity(day: date) -> NoPlanActivity:
     since = datetime.combine(day, time.min, tzinfo=UTC)
     busy = await find_busy_accounts(day, config.no_plan_activity_min_requests)
     groups = await auth_ip_events_db().find_accounts_sharing_an_ip(
-        since, since + timedelta(days=1), config.no_plan_activity_min_accounts_per_ip
+        since,
+        since + timedelta(days=1),
+        config.no_plan_activity_min_accounts_per_ip,
+        _TIERS_WITHOUT_A_PLAN,
     )
     no_plan = await _without_plan({*busy, *(uid for group in groups for uid in group)})
 
@@ -144,7 +153,22 @@ def _format_report(day: date, activity: NoPlanActivity) -> str:
             lines += _account_lines(group, indent="  ")
         if len(activity.groups) > _MAX_GROUPS_LISTED:
             lines.append(f"- and {len(activity.groups) - _MAX_GROUPS_LISTED} more")
-    return "\n".join(lines)
+    return _fit_one_message(lines)
+
+
+def _fit_one_message(lines: list[str]) -> str:
+    """Whole lines up to Discord's limit, then how many were cut."""
+    if len("\n".join(lines)) <= _MAX_MESSAGE_CHARS:
+        return "\n".join(lines)
+    kept: list[str] = []
+    size = 0
+    for line in lines:
+        if size + len(line) + 1 + _OVERFLOW_ROOM > _MAX_MESSAGE_CHARS:
+            break
+        kept.append(line)
+        size += len(line) + 1
+    cut = len(lines) - len(kept)
+    return "\n".join([*kept, f"… and {cut} more lines, past Discord's message limit"])
 
 
 def _account_lines(accounts: list[NoPlanAccount], indent: str) -> list[str]:

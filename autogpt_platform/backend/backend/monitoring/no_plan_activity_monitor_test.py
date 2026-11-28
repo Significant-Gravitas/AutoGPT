@@ -10,7 +10,7 @@ import pytest
 from prisma.enums import AuthIPEventKind, SubscriptionTier
 from prisma.models import AuthIPEvent, AuthUser, User
 
-from backend.data import api_activity
+from backend.data import api_activity, auth_ip_events
 from backend.data.redis_client import HOST, PORT
 from backend.monitoring import no_plan_activity_monitor as monitor
 from backend.util.metrics import DiscordChannel
@@ -150,6 +150,29 @@ async def test_reports_three_accounts_without_a_plan_on_one_ip_as_a_group(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_larger_group_of_paying_accounts_does_not_hide_a_no_plan_one(
+    mocker, account, clock, alerts
+):
+    # One group fits, as the twenty-first IP would find past the real limit.
+    mocker.patch.object(auth_ip_events, "SHARED_IP_GROUP_LIMIT", 1)
+    payers = [await account(PAYING) for _ in range(4)]
+    # A trial with no live trial behind it is without a plan too.
+    trio = [await account(tier) for tier in (NO_PLAN, NO_PLAN, SubscriptionTier.TRIAL)]
+    for user_id in payers:
+        await _ip_event(user_id, OTHER_IP, clock.at(9))
+    for user_id in trio:
+        await _ip_event(user_id, SHARED_IP, clock.at(10))
+
+    clock.at(0, day_offset=1)
+    await monitor.report_no_plan_api_activity()
+
+    alerts.assert_called_once()
+    message = alerts.call_args.args[0]
+    assert "- 3 accounts:" in message
+    assert all(f"`{user_id}`" in message for user_id in trio)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_sends_nothing_when_nothing_crosses_a_threshold(account, clock, alerts):
     below = await account(NO_PLAN)
     pair = [await account(NO_PLAN) for _ in range(2)]
@@ -174,6 +197,25 @@ async def test_reads_nothing_where_payment_is_off(mocker, set_platform_payment, 
     assert result == "The no-plan API activity report is disabled."
     find.assert_not_called()
     alerts.assert_not_called()
+
+
+def test_a_long_report_is_one_message_of_whole_lines():
+    accounts = [
+        monitor.NoPlanAccount(
+            user_id=str(uuid4()),
+            requests=api_activity.APIRequestCounts(internal=5_000, external=500),
+            created_at=None,
+        )
+        for _ in range(20)
+    ]
+    activity = monitor.NoPlanActivity(busy=accounts, groups=[accounts[:5]] * 5)
+
+    message = monitor._format_report(date(2026, 11, 27), activity)
+
+    *listed, overflow = message.split("\n")
+    assert len(message) <= 2000
+    assert overflow.startswith("… and ")
+    assert all(line.endswith(">") for line in listed if "- `" in line)
 
 
 async def _requests(user_id: str, internal: int = 0, external: int = 0) -> None:

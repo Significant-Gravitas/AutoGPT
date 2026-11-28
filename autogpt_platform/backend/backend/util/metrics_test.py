@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import sys
 import time
 from collections.abc import Callable
@@ -1350,3 +1351,29 @@ async def test_a_security_alert_goes_to_its_channel_or_else_the_platform_one(
     await metrics.discord_send_alert("alert", DiscordChannel.SECURITY)
 
     assert send.await_args.args[0].channel_name == sent_to
+
+
+@pytest.mark.parametrize(
+    "status, warned",
+    [("Message sent", False), ("Channel not found: platform-alerts", True)],
+    ids=["sent", "not-found"],
+)
+async def test_an_alert_the_block_did_not_send_is_logged(
+    mocker, monkeypatch, caplog, status, warned
+):
+    from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+
+    monkeypatch.setattr(
+        metrics.settings.config, "platform_alert_discord_channel", "platform-alerts"
+    )
+    mocker.patch.object(
+        SendDiscordMessageBlock, "run_once", new_callable=AsyncMock, return_value=status
+    )
+
+    with caplog.at_level(logging.WARNING, logger=metrics.logger.name):
+        assert await metrics.discord_send_alert("alert") == status
+
+    warnings = [r.getMessage() for r in caplog.records if r.name == metrics.logger.name]
+    assert warnings == (
+        [f"Discord alert to 'platform-alerts' was not sent: {status}"] if warned else []
+    )

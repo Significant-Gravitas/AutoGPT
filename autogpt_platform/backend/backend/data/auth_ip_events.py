@@ -185,19 +185,26 @@ async def delete_expired_ip_events(retention_days: int) -> int:
 
 
 async def find_accounts_sharing_an_ip(
-    since: datetime, until: datetime, min_accounts: int
+    since: datetime,
+    until: datetime,
+    min_accounts: int,
+    tiers: list[SubscriptionTier],
 ) -> list[list[str]]:
-    """The accounts that signed up or signed in from one IP in the window, one
-    group per IP, largest first. Returns no IPs: the caller's report goes to
-    Discord, and the admin users page shows them."""
+    """The accounts on one of `tiers` that signed up or signed in from one IP in
+    the window, one group per IP, largest first. Returns no IPs: the caller's
+    report goes to Discord, and the admin users page shows them."""
+    # The tier filter runs before the group size and both limits, so accounts on
+    # other tiers can't fill them.
     rows = await query_raw_with_schema(
         """
-        SELECT (array_agg(DISTINCT "userId" ORDER BY "userId"))[1:$4] AS account_ids
-        FROM {schema_prefix}"UserAuthIPEvent"
-        WHERE "createdAt" >= $1::timestamp AND "createdAt" < $2::timestamp
-        GROUP BY "ipAddress"
-        HAVING count(DISTINCT "userId") >= $3
-        ORDER BY count(DISTINCT "userId") DESC
+        SELECT (array_agg(DISTINCT e."userId" ORDER BY e."userId"))[1:$4] AS account_ids
+        FROM {schema_prefix}"UserAuthIPEvent" e
+        JOIN {schema_prefix}"User" u ON u."id" = e."userId"
+        WHERE e."createdAt" >= $1::timestamp AND e."createdAt" < $2::timestamp
+          AND u."subscriptionTier"::text = ANY($6::text[])
+        GROUP BY e."ipAddress"
+        HAVING count(DISTINCT e."userId") >= $3
+        ORDER BY count(DISTINCT e."userId") DESC
         LIMIT $5
         """,
         since,
@@ -205,6 +212,7 @@ async def find_accounts_sharing_an_ip(
         min_accounts,
         SHARED_IP_ACCOUNT_LIMIT,
         SHARED_IP_GROUP_LIMIT,
+        [SubscriptionTier(tier).value for tier in tiers],
     )
     return [list(row["account_ids"]) for row in rows]
 
