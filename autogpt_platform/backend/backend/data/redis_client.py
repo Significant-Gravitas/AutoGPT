@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 import threading
 import time
 from collections.abc import AsyncGenerator
@@ -61,6 +62,11 @@ REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10000"))
 # Retry transient cluster errors internally so a rotation blip never surfaces
 # as a graph-exec 500.
 REDIS_RETRY_ATTEMPTS = int(os.getenv("REDIS_RETRY_ATTEMPTS", "5"))
+
+# The shard lookup joins a cold client build that ``conn_retry`` retries for
+# minutes while Redis is down; bound it like the rest of the stream open, so
+# an outage fails the one open instead of holding it.
+RESOLVE_SHARD_TIMEOUT_S = 15.0
 
 # Errors that should trigger a per-command retry inside the redis-py client.
 TRANSIENT_REDIS_ERRORS: tuple[type[RedisError], ...] = (
@@ -186,17 +192,43 @@ async def connect_async() -> AsyncRedisClient:
         # retry path uses a hardcoded {Timeout, Connection, ClusterDown} set.
         # Pass `retry` only to match the sync RedisCluster call above.
         retry=_build_async_retry(),
+        # redis-py 8.1 reinitializes the whole topology every 5 MOVED replies,
+        # and that reinitialize calls aclose() on every node's connections —
+        # including ones mid-command on this shared client. Patch the moved
+        # slot instead; full refreshes go through refresh_slot_map_async.
+        reinitialize_steps=0,
     )
     # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
+    # BaseException: a cancelled PING (a bounded caller gave up) must close too.
     try:
+        # Populate the slot map up front: 8.1 builds it lazily, and a fresh
+        # client's first keyed command would route off an empty map.
+        await c.initialize()
         await c.ping()
-    except Exception:
+    except BaseException:
         try:
-            await c.close()
+            await _force_close_async_cluster(c)
         except Exception:
             pass
         raise
     return c
+
+
+async def _force_close_async_cluster(client: AsyncRedisClient) -> None:
+    """Close an async cluster client and its node pools.
+
+    redis-py 8.1's ``aclose()`` no-ops once a connection error flips the
+    client back to uninitialized (``_initialize = True``), so a client
+    discarded after a failed command keeps its node sockets. Close the
+    nodes manager directly as well so the sockets are really released.
+    """
+    try:
+        await client.aclose()
+    finally:
+        nodes_manager = getattr(client, "nodes_manager", None)
+        if nodes_manager is not None:
+            await nodes_manager.aclose()
+            await nodes_manager.aclose("startup_nodes")
 
 
 # Async Redis connections bind to the loop where they are first used.
@@ -229,7 +261,7 @@ async def disconnect_async():
         if finalizer is not None:
             await finalizer.aclose()
         elif client is not None:
-            await client.close()
+            await _force_close_async_cluster(client)
 
 
 async def get_redis_async() -> AsyncRedisClient:
@@ -238,8 +270,14 @@ async def get_redis_async() -> AsyncRedisClient:
         client = _async_clients.get(loop)
         if client is None:
             client = await connect_async()
-            finalizer = _close_async_client_on_loop_shutdown(client)
-            await anext(finalizer)
+            try:
+                finalizer = _close_async_client_on_loop_shutdown(client)
+                await anext(finalizer)
+            except BaseException:
+                # A cancelled caller leaves the connected client uncached;
+                # close it rather than leak it.
+                await _force_close_async_cluster(client)
+                raise
             _async_clients[loop] = client
             _async_client_finalizers[loop] = finalizer
         return client
@@ -256,7 +294,7 @@ async def _close_async_client_on_loop_shutdown(
         if _async_clients.get(loop) is client:
             _async_clients.pop(loop, None)
             _async_client_finalizers.pop(loop, None)
-        await client.close()
+        await _force_close_async_cluster(client)
 
 
 # Sharded pub/sub only delivers on the keyslot-owning shard; subscribers
@@ -276,6 +314,28 @@ def resolve_shard_for_channel(channel: str) -> tuple[str, int]:
     return _address_remap((node.host, node.port))
 
 
+async def resolve_shard_for_channel_async(channel: str) -> tuple[str, int]:
+    """Async variant of :func:`resolve_shard_for_channel`.
+
+    Reads the loop's async cluster client, so a cold slot map does cluster
+    discovery with async I/O instead of blocking the event loop on the sync
+    client's connect. The lookup is bounded like the rest of the stream
+    open: a client that can't be built in time fails the one open, and the
+    caller reports the stream lost and retries.
+    """
+    async with asyncio.timeout(RESOLVE_SHARD_TIMEOUT_S):
+        cluster = await get_redis_async()
+        # Never read the map of a client that hasn't initialized: 8.1 builds
+        # the slot map lazily, and a fresh client's slots_cache is empty.
+        # Idempotent no-op once the client is initialized.
+        await cluster.initialize()
+    node = cluster.get_node_from_key(channel)
+    if node is None:
+        raise RuntimeError(f"No cluster node owns the keyslot for channel {channel!r}")
+    # The async ClusterNode types its port str | int; the remap wants int.
+    return _address_remap((node.host, int(node.port)))
+
+
 def follow_moved_slot(error: MovedError) -> None:
     """Point the cached slot map at the shard a MOVED reply named.
 
@@ -285,6 +345,52 @@ def follow_moved_slot(error: MovedError) -> None:
     shard that no longer owns its channel.
     """
     get_redis().nodes_manager.move_slot(error)
+
+
+async def follow_moved_slot_async(error: MovedError) -> None:
+    """Async variant of :func:`follow_moved_slot`, for the async client's map.
+
+    redis-py 8.1's ``NodesManager.move_slot`` stores the host the redirect
+    announces without running ``address_remap`` over it (only the CLUSTER
+    SLOTS path applies the remap). CI's cluster announces docker hostnames
+    the runner can't resolve, so the stored owner is rewritten through the
+    remap here — matching what every other map read returns.
+    """
+    client = await get_redis_async()
+    await client.nodes_manager.move_slot(error)
+    _remap_moved_slot_owner(client.nodes_manager, error.slot_id)
+
+
+def _remap_moved_slot_owner(nodes_manager, slot_id: int) -> None:
+    """Rewrite a MOVED-patched slot owner through the client's address remap."""
+    slot_nodes = nodes_manager.slots_cache.get(slot_id)
+    if not slot_nodes:
+        return
+    node = slot_nodes[0]
+    host, port = nodes_manager.remap_host_port(node.host, int(node.port))
+    if host == "localhost":
+        # ClusterNode resolves "localhost" on construction; keep the cache
+        # key consistent with the CLUSTER SLOTS-discovered nodes.
+        host = socket.gethostbyname(host)
+    new_name = f"{host}:{port}"
+    if new_name == node.name:
+        return
+    existing = nodes_manager.nodes_cache.get(new_name)
+    if existing is not None:
+        # Point the slot at the remap-consistent node CLUSTER SLOTS already
+        # discovered, and drop the redirect's announced duplicate.
+        slot_nodes[0] = existing
+        nodes_manager.nodes_cache.pop(node.name, None)
+        if nodes_manager.default_node is node:
+            nodes_manager.default_node = existing
+        return
+    nodes_manager.nodes_cache.pop(node.name, None)
+    node.host, node.port, node.name = host, port, new_name
+    # redis-py 8.1 builds each new connection from connection_kwargs in
+    # ClusterNode.acquire_connection(): leave the redirect's announced address
+    # here and keyed commands keep dialling it until a full topology refresh.
+    node.connection_kwargs["host"], node.connection_kwargs["port"] = host, port
+    nodes_manager.nodes_cache[new_name] = node
 
 
 def refresh_slot_map() -> None:
@@ -309,6 +415,27 @@ def refresh_slot_map() -> None:
 _SLOT_MAP_REFRESH_EVERY_S = 5.0
 _slot_map_refreshed_at = float("-inf")
 _slot_map_refresh_lock = threading.Lock()
+
+
+async def refresh_slot_map_async() -> None:
+    """Async variant of :func:`refresh_slot_map`, for the async client's map.
+
+    Each loop-owned client has its own cooldown. The check-and-set can't
+    interleave between awaits on the client's loop.
+    """
+    client = await get_redis_async()
+    now = _async_slot_map_clock()
+    last_refresh = _async_slot_map_refreshed_at.get(client, float("-inf"))
+    if now - last_refresh < _SLOT_MAP_REFRESH_EVERY_S:
+        return
+    _async_slot_map_refreshed_at[client] = now
+    await client.nodes_manager.initialize()
+
+
+_async_slot_map_refreshed_at: WeakKeyDictionary[AsyncRedisClient, float] = (
+    WeakKeyDictionary()
+)
+_async_slot_map_clock = time.monotonic
 
 
 @conn_retry("RedisShardedPubSub", "Acquiring connection")
@@ -344,7 +471,7 @@ def connect_sharded_pubsub(channel: str) -> Redis:
 @conn_retry("AsyncRedisShardedPubSub", "Acquiring connection")
 async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
     """Async variant of :func:`connect_sharded_pubsub`."""
-    host, port = resolve_shard_for_channel(channel)
+    host, port = await resolve_shard_for_channel_async(channel)
     # socket_timeout=None: see ``connect_sharded_pubsub``.
     c = AsyncRedis(
         host=host,

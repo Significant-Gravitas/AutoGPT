@@ -7,6 +7,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.cluster import RedisCluster
@@ -133,6 +134,22 @@ async def test_connect_async_builds_async_redis_cluster() -> None:
     client.ping.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_connect_async_disables_moved_reinitialize() -> None:
+    """redis-py 8.1's default reinitialize_steps=5 closes every node's
+    connections on every fifth MOVED — including sockets mid-command on this
+    shared client. Slot patching alone keeps the map right, so the client
+    must be built with reinitialize_steps=0."""
+    with patch.object(redis_client, "AsyncRedisCluster", autospec=True) as mock_cluster:
+        fake = MagicMock(spec=AsyncRedisCluster)
+        fake.initialize = AsyncMock()
+        fake.ping = AsyncMock()
+        mock_cluster.return_value = fake
+        await redis_client.connect_async()
+
+    assert mock_cluster.call_args.kwargs["reinitialize_steps"] == 0
+
+
 def test_get_redis_caches_connect() -> None:
     with patch.object(redis_client, "connect", autospec=True) as mock_connect:
         mock_connect.return_value = MagicMock(spec=RedisCluster)
@@ -160,7 +177,8 @@ async def test_get_redis_async_serializes_concurrent_connects() -> None:
     connect_started = asyncio.Event()
     allow_connect = asyncio.Event()
     fake = MagicMock(spec=AsyncRedisCluster)
-    fake.close = AsyncMock()
+    fake.aclose = AsyncMock()
+    fake.nodes_manager.aclose = AsyncMock()
 
     async def delayed_connect() -> AsyncRedisCluster:
         connect_started.set()
@@ -186,12 +204,15 @@ async def test_get_redis_async_serializes_concurrent_connects() -> None:
     assert first_client is fake
     assert second_client is fake
     mock_connect.assert_awaited_once()
-    fake.close.assert_awaited_once()
+    fake.aclose.assert_awaited_once()
+    fake.nodes_manager.aclose.assert_any_await()
+    fake.nodes_manager.aclose.assert_any_await("startup_nodes")
 
 
 def test_get_redis_async_closes_client_when_owning_loop_shuts_down() -> None:
     fake = MagicMock(spec=AsyncRedisCluster)
-    fake.close = AsyncMock()
+    fake.aclose = AsyncMock()
+    fake.nodes_manager.aclose = AsyncMock()
 
     with patch.object(redis_client, "connect_async", new=AsyncMock(return_value=fake)):
         loop = asyncio.new_event_loop()
@@ -203,7 +224,9 @@ def test_get_redis_async_closes_client_when_owning_loop_shuts_down() -> None:
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
 
-    fake.close.assert_awaited_once()
+    fake.aclose.assert_awaited_once()
+    fake.nodes_manager.aclose.assert_any_await()
+    fake.nodes_manager.aclose.assert_any_await("startup_nodes")
     assert not redis_client._async_clients
     assert not redis_client._async_client_finalizers
 
@@ -222,12 +245,15 @@ def test_disconnect_closes_cached_client() -> None:
 async def test_disconnect_async_closes_cached_client() -> None:
     with patch.object(redis_client, "connect_async", autospec=True) as mock_connect:
         fake = MagicMock(spec=AsyncRedisCluster)
-        fake.close = AsyncMock()
+        fake.aclose = AsyncMock()
+        fake.nodes_manager.aclose = AsyncMock()
         mock_connect.return_value = fake
         await redis_client.get_redis_async()
         await redis_client.disconnect_async()
 
-    fake.close.assert_awaited_once()
+    fake.aclose.assert_awaited_once()
+    fake.nodes_manager.aclose.assert_any_await()
+    fake.nodes_manager.aclose.assert_any_await("startup_nodes")
     assert not redis_client._async_clients
     assert not redis_client._async_client_finalizers
 
@@ -342,7 +368,8 @@ async def test_connect_sharded_pubsub_async_disables_socket_timeout() -> None:
     with (
         patch.object(
             redis_client,
-            "resolve_shard_for_channel",
+            "resolve_shard_for_channel_async",
+            new_callable=AsyncMock,
             return_value=("shard-host", 7001),
         ),
         patch.object(redis_client, "AsyncRedis", autospec=True) as mock_redis,
@@ -407,6 +434,335 @@ def test_resolve_shard_for_channel_passthrough_with_announced_flag() -> None:
         host, port = redis_client.resolve_shard_for_channel("chan")
 
     assert (host, port) == ("redis-2", 17002)
+
+
+@pytest.mark.asyncio
+async def test_resolve_shard_for_channel_async_applies_address_remap() -> None:
+    """Async sibling of the remap test: the async resolver runs
+    ``_address_remap`` on the announced address too."""
+    cluster = MagicMock()
+    cluster.initialize = AsyncMock()
+    node = MagicMock()
+    node.host = "announced-host"
+    node.port = 17001
+    cluster.get_node_from_key.return_value = node
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=cluster)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+    ):
+        host, port = await redis_client.resolve_shard_for_channel_async("chan")
+
+    assert host == redis_client.HOST
+    assert port == 17001
+
+
+@pytest.mark.asyncio
+async def test_resolve_shard_for_channel_async_initializes_before_reading_map() -> None:
+    """redis-py 8.1 builds the slot map lazily: the resolver must initialize
+    the client before reading it, so a fresh client's empty slots_cache is
+    never consulted."""
+    cluster = MagicMock()
+    cluster.initialize = AsyncMock()
+    node = MagicMock()
+    node.host = "redis-0"
+    node.port = 17000
+    cluster.get_node_from_key.return_value = node
+
+    with patch.object(redis_client, "get_redis_async", AsyncMock(return_value=cluster)):
+        await redis_client.resolve_shard_for_channel_async("chan")
+
+    cluster.initialize.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_shard_for_channel_async_raises_when_no_node_owns_keyslot() -> (
+    None
+):
+    """Missing cluster node → explicit RuntimeError, same as the sync resolver."""
+    cluster = MagicMock()
+    cluster.initialize = AsyncMock()
+    cluster.get_node_from_key.return_value = None
+
+    with patch.object(redis_client, "get_redis_async", AsyncMock(return_value=cluster)):
+        with pytest.raises(RuntimeError, match="No cluster node"):
+            await redis_client.resolve_shard_for_channel_async("chan")
+
+
+@pytest.mark.asyncio
+async def test_resolve_shard_for_channel_async_never_touches_the_sync_client() -> None:
+    """Regression guard: the sync client's cold connect blocks the event loop,
+    so the async resolve must not go near it."""
+    cluster = MagicMock()
+    cluster.initialize = AsyncMock()
+    node = MagicMock()
+    node.host = "redis-0"
+    node.port = 17000
+    cluster.get_node_from_key.return_value = node
+
+    def sync_client_called():
+        raise AssertionError("get_redis() must not run on the event loop")
+
+    with (
+        patch.object(redis_client, "get_redis", side_effect=sync_client_called),
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=cluster)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True),
+    ):
+        host, port = await redis_client.resolve_shard_for_channel_async("chan")
+
+    assert (host, port) == ("redis-0", 17000)
+
+
+@pytest.mark.asyncio
+async def test_resolve_shard_for_channel_async_is_bounded() -> None:
+    """Redis down and no cached client: the lookup gives up within its bound
+    instead of joining the client's minutes-long connect retries."""
+
+    async def hanging_client():
+        await asyncio.Future()
+
+    with (
+        patch.object(redis_client, "get_redis_async", hanging_client),
+        patch.object(redis_client, "RESOLVE_SHARD_TIMEOUT_S", 0.05),
+    ):
+        with pytest.raises(TimeoutError):
+            await redis_client.resolve_shard_for_channel_async("chan")
+
+
+@pytest.mark.asyncio
+async def test_connect_async_closes_the_client_when_its_ping_is_cancelled() -> None:
+    """A bounded caller's timeout cancels the PING; the half-built client must
+    be closed, not left to leak its sockets."""
+    client = MagicMock()
+    client.initialize = AsyncMock()
+    client.ping = AsyncMock(side_effect=asyncio.CancelledError())
+    client.aclose = AsyncMock()
+    client.nodes_manager.aclose = AsyncMock()
+
+    with patch.object(redis_client, "AsyncRedisCluster", return_value=client):
+        with pytest.raises(asyncio.CancelledError):
+            await redis_client.connect_async()
+
+    client.aclose.assert_awaited_once()
+    client.nodes_manager.aclose.assert_any_await()
+    client.nodes_manager.aclose.assert_any_await("startup_nodes")
+
+
+@pytest.mark.asyncio
+async def test_force_close_async_cluster_releases_node_pools() -> None:
+    """redis-py 8.1's ``aclose()`` no-ops once a connection error flips the
+    client back to uninitialized, so the node pools must be closed directly
+    as well — otherwise a discarded client keeps its sockets."""
+    client = MagicMock()
+    client.aclose = AsyncMock()
+    client.nodes_manager.aclose = AsyncMock()
+
+    await redis_client._force_close_async_cluster(client)
+
+    client.aclose.assert_awaited_once()
+    assert client.nodes_manager.aclose.await_count == 2
+    client.nodes_manager.aclose.assert_any_await()
+    client.nodes_manager.aclose.assert_any_await("startup_nodes")
+
+
+@pytest.mark.asyncio
+async def test_get_redis_async_closes_the_client_when_caching_is_cancelled() -> None:
+    """Cancelled between connect and cache: the connected client is closed
+    rather than leaked."""
+    client = MagicMock()
+    client.aclose = AsyncMock()
+    client.nodes_manager.aclose = AsyncMock()
+
+    async def cancelled_finalizer():
+        raise asyncio.CancelledError()
+        yield  # pragma: no cover - makes this an async generator
+
+    redis_client._async_clients.clear()
+    try:
+        with (
+            patch.object(redis_client, "connect_async", AsyncMock(return_value=client)),
+            patch.object(
+                redis_client,
+                "_close_async_client_on_loop_shutdown",
+                lambda c: cancelled_finalizer(),
+            ),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await redis_client.get_redis_async()
+
+        client.aclose.assert_awaited_once()
+        client.nodes_manager.aclose.assert_any_await("startup_nodes")
+        assert list(redis_client._async_clients) == []
+    finally:
+        redis_client._async_clients.clear()
+        redis_client._async_client_finalizers.clear()
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_updates_the_async_clients_map() -> None:
+    """The async resolver reads the async client's map, so a MOVED reply must
+    re-point that map, not the sync client's."""
+    client = MagicMock()
+    client.nodes_manager.move_slot = AsyncMock()
+    client.nodes_manager.slots_cache = {}
+    error = MagicMock()
+
+    with patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)):
+        await redis_client.follow_moved_slot_async(error)
+
+    client.nodes_manager.move_slot.assert_awaited_once_with(error)
+
+
+def _moved_cluster_setup(existing_node: bool):
+    """Build a nodes_manager mock shaped like redis-py 8.1 after move_slot:
+    the slot's new owner carries the redirect's announced (unremapped) host."""
+    moved = MagicMock()
+    moved.host, moved.port, moved.name = "redis-1", 7001, "redis-1:7001"
+    nm = MagicMock()
+    nm.move_slot = AsyncMock()
+    nm.slots_cache = {31: [moved]}
+    nm.nodes_cache = {"redis-1:7001": moved}
+    nm.default_node = None
+    nm.remap_host_port = lambda h, p: redis_client._address_remap((h, p))
+    discovered = None
+    if existing_node:
+        discovered = MagicMock()
+        discovered.host, discovered.port, discovered.name = (
+            "127.0.0.1",
+            7001,
+            "127.0.0.1:7001",
+        )
+        nm.nodes_cache["127.0.0.1:7001"] = discovered
+    client = MagicMock()
+    client.nodes_manager = nm
+    error = MagicMock()
+    error.slot_id = 31
+    return client, nm, moved, discovered, error
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_remaps_announced_redirect_host() -> None:
+    """redis-py 8.1's move_slot stores the redirect's announced host without
+    applying address_remap. When CLUSTER SLOTS already discovered the same
+    shard under its remapped address, the slot must point at the discovered
+    node — not at an unreachable announced duplicate."""
+    client, nm, moved, discovered, error = _moved_cluster_setup(existing_node=True)
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+        patch.object(redis_client, "HOST", "localhost"),
+    ):
+        await redis_client.follow_moved_slot_async(error)
+
+    assert nm.slots_cache[31][0] is discovered
+    assert "redis-1:7001" not in nm.nodes_cache
+    assert nm.nodes_cache["127.0.0.1:7001"] is discovered
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_rewrites_node_when_no_remap_peer() -> None:
+    """When the remapped address isn't in the nodes cache yet, the moved node
+    itself is rewritten in place (host, port, name, and cache key)."""
+    client, nm, moved, _, error = _moved_cluster_setup(existing_node=False)
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+        patch.object(redis_client, "HOST", "localhost"),
+    ):
+        await redis_client.follow_moved_slot_async(error)
+
+    # "localhost" normalizes to 127.0.0.1, matching how ClusterNode keys
+    # the CLUSTER SLOTS-discovered nodes.
+    assert moved.host == "127.0.0.1"
+    assert moved.port == 7001
+    assert moved.name == "127.0.0.1:7001"
+    assert "redis-1:7001" not in nm.nodes_cache
+    assert nm.nodes_cache["127.0.0.1:7001"] is moved
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_rewrite_updates_connection_kwargs() -> None:
+    """redis-py 8.1's ``ClusterNode.acquire_connection()`` dials
+    ``connection_kwargs["host"]``, not ``node.host`` — the in-place rewrite
+    must update the transport address too, or keyed commands keep dialling
+    the redirect's announced host until a full topology refresh."""
+    moved = AsyncClusterNode("redis-1", 7001)
+    nm = MagicMock()
+    nm.move_slot = AsyncMock()
+    nm.slots_cache = {31: [moved]}
+    nm.nodes_cache = {"redis-1:7001": moved}
+    nm.default_node = None
+    nm.remap_host_port = lambda h, p: redis_client._address_remap((h, p))
+    client = MagicMock()
+    client.nodes_manager = nm
+    error = MagicMock()
+    error.slot_id = 31
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+        patch.object(redis_client, "HOST", "localhost"),
+    ):
+        await redis_client.follow_moved_slot_async(error)
+
+    assert moved.connection_kwargs["host"] == "127.0.0.1"
+    assert moved.connection_kwargs["port"] == 7001
+    conn = moved.acquire_connection()
+    try:
+        assert conn.host == "127.0.0.1"
+        assert conn.port == 7001
+    finally:
+        await conn.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_follow_moved_slot_async_leaves_node_alone_when_remap_passthrough() -> (
+    None
+):
+    """With REDIS_USE_ANNOUNCED_ADDRESS on, the announced address is used
+    verbatim — no rewrite."""
+    client, nm, moved, _, error = _moved_cluster_setup(existing_node=False)
+
+    with (
+        patch.object(redis_client, "get_redis_async", AsyncMock(return_value=client)),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True),
+    ):
+        await redis_client.follow_moved_slot_async(error)
+
+    assert moved.name == "redis-1:7001"
+    assert nm.nodes_cache["redis-1:7001"] is moved
+
+
+@pytest.mark.asyncio
+async def test_refresh_slot_map_async_is_throttled_per_client() -> None:
+    first, second = MagicMock(), MagicMock()
+    first.nodes_manager.initialize = AsyncMock()
+    second.nodes_manager.initialize = AsyncMock()
+
+    now = 100.0
+    with (
+        patch.object(
+            redis_client,
+            "get_redis_async",
+            AsyncMock(side_effect=[first, first, second, second, first]),
+        ),
+        patch.object(redis_client, "_async_slot_map_clock", lambda: now),
+    ):
+        await redis_client.refresh_slot_map_async()
+        await redis_client.refresh_slot_map_async()
+        await redis_client.refresh_slot_map_async()
+        await redis_client.refresh_slot_map_async()
+
+        first.nodes_manager.initialize.assert_awaited_once()
+        second.nodes_manager.initialize.assert_awaited_once()
+
+        now += redis_client._SLOT_MAP_REFRESH_EVERY_S
+        await redis_client.refresh_slot_map_async()
+
+    assert first.nodes_manager.initialize.await_count == 2
+    second.nodes_manager.initialize.assert_awaited_once()
 
 
 def test_health_check_interval_is_30s_default() -> None:
