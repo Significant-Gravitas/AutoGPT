@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import {
   Avatar,
   AvatarFallback,
@@ -148,7 +149,7 @@ export function SkillPage({ slug }: Props) {
           <span>
             {skill.install_count === 0
               ? "New"
-              : `${skill.install_count.toLocaleString()} installed`}
+              : `${formatMarketplaceCount(skill.install_count)} installed`}
           </span>
           {skill.updated_at ? (
             <>

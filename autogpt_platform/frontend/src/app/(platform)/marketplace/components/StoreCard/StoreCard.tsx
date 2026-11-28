@@ -1,5 +1,6 @@
 "use client";
 
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { StarFilledGlyph, StarGlyph } from "@/components/atoms/Icon/drawnIcons";
 import Avatar, {
@@ -116,7 +117,7 @@ export function StoreCard({
 
       <div className="mt-auto flex w-full items-center pt-3">
         <span className="flex items-center gap-2 text-caption text-foreground-tertiary">
-          {runs === 0 ? "No runs" : `${runs.toLocaleString()} runs`}
+          {runs === 0 ? "No runs" : `${formatMarketplaceCount(runs)} runs`}
           {rating >= 1 && (
             <span
               className="inline-flex items-center gap-1 text-foreground-base"

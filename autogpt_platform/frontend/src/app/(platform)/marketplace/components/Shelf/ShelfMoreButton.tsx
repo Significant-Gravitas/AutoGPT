@@ -1,3 +1,4 @@
+import { formatMarketplaceCount } from "@/app/(platform)/marketplace/formatMarketplaceCount";
 import { Button } from "@/components/atoms/Button/Button";
 
 interface Props {
@@ -23,7 +24,7 @@ export function ShelfMoreButton({
     <Button size="small" aria-expanded={isExpanded} onClick={onToggle}>
       {isExpanded
         ? "Show fewer"
-        : `Load ${isAll ? "all " : ""}${count.toLocaleString()} ${noun}`}
+        : `Load ${isAll ? "all " : ""}${formatMarketplaceCount(count)} ${noun}`}
     </Button>
   );
 }
