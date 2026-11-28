@@ -23,10 +23,16 @@ _AUTH = TenantContext(
 )
 
 
-def _schedule(schedule_id: str, *, paused: bool, expert_id: str | None = None):
+def _schedule(
+    schedule_id: str,
+    *,
+    paused: bool,
+    expert_id: str | None = None,
+    organization_id: str = "org-1",
+):
     return Mock(
         id=schedule_id,
-        organization_id="org-1",
+        organization_id=organization_id,
         expert_id=expert_id,
         next_run_time="" if paused else "2026-10-10T09:00:00+00:00",
     )
@@ -34,14 +40,19 @@ def _schedule(schedule_id: str, *, paused: bool, expert_id: str | None = None):
 
 @pytest.fixture
 def scheduler(mocker: pytest_mock.MockFixture) -> Mock:
+    schedules = [
+        _schedule("running", paused=False),
+        _schedule("paused", paused=True),
+        # Paused when its expert was archived; only a re-hire restores it.
+        _schedule("archived", paused=True, expert_id="gone"),
+        # The caller's own, filed under another organization.
+        _schedule("elsewhere", paused=False, organization_id="org-2"),
+    ]
+    by_id = {schedule.id: schedule for schedule in schedules}
     client = Mock(
-        get_graph_execution_schedules=AsyncMock(
-            return_value=[
-                _schedule("running", paused=False),
-                _schedule("paused", paused=True),
-                # Paused when its expert was archived; only a re-hire restores it.
-                _schedule("archived", paused=True, expert_id="gone"),
-            ]
+        get_graph_execution_schedules=AsyncMock(return_value=schedules[:3]),
+        get_graph_execution_schedule=AsyncMock(
+            side_effect=lambda schedule_id, **_: by_id.get(schedule_id)
         ),
         delete_schedule=AsyncMock(),
     )
@@ -79,13 +90,16 @@ async def test_a_paused_schedule_can_be_deleted(scheduler: Mock) -> None:
     scheduler.delete_schedule.assert_awaited_once_with(
         schedule_id="paused", user_id="user-1"
     )
+    # The tenant check reads the one schedule, not the caller's whole list.
+    scheduler.get_graph_execution_schedules.assert_not_awaited()
 
 
-async def test_an_archived_experts_paused_schedule_stays_out_of_reach(
-    scheduler: Mock,
+@pytest.mark.parametrize("schedule_id", ["archived", "elsewhere", "missing"])
+async def test_a_schedule_out_of_reach_is_not_found(
+    scheduler: Mock, schedule_id: str
 ) -> None:
     with pytest.raises(NotFoundError):
-        await delete_schedule(schedule_id="archived", auth=_AUTH)
+        await delete_schedule(schedule_id=schedule_id, auth=_AUTH)
 
     scheduler.delete_schedule.assert_not_awaited()
 

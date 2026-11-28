@@ -35,7 +35,17 @@ from collections.abc import Sequence
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, MetaData, String, Table, delete, insert, or_, select
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    delete,
+    func,
+    insert,
+    or_,
+    select,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
@@ -135,6 +145,27 @@ class ScheduleIndex:
     def all_job_ids(self) -> set[str]:
         with self._engine.connect() as conn:
             return {row[0] for row in conn.execute(select(self._table.c.job_id))}
+
+    def earliest_next_runs(
+        self, jobs: Table, *, user_id: str, graph_id: str | None = None
+    ) -> dict[str, float]:
+        """Each of *user_id*'s graphs' earliest next run, as the jobstore stores it
+        (a UNIX timestamp), over graph schedules that are not paused. *jobs* is
+        the jobstore's table; no stored job is loaded."""
+        query = (
+            select(self._table.c.graph_id, func.min(jobs.c.next_run_time))
+            .select_from(self._table.join(jobs, jobs.c.id == self._table.c.job_id))
+            .where(
+                self._table.c.user_id == user_id,
+                self._table.c.kind == "graph",
+                jobs.c.next_run_time.isnot(None),
+            )
+            .group_by(self._table.c.graph_id)
+        )
+        if graph_id is not None:
+            query = query.where(self._table.c.graph_id == graph_id)
+        with self._engine.connect() as conn:
+            return {row[0]: row[1] for row in conn.execute(query)}
 
     def candidate_job_ids(
         self,
