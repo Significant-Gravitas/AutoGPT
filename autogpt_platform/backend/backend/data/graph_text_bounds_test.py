@@ -129,3 +129,21 @@ async def test_a_save_accepts_sub_graphs_at_the_bound(mocker):
 
     with pytest.raises(_ReachedTheFirstQuery):
         await _create_graph(None, graph, "user-1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "sub_graphs, refusal",
+    [
+        (MAX_SUB_GRAPHS_PER_SAVE + 1, "too many sub-workflows"),
+        (MAX_SUB_GRAPHS_PER_SAVE, "Graph name is too long"),
+    ],
+    ids=["too-many", "at-the-count"],
+)
+async def test_a_save_over_both_bounds_names_the_first_it_breaks(sub_graphs, refusal):
+    over = "x" * (GRAPH_TEXT_MAX_LENGTHS["name"] + 1)
+    subs = [_graph() for _ in range(sub_graphs - 1)] + [_graph(name=over)]
+    graph = _graph(sub_graphs=subs)
+
+    with pytest.raises(ValueError, match=refusal):
+        await _create_graph(None, graph, "user-1")
