@@ -22,6 +22,7 @@ from backend.util.tool_call_loop import (
     LLMToolCall,
     ToolCallLoopResult,
     ToolCallResult,
+    ToolExecutor,
     tool_call_loop,
 )
 
@@ -665,3 +666,85 @@ async def test_max_iterations_zero_no_loop():
     assert results[0].finished_naturally is False
     assert results[0].iterations == 0
     assert "0 iterations" in results[0].response_text
+
+
+class _ToolFailed(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [_ToolFailed, asyncio.CancelledError])
+async def test_a_failed_call_ends_the_rest_of_its_batch_before_raising(error):
+    """A parallel call that raises, or ends cancelled as a stopped tool node
+    does, re-raises out of the loop only once its batch's other calls have
+    been cancelled and have ended."""
+    execute_tool, _, ended = _executor_holding({"held_a", "held_b"}, error)
+
+    with pytest.raises(error):
+        await asyncio.wait_for(
+            _run_one_round(
+                [
+                    LLMToolCall(id=name, name=name, arguments="{}")
+                    for name in ("held_a", "held_b", "fails")
+                ],
+                execute_tool,
+            ),
+            timeout=5,
+        )
+
+    assert ended == {"held_a", "held_b"}
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_loop_ends_every_call_of_its_batch():
+    """Cancelling the loop mid-batch, as a Stop does, cancels its calls and
+    waits for them to end before the loop's task ends."""
+    execute_tool, all_started, ended = _executor_holding({"held_a", "held_b"})
+    loop_task = asyncio.create_task(
+        _run_one_round(
+            [
+                LLMToolCall(id=name, name=name, arguments="{}")
+                for name in ("held_a", "held_b")
+            ],
+            execute_tool,
+        )
+    )
+    await asyncio.wait_for(all_started.wait(), timeout=5)
+
+    loop_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(loop_task, timeout=5)
+
+    assert ended == {"held_a", "held_b"}
+
+
+def _executor_holding(
+    held: set[str], fail_with: type[BaseException] = _ToolFailed
+) -> tuple[ToolExecutor, asyncio.Event, set[str]]:
+    """A tool executor whose *held* calls wait until cancelled, recording
+    each that ends; any other call raises *fail_with* once they all run."""
+    started: set[str] = set()
+    all_started = asyncio.Event()
+    ended: set[str] = set()
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        if tool_call.name not in held:
+            await all_started.wait()
+            raise fail_with()
+        started.add(tool_call.name)
+        if started == held:
+            all_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            # Cleanup takes loop turns, so only a batch that waits sees it end.
+            for _ in range(3):
+                await asyncio.sleep(0)
+            ended.add(tool_call.name)
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
+        )
+
+    return execute_tool, all_started, ended

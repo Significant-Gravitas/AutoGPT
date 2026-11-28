@@ -190,8 +190,8 @@ async def tool_call_loop(
         last_iteration_message: Optional message to append on the last
             iteration to encourage the model to finish.
         parallel_tool_calls: If True (default), execute multiple tool
-            calls from a single LLM response concurrently via
-            ``asyncio.gather``.  Set to False when tool calls may have
+            calls from a single LLM response concurrently; when one raises,
+            the others are cancelled.  Set to False when tool calls may have
             ordering dependencies or mutate shared state.
         runs_alone: When parallel, the calls this returns True for run on
             their own, after the calls before them and before the ones
@@ -247,9 +247,6 @@ async def tool_call_loop(
             return
 
         # Execute tools — parallel or sequential depending on caller preference.
-        # NOTE: asyncio.gather does not cancel sibling tasks when one raises.
-        # Callers should handle errors inside execute_tool (return error
-        # ToolCallResult) rather than letting exceptions propagate.
         if parallel_tool_calls and len(response.tool_calls) > 1:
             # Parallel: side-effects from different tool executors (e.g.
             # streaming events appended to a shared list) may interleave
@@ -257,9 +254,7 @@ async def tool_call_loop(
             # identifier, so consumers must correlate by ID.
             tool_results: list[ToolCallResult] = []
             for batch in _batches(response.tool_calls, runs_alone):
-                tool_results.extend(
-                    await asyncio.gather(*(execute_tool(tc, tools) for tc in batch))
-                )
+                tool_results.extend(await _run_batch(batch, execute_tool, tools))
         else:
             # Sequential: preserves ordering guarantees for callers that
             # need deterministic execution order.
@@ -309,3 +304,36 @@ def _batches(
         else:
             shared.append(call)
     return batches
+
+
+async def _run_batch(
+    batch: Sequence[LLMToolCall],
+    execute_tool: ToolExecutor,
+    tools: Sequence[Any],
+) -> list[ToolCallResult]:
+    """Run *batch*'s calls concurrently. When one raises or ends cancelled,
+    or this task is cancelled, the rest are cancelled and awaited before the
+    error re-raises, so no call outlives the batch."""
+    tasks = [asyncio.create_task(execute_tool(tc, tools)) for tc in batch]
+    failed: asyncio.Task[ToolCallResult] | None = None
+    try:
+        pending = set(tasks)
+        while pending and failed is None:
+            done, pending = await asyncio.wait(
+                pending, return_when=asyncio.FIRST_COMPLETED
+            )
+            failed = next(
+                (
+                    t
+                    for t in tasks
+                    if t in done and (t.cancelled() or t.exception() is not None)
+                ),
+                None,
+            )
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.wait(tasks)
+    if failed is not None:
+        failed.result()  # re-raises the call's own error, or CancelledError
+    return [task.result() for task in tasks]
