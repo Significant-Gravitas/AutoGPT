@@ -18,6 +18,7 @@ PLATFORM_BASE_URL = "http://localhost:8006"
 MEDIA_PREFIX = (
     f"{PLATFORM_BASE_URL}/api/store/media/{load_store_agents.AUTOGPT_USER_ID}/images/"
 )
+ORG_ID = "org-official"
 
 
 @pytest.fixture
@@ -103,7 +104,7 @@ async def test_loading_again_with_local_media_repoints_an_earlier_load(
 
     await load_store_agents.create_user_and_profile(db, avatar, local_media=True)
     await load_store_agents.create_store_listing(
-        db, "graph-1", 1, listing, local_media=True
+        db, "graph-1", 1, listing, ORG_ID, local_media=True
     )
 
     db.profile.update.assert_awaited_once_with(
@@ -128,9 +129,31 @@ async def test_loading_again_without_local_media_leaves_an_earlier_load_alone(
     listing = (await load_store_agents.load_csv_metadata()).popitem()[1]
 
     await load_store_agents.create_user_and_profile(db)
-    await load_store_agents.create_store_listing(db, "graph-1", 1, listing)
+    await load_store_agents.create_store_listing(db, "graph-1", 1, listing, ORG_ID)
 
     db.profile.update.assert_not_awaited()
     db.storelistingversion.update_many.assert_not_awaited()
     db.profile.create.assert_not_awaited()
     db.storelisting.create.assert_not_awaited()
+
+
+async def test_a_first_load_with_local_media_creates_the_listing_in_the_org(
+    media_settings, client
+):
+    """A first `--local-media` load creates the listing and its version in the
+    creator's org, the version showing images the stack serves."""
+    db = AsyncMock()
+    db.storelisting.find_unique.return_value = None
+    listing = await _a_listing_with_local_images()
+
+    await load_store_agents.create_store_listing(
+        db, "graph-1", 1, listing, ORG_ID, local_media=True
+    )
+
+    assert db.storelisting.create.await_args.kwargs["data"]["owningOrgId"] == ORG_ID
+    version = db.storelistingversion.create.await_args.kwargs["data"]
+    assert version["organizationId"] == ORG_ID
+    assert version["imageUrls"] == listing["agent_image"]
+    for url in version["imageUrls"]:
+        _served(client, url)
+    db.storelistingversion.update_many.assert_not_awaited()

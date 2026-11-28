@@ -20,6 +20,7 @@ from backend.api.features.store.marketplace_db_test_helpers import (
 )
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.graph import Graph, create_graph
+from backend.data.tenancy import tenancy_for_new_row
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
@@ -203,8 +204,7 @@ async def test_rejecting_the_live_version_returns_the_listings_new_live_one(serv
     [
         (False, "owner", None, True),
         (False, "stranger", None, False),
-        (False, "owner", "other", True),
-        (False, "stranger", "listing", False),
+        (False, "owner", "personal", True),
         (True, "stranger", "listing", True),
         (True, "stranger", "other", False),
         (True, "owner", "other", False),
@@ -212,8 +212,7 @@ async def test_rejecting_the_live_version_returns_the_listings_new_live_one(serv
     ids=[
         "own",
         "another-creators",
-        "own-tenant-less-in-an-org",
-        "another-creators-tenant-less",
+        "own-in-their-personal-org",
         "own-orgs",
         "another-orgs",
         "own-but-another-orgs",
@@ -238,10 +237,14 @@ async def test_only_the_callers_own_or_their_orgs_listing_is_returned(
                 data={"OwningOrg": {"connect": {"id": orgs["listing"].id}}},
             )
 
+        if caller_org == "personal":
+            organization_id, _ = await tenancy_for_new_row(owner, None)
+        else:
+            organization_id = orgs[caller_org].id if caller_org else None
         live = await get_live_submission(
             owner if caller == "owner" else f"stranger-{tag}",
             graph_id,
-            organization_id=orgs[caller_org].id if caller_org else None,
+            organization_id=organization_id,
         )
 
         assert (live.listing_version_id if live else None) == (

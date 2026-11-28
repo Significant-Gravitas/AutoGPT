@@ -643,6 +643,7 @@ async def main():
             data={
                 "agentGraphId": graph.id,
                 "owningUserId": user.id,
+                "owningOrgId": personal_orgs[user.id][0],
                 "hasApprovedVersion": random.choice([True, False]),
                 "slug": slug,
             }
@@ -667,6 +668,7 @@ async def main():
                 "isFeatured": random.choice([True, False]),
                 "isAvailable": True,
                 "storeListingId": listing.id,
+                "organizationId": listing.owningOrgId,
                 "submissionStatus": random.choice(
                     [
                         prisma.enums.SubmissionStatus.PENDING,

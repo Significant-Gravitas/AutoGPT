@@ -630,9 +630,7 @@ async def get_counts(user_id: str, organization_id: str | None = None) -> CountR
         "isArchived": False,
     }
     if organization_id is not None:
-        where["AND"] = [
-            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
-        ]
+        where["organizationId"] = organization_id
     my_agents = await prisma.models.LibraryAgent.prisma().count(where=where)
     counts = await _get_static_counts()
     return CountResponse(

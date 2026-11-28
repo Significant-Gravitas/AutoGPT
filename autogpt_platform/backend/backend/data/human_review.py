@@ -528,7 +528,7 @@ async def get_reviews(
         status: Optional review status filter
         page: Page number (1-indexed)
         page_size: Number of reviews per page, or None for every match
-        organization_id: Optional org to scope to; also matches untagged rows
+        organization_id: Optional org to scope to
         graph_runs_only: Leave out the reviews an AutoPilot chat is waiting on
         oldest_first: Order by creation ascending instead of newest first
         steps_waiting_in_chat: False leaves out a workflow step whose card waits
@@ -547,10 +547,7 @@ async def get_reviews(
         where["chatSessionId"] = None
         where["NOT"] = [{"graphExecId": {"startswith": COPILOT_SESSION_PREFIX}}]
     if organization_id is not None:
-        # Own rows in this org, plus rows created before org tagging.
-        where["AND"] = [
-            {"OR": [{"organizationId": organization_id}, {"organizationId": None}]}
-        ]
+        where["organizationId"] = organization_id
     # Left out before paging, so a page is never short of its size.
     if not steps_waiting_in_chat and (in_chat := await _steps_waiting_in_chat(user_id)):
         where["nodeExecId"] = {"not_in": in_chat}

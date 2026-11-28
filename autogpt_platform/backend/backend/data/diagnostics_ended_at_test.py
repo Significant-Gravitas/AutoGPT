@@ -31,7 +31,13 @@ async def graph() -> AsyncIterator[tuple[str, str]]:
         data={"id": user_id, "email": f"diag-ended-at-{user_id}@example.com"}
     )
     await AgentGraph.prisma().create(
-        data={"id": graph_id, "version": 1, "userId": user_id, "name": "diag"}
+        data={
+            "id": graph_id,
+            "version": 1,
+            "userId": user_id,
+            "name": "diag",
+            "organizationId": "org-diag",
+        }
     )
     try:
         yield user_id, graph_id
@@ -54,6 +60,7 @@ async def _execution(
         "agentGraphId": graph_id,
         "agentGraphVersion": 1,
         "userId": user_id,
+        "organizationId": "org-diag",
         "executionStatus": status,
         "endedAt": ended_at,
     }

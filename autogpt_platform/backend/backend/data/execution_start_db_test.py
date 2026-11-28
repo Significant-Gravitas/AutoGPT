@@ -25,6 +25,7 @@ from backend.data.execution import (
 from backend.util.test import SpinTestServer
 
 STARTED_BEFORE = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+ORG_ID = "org-start-write"
 WAIT_SECONDS = 30
 
 
@@ -46,6 +47,7 @@ async def owner(server: SpinTestServer) -> AsyncIterator[tuple[str, str]]:
             "name": "start-write-test",
             "description": "start-write-test",
             "userId": user_id,
+            "organizationId": ORG_ID,
             "isActive": True,
         }
     )
@@ -67,6 +69,7 @@ async def _run_in(
         starting_nodes_input=[],
         inputs={},
         user_id=user_id,
+        organization_id=ORG_ID,
     )
     # Written directly: the point is to find a run in each status, however
     # the transition table would have taken it there.

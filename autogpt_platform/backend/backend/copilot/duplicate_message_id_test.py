@@ -142,7 +142,7 @@ async def test_batch_still_retries_a_sequence_collision():
 @pytest.mark.asyncio
 async def test_expert_run_post_skips_a_duplicate_id_without_retrying():
     add_message = AsyncMock(side_effect=_local_error(_ID_MESSAGE, ["id"]))
-    session = PrismaChatSession.model_construct(id="sess-1")
+    session = PrismaChatSession.model_construct(id="sess-1", organizationId="org-1")
     with (
         patch.object(
             PrismaChatMessage,

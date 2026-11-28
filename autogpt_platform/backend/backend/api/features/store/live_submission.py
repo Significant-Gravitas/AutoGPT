@@ -20,8 +20,8 @@ async def get_live_submission(
     rejection moves the listing back to an older one.
 
     Ownership follows ``get_store_submissions``: with ``organization_id``
-    (membership-verified RequestContext), the org's listings and the caller's
-    tenant-less ones; without it, the caller's own.
+    (membership-verified RequestContext), the org's listings; without it, the
+    caller's own.
     """
     where: prisma.types.StoreListingWhereInput = {
         "agentGraphId": graph_id,
@@ -29,10 +29,7 @@ async def get_live_submission(
         "hasApprovedVersion": True,
     }
     if organization_id is not None:
-        where["OR"] = [
-            {"owningOrgId": organization_id},
-            {"owningUserId": user_id, "owningOrgId": None},
-        ]
+        where["owningOrgId"] = organization_id
     else:
         where["owningUserId"] = user_id
 

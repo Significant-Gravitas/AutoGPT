@@ -41,6 +41,7 @@ async def _setup() -> tuple[str, str]:
     )
     await AgentGraph.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": graph_id,
             "version": 1,
             "name": "Accuracy Trends Test",
@@ -60,6 +61,7 @@ async def _run(
         stats["correctness_score"] = score
     await AgentGraphExecution.prisma().create(
         data={
+            "organizationId": "org-test",
             "id": str(uuid4()),
             "agentGraphId": graph_id,
             "agentGraphVersion": 1,

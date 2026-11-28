@@ -34,6 +34,7 @@ def _execution(execution_id="run", graph_id="graph", parent=None):
         parentGraphExecutionId=parent,
         executionStatus=AgentExecutionStatus.COMPLETED,
         startedAt=datetime(2026, 9, 5, 9, tzinfo=timezone.utc),
+        organizationId="org-1",
     )
 
 
@@ -266,7 +267,6 @@ async def test_copilot_links_only_existing_owned_conversations(mocker):
         {
             "OR": [
                 {"organizationId": "org"},
-                {"organizationId": None},
                 {"expertId": {"not": None}},
             ]
         }

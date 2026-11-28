@@ -71,10 +71,9 @@ _BASE_WHERE = (
     ' AND "createdAt" >= $2::timestamp'
     ' AND "createdAt" <= $3::timestamp'
     " AND COALESCE((stats->>'is_dry_run')::boolean, false) = false"
-    # One organization's runs and the untagged ones, as its run list shows
-    # them; with no organization, all of them.
-    ' AND ($4::text IS NULL OR "organizationId" = $4::text'
-    ' OR "organizationId" IS NULL)'
+    # One organization's runs, as its run list shows them; with no
+    # organization, all of them.
+    ' AND ($4::text IS NULL OR "organizationId" = $4::text)'
 )
 
 # user_id, since, until, organization_id: $1 to $4 in _BASE_WHERE.
@@ -104,8 +103,8 @@ async def get_user_cost_summary(
     over the same rows: callers that never render per-expert spend would
     otherwise pay for a scan they throw away.
 
-    With `organization_id`, only that organization's runs count, and the
-    untagged ones that predate tagging, as `GET /runs` lists them.
+    With `organization_id`, only that organization's runs count, as
+    `GET /runs` lists them.
     """
     # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
     # this function is callable directly and an unbounded LIMIT would scan

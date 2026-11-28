@@ -2371,14 +2371,9 @@ class TestPR15MarketplaceOrg:
         assert where_arg["creator_username"] == "testuser"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: owningOrgId still nullable until cutover migration runs"
-    )
     async def test_slug_unique_per_org(self):
         """Slugs should be unique per org, not just globally. The schema
         should enforce a composite unique on (slug, owningOrgId)."""
-        # Currently StoreListing.slug is @unique globally.
-        # Once per-org, the constraint should be @@unique([slug, owningOrgId]).
         import typing
 
         from prisma.types import StoreListingCreateInput
@@ -3159,9 +3154,6 @@ class TestPR18Cutover:
         ), "Route should always set organizationId, not conditionally"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: organizationId still nullable until cutover migration runs"
-    )
     async def test_all_agent_graphs_have_organization_id(self):
         """After cutover, AgentGraph.organizationId should be NOT NULL.
         All existing graphs must have been backfilled."""
@@ -3178,9 +3170,6 @@ class TestPR18Cutover:
         ), f"AgentGraph.organizationId should be non-nullable, got {org_type}"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: organizationId still nullable until cutover migration runs"
-    )
     async def test_all_executions_have_organization_id(self):
         """After cutover, AgentGraphExecution.organizationId should be
         NOT NULL. All existing executions must have been backfilled."""
@@ -3195,9 +3184,6 @@ class TestPR18Cutover:
         ), f"Execution.organizationId should be non-nullable, got {org_type}"
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        reason="PR18: owningOrgId still nullable until cutover migration runs"
-    )
     async def test_all_store_listings_have_owning_org_id(self):
         """After cutover, StoreListing.owningOrgId should be NOT NULL."""
         import typing

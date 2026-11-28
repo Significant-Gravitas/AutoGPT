@@ -120,10 +120,21 @@ async def _seed_execution() -> tuple[str, str, str]:
         data={"id": user_id, "email": f"ws-probe-{user_id}@example.com"}
     )
     await prisma.models.AgentGraph.prisma().create(
-        data={"id": graph_id, "version": 1, "name": "ws-probe", "userId": user_id}
+        data={
+            "organizationId": "org-test",
+            "id": graph_id,
+            "version": 1,
+            "name": "ws-probe",
+            "userId": user_id,
+        }
     )
     execution = await prisma.models.AgentGraphExecution.prisma().create(
-        data={"agentGraphId": graph_id, "agentGraphVersion": 1, "userId": user_id}
+        data={
+            "organizationId": "org-test",
+            "agentGraphId": graph_id,
+            "agentGraphVersion": 1,
+            "userId": user_id,
+        }
     )
     return user_id, graph_id, execution.id
 

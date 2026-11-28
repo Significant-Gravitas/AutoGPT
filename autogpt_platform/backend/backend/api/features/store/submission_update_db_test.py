@@ -208,6 +208,7 @@ async def _store_blank_update(
     return await versions.create(
         data={
             "storeListingId": latest.storeListingId,
+            "organizationId": latest.organizationId,
             "version": latest.version + 1,
             "agentGraphId": graph_id,
             "agentGraphVersion": 1,

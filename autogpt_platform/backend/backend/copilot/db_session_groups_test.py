@@ -29,9 +29,7 @@ from backend.util.json import SafeJson
 
 _RAW_QUERY_TARGET = "backend.copilot.db.db.query_raw_with_schema"
 _NULL_SAFE_DREAM_FILTER = "(metadata->>'kind' IS DISTINCT FROM 'dream')"
-_ORG_SCOPE = (
-    '("organizationId" = $2 OR "organizationId" IS NULL OR "expertId" IS NOT NULL)'
-)
+_ORG_SCOPE = '("organizationId" = $2 OR "expertId" IS NOT NULL)'
 _NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 
 
@@ -57,6 +55,7 @@ def _row(session_id: str, expert_id: str | None, minutes_ago: int):
         autoShareExecutions=False,
         visibility=ResourceVisibility.PRIVATE,
         expertId=expert_id,
+        organizationId="org-1",
     )
 
 
@@ -214,6 +213,7 @@ async def _session(
         data=ChatSessionCreateInput(
             id=session_id,
             userId=user_id,
+            organizationId="org-test",
             expertId=expert_id,
             isPinned=pinned,
             createdAt=at,

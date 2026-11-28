@@ -12,6 +12,7 @@ import prisma.models
 import pytest
 
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.data.tenancy import tenancy_for_new_row
 
 
 async def _refresh() -> None:
@@ -25,6 +26,7 @@ async def _seed_listing(tag: str, owner: str, graph_versions: int) -> str:
     for version in range(1, graph_versions + 1):
         await prisma.models.AgentGraph.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": graph_id,
                 "version": version,
                 "name": graph_id,
@@ -38,11 +40,13 @@ async def _seed_listing(tag: str, owner: str, graph_versions: int) -> str:
             "slug": graph_id,
             "agentGraphId": graph_id,
             "owningUserId": owner,
+            "owningOrgId": (await tenancy_for_new_row(owner, None))[0],
             "hasApprovedVersion": True,
         }
     )
     version = await prisma.models.StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "storeListingId": listing.id,
             "version": 1,
             "agentGraphId": graph_id,
@@ -108,6 +112,7 @@ async def test_runs_are_not_multiplied_by_saved_graph_versions(server):
                 for _ in range(count):
                     await prisma.models.AgentGraphExecution.prisma().create(
                         data={
+                            "organizationId": "org-test",
                             "agentGraphId": graph_id,
                             "agentGraphVersion": version,
                             "userId": user_id,

@@ -17,6 +17,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.data import graph as graph_db
+from backend.data.tenancy import tenancy_for_new_row
 from backend.data.user import get_or_create_user
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import NotAuthorizedError
@@ -54,11 +55,6 @@ _REQUEST = GraphCreateRequest(name="Agent", nodes=[], links=[])
 @pytest.fixture
 def graph_in_org_1(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """The credential acts in org-1, where every version of the graph is."""
-    mocker.patch(
-        "backend.api.external.v2.graphs.writable_organization_ids",
-        new_callable=AsyncMock,
-        return_value=frozenset({"org-1"}),
-    )
     return mocker.patch(
         "backend.data.graph.get_graph_version_owners",
         new_callable=AsyncMock,
@@ -127,10 +123,10 @@ async def test_activating_moves_webhook_presets_only_for_a_credential_that_may_r
     )
 
     # Only the credential's organization's entry and presets follow it.
-    assert move_entry.await_args.kwargs["organization_ids"] == {"org-1"}
+    assert move_entry.await_args.kwargs["organization_id"] == "org-1"
     assert migrate.await_count == (1 if moves else 0)
     if moves:
-        assert migrate.await_args.kwargs["organization_ids"] == {"org-1"}
+        assert migrate.await_args.kwargs["organization_id"] == "org-1"
 
 
 @pytest.mark.parametrize(
@@ -421,6 +417,7 @@ async def _preset_version_once_v2_is_active(
     v1 = await create_graph(triggered, auth=auth)
     webhook = await prisma.models.IntegrationWebhook.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": user_id,
             "provider": "generic_webhook",
             "credentialsId": "",
@@ -493,11 +490,13 @@ async def test_a_library_agent_saved_past_its_listed_version_lists_as_published(
             "slug": f"listed-{v1.id}",
             "agentGraphId": v1.id,
             "owningUserId": auth.user_id,
+            "owningOrgId": (await tenancy_for_new_row(auth.user_id, None))[0],
             "hasApprovedVersion": True,
         }
     )
     await prisma.models.StoreListingVersion.prisma().create(
         data={
+            "organizationId": "org-test",
             "agentGraphId": v1.id,
             "agentGraphVersion": 1,
             "name": "Agent",
@@ -680,6 +679,7 @@ async def test_saving_a_graph_id_that_belongs_to_somebody_else_is_refused(
     created = await _untagged_version(creator, str(uuid4()), version=1)
     await prisma.models.AgentGraph.prisma().create(
         data={
+            "organizationId": (await tenancy_for_new_row(editor, None))[0],
             "id": created.id,
             "version": 2,
             "name": "Agent",

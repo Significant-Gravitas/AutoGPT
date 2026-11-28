@@ -1,10 +1,6 @@
 {
   "common": [
     "backend.api.features.orgs.regression_test.TestPR11RealtimeTenancy.test_subscribe_to_session_validates_org_membership",
-    "backend.api.features.orgs.regression_test.TestPR15MarketplaceOrg.test_slug_unique_per_org",
-    "backend.api.features.orgs.regression_test.TestPR18Cutover.test_all_agent_graphs_have_organization_id",
-    "backend.api.features.orgs.regression_test.TestPR18Cutover.test_all_executions_have_organization_id",
-    "backend.api.features.orgs.regression_test.TestPR18Cutover.test_all_store_listings_have_owning_org_id",
     "backend.api.features.orgs.regression_test.TestPR18Cutover.test_get_execution_requires_org_membership",
     "backend.api.features.orgs.regression_test.TestPR18Cutover.test_get_graph_requires_org_membership",
     "backend.api.features.orgs.regression_test.TestPR18Cutover.test_list_api_keys_scoped_by_org_cutover",

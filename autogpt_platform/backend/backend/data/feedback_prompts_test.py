@@ -57,7 +57,12 @@ async def _make_nps_ready(user_id: str, signup: datetime, active_at: datetime) -
         data={"createdAt": signup, "subscriptionTier": SubscriptionTier.PRO},
     )
     await ChatSession.prisma().create(
-        data={"userId": user_id, "updatedAt": active_at, "totalCompletionTokens": 10}
+        data={
+            "organizationId": "org-test",
+            "userId": user_id,
+            "updatedAt": active_at,
+            "totalCompletionTokens": 10,
+        }
     )
 
 

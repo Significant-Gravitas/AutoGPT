@@ -164,7 +164,12 @@ async def _session(owner: str, *contents: str, status: str = "idle") -> str:
     """A session whose messages alternate user and assistant, from ``contents``."""
     session_id = str(uuid4())
     await PrismaChatSession.prisma().create(
-        data={"id": session_id, "userId": owner, "chatStatus": status}
+        data={
+            "organizationId": "org-test",
+            "id": session_id,
+            "userId": owner,
+            "chatStatus": status,
+        }
     )
     await PrismaChatMessage.prisma().create_many(
         data=[

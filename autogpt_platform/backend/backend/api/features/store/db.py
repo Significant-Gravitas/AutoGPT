@@ -726,8 +726,7 @@ async def get_store_submissions(
     """Get store submissions for the authenticated user -- not an admin.
 
     With ``organization_id`` (membership-verified RequestContext), the
-    org's submissions are visible to every member; tenant-less rows stay
-    visible to their submitting user.
+    org's submissions are visible to every member.
     """
     logger.debug(
         (
@@ -749,15 +748,7 @@ async def get_store_submissions(
             "is_deleted": False,
         }
         if organization_id is not None:
-            # Nested under AND so it can't collide with the search OR below.
-            where["AND"] = [
-                {
-                    "OR": [
-                        {"organization_id": organization_id},
-                        {"user_id": user_id, "organization_id": None},
-                    ]
-                }
-            ]
+            where["organization_id"] = organization_id
         else:
             where["user_id"] = user_id
 
@@ -831,8 +822,7 @@ async def delete_store_submission_or_raise(
         user_id: ID of the authenticated user
         store_listing_version_id: StoreListingVersion ID to delete
         organization_id: Caller's active org. When set, the listing must
-            belong to that org (or be tenant-less and personally owned) —
-            mirrors ``edit_store_submission``.
+            belong to that org — mirrors ``edit_store_submission``.
 
     Raises:
         SubmissionNotFoundError: no such submission, or not the caller's
@@ -932,17 +922,14 @@ async def create_store_submission(
         ).lower()
 
         # First verify the agent graph belongs to this user, and to the
-        # organization the submission is made in (or to none).
+        # organization the submission is made in.
         graph_where: prisma.types.AgentGraphWhereInput = {
             "id": graph_id,
             "version": graph_version,
             "userId": user_id,
         }
         if organization_id:
-            graph_where["OR"] = [
-                {"organizationId": organization_id},
-                {"organizationId": None},
-            ]
+            graph_where["organizationId"] = organization_id
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where=graph_where,
             include={"User": {"include": {"Profile": True}}, "Nodes": True},
@@ -1060,7 +1047,7 @@ async def create_store_submission(
                     "recommendedScheduleCron": recommended_schedule_cron,
                     "organizationId": (
                         existing_listing.owningOrgId
-                        if existing_listing and existing_listing.owningOrgId
+                        if existing_listing
                         else new_listing_org_id
                     ),
                     "StoreListing": {
@@ -1585,7 +1572,6 @@ async def review_store_submission(
         creator_user_id = submission.AgentGraph.userId
 
         sub_graphs = []
-        submission_org_id = None
         if is_approved:
             if submission.isDeleted:
                 raise ConflictError(
@@ -1598,17 +1584,11 @@ async def review_store_submission(
                     f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
                 )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
-            # Resolved before the review's transaction opens, which keeps its
-            # queries on the transaction's client.
-            submission_org_id, _ = await tenancy_for_new_row(
-                creator_user_id, submission.organizationId
-            )
 
         reviewed_submission, reactivated_id = await _record_submission_review(
             submission,
             submission.AgentGraph,
             sub_graphs,
-            organization_id=submission_org_id,
             is_approved=is_approved,
             external_comments=external_comments,
             internal_comments=internal_comments,
@@ -1648,7 +1628,6 @@ async def _record_submission_review(
     root_graph: prisma.models.AgentGraph,
     sub_graphs: list[prisma.models.AgentGraph],
     *,
-    organization_id: str | None,
     is_approved: bool,
     external_comments: str,
     internal_comments: str,
@@ -1663,14 +1642,13 @@ async def _record_submission_review(
                 if graph.id == submission.agentGraphId:
                     await _approve_direct_submission(tx, submission)
                 else:
-                    assert organization_id is not None
                     await _approve_sub_agent(
                         tx,
                         graph,
                         submission.name,
                         submission.agentGraphVersion,
                         root_graph.userId,
-                        organization_id,
+                        submission.organizationId,
                     )
 
         else:
@@ -2034,7 +2012,7 @@ async def _approve_sub_agent(
                 sub_graph,
                 heading,
                 main_agent_name,
-                listing.owningOrgId or main_agent_organization_id,
+                listing.owningOrgId,
             ),
             "version": next_version,
             "storeListingId": listing.id,
@@ -2048,12 +2026,10 @@ async def _approve_sub_agent(
 def _owns_listing(
     listing: prisma.models.StoreListing, user_id: str, organization_id: str | None
 ) -> bool:
-    """With an active org, the listing is that org's or a tenant-less one the
-    user owns personally; without one, the user's own."""
+    """With an active org, the listing is that org's; without one, the user's
+    own."""
     if organization_id is not None:
-        return listing.owningOrgId == organization_id or (
-            listing.owningOrgId is None and listing.owningUserId == user_id
-        )
+        return listing.owningOrgId == organization_id
     return listing.owningUserId == user_id
 
 

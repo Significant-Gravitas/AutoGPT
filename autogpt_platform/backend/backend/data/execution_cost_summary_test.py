@@ -33,6 +33,7 @@ async def _create_graph(graph_id: str, user_id: str, name: str = "Test") -> None
     try:
         await AgentGraph.prisma().create(
             data={
+                "organizationId": "org-test",
                 "id": graph_id,
                 "version": 1,
                 "name": name,
@@ -73,7 +74,7 @@ async def _create_run(
     is_dry_run: bool = False,
     created_at: datetime | None = None,
     expert_id: str | None = None,
-    organization_id: str | None = None,
+    organization_id: str = "org-test",
 ) -> None:
     # `walltime` is the key the executor actually persists — it comes from
     # GraphExecutionStats.model_dump() in update_graph_execution_stats().
@@ -94,12 +95,12 @@ async def _create_run(
             "agentGraphVersion": 1,
             "executionStatus": status,
             "userId": user_id,
+            "organizationId": organization_id,
             "createdAt": created_at if created_at is not None else started_at,
             "startedAt": started_at,
             "endedAt": started_at + timedelta(seconds=duration or 0),
             "stats": SafeJson(stats),
             **({"expertId": expert_id} if expert_id else {}),
-            **({"organizationId": organization_id} if organization_id else {}),
         }
     )
 
@@ -410,7 +411,7 @@ async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_organization_counts_its_own_runs_and_untagged_ones(
+async def test_an_organization_counts_only_its_own_runs(
     server: SpinTestServer,
 ):
     """As `GET /runs` lists them: another organization's runs stay out."""
@@ -420,7 +421,7 @@ async def test_an_organization_counts_its_own_runs_and_untagged_ones(
     await _create_graph(graph_id, user_id)
     try:
         now = datetime.now(timezone.utc)
-        for organization_id, cost in (("org-a", 100), ("org-b", 20), (None, 3)):
+        for organization_id, cost in (("org-a", 100), ("org-b", 20)):
             await _create_run(
                 run_id=f"run-{uuid4()}",
                 user_id=user_id,
@@ -437,10 +438,10 @@ async def test_an_organization_counts_its_own_runs_and_untagged_ones(
         )
         everywhere = await get_user_cost_summary(user_id=user_id, **window)
 
-        assert (in_a.total_cents, in_a.run_count) == (103, 2)
-        assert sorted(r.cost_cents for r in in_a.top_runs) == [3, 100]
-        assert sum(day.cost_cents for day in in_a.daily) == 103
-        assert (everywhere.total_cents, everywhere.run_count) == (123, 3)
+        assert (in_a.total_cents, in_a.run_count) == (100, 1)
+        assert [r.cost_cents for r in in_a.top_runs] == [100]
+        assert sum(day.cost_cents for day in in_a.daily) == 100
+        assert (everywhere.total_cents, everywhere.run_count) == (120, 2)
     finally:
         await _cleanup(user_id, [graph_id])
 

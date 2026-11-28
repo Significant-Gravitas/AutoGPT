@@ -286,7 +286,7 @@ async def test_a_submission_checks_the_role_where_the_workflow_lives(mocker):
 @pytest.mark.parametrize(
     "owning_user_id, owning_org_id, organization_id",
     [
-        pytest.param("the-creator", None, None, id="another-creators"),
+        pytest.param("the-creator", "creators-org", None, id="another-creators"),
         pytest.param("user-id", "org-2", "org-1", id="another-organizations"),
     ],
 )
@@ -308,7 +308,6 @@ async def test_a_submission_never_touches_another_creators_listing(
     "owning_user_id, owning_org_id",
     [
         pytest.param("a-colleague", "org-1", id="the-organizations"),
-        pytest.param("user-id", None, id="own-tenant-less"),
     ],
 )
 @pytest.mark.asyncio(loop_scope="session")
@@ -321,7 +320,6 @@ async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
     await _submit(organization_id="org-1")
 
     version_prisma.create.assert_awaited_once()
-    # A listing written before its org was set still gives the version one.
     assert version_prisma.create.await_args.kwargs["data"]["organizationId"] == "org-1"
 
 
@@ -387,6 +385,7 @@ def _patch_submission(
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
         StoreListingVersions=[],
         User=mock_user,
+        organizationId="org-1",
     )
     mock_version = _pending_version(
         StoreListing=prisma.models.StoreListing(
@@ -399,6 +398,7 @@ def _patch_submission(
             agentGraphId="agent-id",
             owningUserId="user-id",
             useForOnboarding=False,
+            owningOrgId="org-1",
         )
     )
 
@@ -451,7 +451,7 @@ async def _submit(organization_id: str | None = None):
 
 
 def _listing_with_a_pending_version(
-    owning_user_id: str, owning_org_id: str | None
+    owning_user_id: str, owning_org_id: str
 ) -> prisma.models.StoreListing:
     now = datetime.now()
     return prisma.models.StoreListing(
@@ -489,7 +489,7 @@ def _pending_version(**fields) -> prisma.models.StoreListingVersion:
         submissionStatus=prisma.enums.SubmissionStatus.PENDING,
         isAvailable=True,
         submittedAt=now,
-        **fields,
+        **{"organizationId": "org-1", **fields},
     )
 
 
@@ -1220,6 +1220,7 @@ def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
         name=f"Agent {idx}",
         description=f"Description {idx}",
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
     )
     return prisma.models.LibraryAgent.model_construct(
         id=f"library-{idx}",
@@ -1236,6 +1237,7 @@ def _make_library_agent(idx: int, now: datetime) -> prisma.models.LibraryAgent:
         settings={},
         imageUrl=None,
         AgentGraph=graph,
+        organizationId="org-1",
     )
 
 
@@ -1394,12 +1396,9 @@ def _submission_version(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize(
-    "owning_org_id", ["org-A", None], ids=["same-org", "personal-owner"]
-)
-async def test_delete_store_submission_allows_owner(mocker, owning_org_id):
+async def test_delete_store_submission_allows_owner(mocker):
     tx, versions = mock_submission_deletion(
-        mocker, owning_user_id="user-1", owning_org_id=owning_org_id
+        mocker, owning_user_id="user-1", owning_org_id="org-A"
     )
     await db.delete_store_submission_or_raise(
         user_id="user-1", store_listing_version_id="slv-1", organization_id="org-A"
@@ -1499,8 +1498,8 @@ def _patch_submission_stats(mocker):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_submissions_org_visibility(mocker):
-    """Org members see the org's submissions; tenant-less rows stay visible
-    to their submitting user; the search OR-clause is not clobbered."""
+    """Org members see the org's submissions; the search OR-clause is not
+    clobbered."""
     mock_client = AsyncMock()
     mock_client.find_many.return_value = []
     mock_client.count.return_value = 0
@@ -1516,16 +1515,9 @@ async def test_get_store_submissions_org_visibility(mocker):
     )
 
     where = mock_client.find_many.call_args.kwargs["where"]
-    assert where["AND"] == [
-        {
-            "OR": [
-                {"organization_id": "org-A"},
-                {"user_id": "user-1", "organization_id": None},
-            ]
-        }
-    ]
+    assert where["organization_id"] == "org-A"
     assert "user_id" not in where
-    # search OR survives alongside the visibility AND
+    # search OR survives alongside the visibility filter
     assert any("name" in clause for clause in where["OR"])
 
 
@@ -1677,6 +1669,7 @@ async def test_get_available_graph_never_carries_picked_files(mocker):
                 metadata="{}",
             )
         ],
+        organizationId="org-1",
     )
     listing_client = AsyncMock()
     listing_client.find_first.return_value = mocker.MagicMock(AgentGraph=graph_row)
@@ -1724,6 +1717,7 @@ def review_mocks(mocker):
         agentGraphId="agent-id",
         owningUserId="owner-id",
         useForOnboarding=False,
+        owningOrgId="org-1",
     )
     graph = prisma.models.AgentGraph(
         id="agent-id",
@@ -1732,6 +1726,7 @@ def review_mocks(mocker):
         createdAt=now,
         isActive=True,
         visibility=prisma.enums.ResourceVisibility.PRIVATE,
+        organizationId="org-1",
     )
     version = prisma.models.StoreListingVersion(
         id="version-id",
@@ -1755,6 +1750,7 @@ def review_mocks(mocker):
         submittedAt=now,
         StoreListing=listing,
         AgentGraph=graph,
+        organizationId="org-1",
     )
     profile = prisma.models.Profile(
         id="profile-id",
@@ -2009,6 +2005,7 @@ def _sub_agent_listed_by(mocker, review_mocks, owning_user_id: str) -> None:
                 createdAt=now,
                 isActive=True,
                 visibility=prisma.enums.ResourceVisibility.PRIVATE,
+                organizationId="org-1",
             )
         ],
     )
@@ -2024,6 +2021,7 @@ def _sub_agent_listed_by(mocker, review_mocks, owning_user_id: str) -> None:
             owningUserId=owning_user_id,
             useForOnboarding=False,
             Versions=[],
+            owningOrgId="org-1",
         )
     )
     review_mocks.slv.create = AsyncMock()
@@ -2465,10 +2463,7 @@ async def test_a_submission_in_an_organization_needs_a_graph_from_it(mocker):
             organization_id="org-a",
         )
 
-    assert find_graph.call_args.kwargs["where"]["OR"] == [
-        {"organizationId": "org-a"},
-        {"organizationId": None},
-    ]
+    assert find_graph.call_args.kwargs["where"]["organizationId"] == "org-a"
 
 
 @pytest.mark.asyncio(loop_scope="session")

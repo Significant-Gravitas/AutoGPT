@@ -129,6 +129,7 @@ async def postgres(
 async def _dream_session(scope: MemoryScope, pass_id: str) -> str:
     session = await ChatSession.prisma().create(
         data={
+            "organizationId": "org-test",
             "userId": scope.owner_user_id,
             "metadata": SafeJson({"kind": "dream", "dream_pass_id": pass_id}),
         }
@@ -639,6 +640,7 @@ async def _old_narrative(user_id: str, expert_id: str | None) -> str:
     session = await ChatSession.prisma().create(
         data={
             "userId": user_id,
+            "organizationId": "org-test",
             "metadata": SafeJson({"kind": "dream", "dream_pass_id": "p-before"}),
             **({"expertId": expert_id} if expert_id else {}),
         }

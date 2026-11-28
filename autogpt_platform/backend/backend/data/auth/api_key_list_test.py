@@ -34,10 +34,7 @@ async def test_list_keys_org_mode_includes_org_owned_keys(mock_key_client):
     where = mock_key_client.find_many.call_args.kwargs["where"]
     assert where == {
         "OR": [
-            {
-                "userId": "u-1",
-                "OR": [{"organizationId": "org-1"}, {"organizationId": None}],
-            },
+            {"userId": "u-1", "organizationId": "org-1"},
             {
                 "organizationId": "org-1",
                 "ownerType": "ORG",
