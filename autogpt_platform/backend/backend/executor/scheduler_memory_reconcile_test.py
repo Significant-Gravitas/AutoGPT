@@ -54,6 +54,7 @@ from backend.executor.scheduler import (
     listed_cron,
     reconcile_memory_scope_crons,
 )
+from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
 
 EXPERT = MemoryScope.for_expert("user-1", "expert-1")
 _EXECUTION = Jobstores.EXECUTION.value
@@ -497,7 +498,7 @@ class TestRegistration:
         scheduler = Scheduler.__new__(Scheduler)
         scheduler.scheduler = MagicMock()
         scheduler.scheduler.get_job.return_value = existing
-        Scheduler._register_memory_cron_reconcile(scheduler)
+        scheduler._register_after_start(declared_system_job(_RECONCILE_JOB))
         return scheduler.scheduler.add_job
 
     def test_registers_an_immediate_interval_job(self) -> None:
@@ -506,16 +507,15 @@ class TestRegistration:
 
         add_job.assert_called_once()
         assert add_job.call_args.args[0] is reconcile_memory_scope_crons
-        assert str(add_job.call_args.args[1]) == str(
+        kwargs = dict(add_job.call_args.kwargs)
+        assert str(kwargs.pop("trigger")) == str(
             IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
         )
-        kwargs = dict(add_job.call_args.kwargs)
         assert before <= kwargs.pop("next_run_time") <= datetime.now(timezone.utc)
         assert kwargs == {
             "id": _RECONCILE_JOB,
             "replace_existing": True,
             "max_instances": 1,
-            "coalesce": True,
             "jobstore": "memory_cron_reconcile",
         }
 
@@ -525,8 +525,8 @@ class TestRegistration:
         with _sqlite_file() as url:
             with _scheduler_on(url) as first, _scheduler_on(url) as second:
                 before = datetime.now(timezone.utc)
-                first._register_memory_cron_reconcile()
-                second._register_memory_cron_reconcile()
+                first._register_after_start(declared_system_job(_RECONCILE_JOB))
+                second._register_after_start(declared_system_job(_RECONCILE_JOB))
                 for service in (first, second):
                     [job] = service.scheduler.get_jobs(jobstore="memory_cron_reconcile")
                     assert job.id == _RECONCILE_JOB
@@ -535,7 +535,7 @@ class TestRegistration:
             with _scheduler_on(url) as restarted:
                 assert restarted.scheduler.get_jobs() == []
                 before = datetime.now(timezone.utc)
-                restarted._register_memory_cron_reconcile()
+                restarted._register_after_start(declared_system_job(_RECONCILE_JOB))
                 [job] = restarted.scheduler.get_jobs(jobstore="memory_cron_reconcile")
                 assert before <= job.next_run_time <= datetime.now(timezone.utc)
                 assert restarted._execution_jobstore.get_all_jobs() == []

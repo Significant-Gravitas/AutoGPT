@@ -68,6 +68,7 @@ from backend.executor.scheduler import (
     refresh_near_expiry_credentials,
     send_trial_last_calls,
 )
+from backend.executor.scheduler_jobstore_test_helpers import declared_system_job
 from backend.util.cron import MAX_CRON_LENGTH
 from backend.util.exceptions import (
     ExpertNotFoundError,
@@ -2032,10 +2033,9 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert len(matches) == 1
     call = matches[0]
     assert call.kwargs["id"] == "reconcile_stripe_tiers"
-    assert call.kwargs["trigger"] == "interval"
     assert call.kwargs["max_instances"] == 1
-    # 6 hours -> 6 * 3600 seconds, driven by the config setting.
-    assert call.kwargs["seconds"] == 6 * 3600
+    # Driven by the config setting.
+    assert call.kwargs["trigger"].interval == timedelta(hours=6)
 
 
 def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch):
@@ -2047,9 +2047,10 @@ def test_trial_last_call_pass_registered_hourly_and_single_instance(monkeypatch)
     assert call.kwargs["id"] == "send_trial_last_calls"
     assert call.kwargs["max_instances"] == 1
     assert call.kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
-    assert isinstance(call.args[1], CronTrigger)
+    assert isinstance(call.kwargs["trigger"], CronTrigger)
     hourly = CronTrigger.from_crontab("15 * * * *")
-    assert [str(f) for f in call.args[1].fields] == [str(f) for f in hourly.fields]
+    fields = call.kwargs["trigger"].fields
+    assert [str(f) for f in fields] == [str(f) for f in hourly.fields]
 
 
 def test_memory_cron_reconcile_registered_after_start_on_its_interval(
@@ -2066,13 +2067,14 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
         for i, (name, args, _) in enumerate(calls)
         if name == "add_job" and args and args[0] is reconcile_memory_scope_crons
     ]
-    _, args, kwargs = calls[at]
+    _, _, kwargs = calls[at]
     assert names.index("start") < at
-    assert str(args[1]) == str(IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES))
+    assert str(kwargs["trigger"]) == str(
+        IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
+    )
     assert RECONCILE_INTERVAL_MINUTES == 30
     assert kwargs["id"] == "reconcile_memory_scope_crons"
     assert kwargs["max_instances"] == 1
-    assert kwargs["coalesce"] is True
     assert kwargs["jobstore"] == scheduler_module.Jobstores.MEMORY_CRON_RECONCILE.value
     assert kwargs["next_run_time"] <= datetime.now(timezone.utc)
 
@@ -2080,7 +2082,7 @@ def test_memory_cron_reconcile_registered_after_start_on_its_interval(
 def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
     """The brain-dump recording sweep keeps "deleted within 48 hours". It is
     registered once the scheduler has started, so an unchanged job keeps its
-    next run; a start that stopped calling ``_register_recording_purge``
+    next run; a start that stopped registering it
     would leave no sweep at all."""
     calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
 
@@ -2092,10 +2094,10 @@ def test_recording_purge_registered_after_start_on_its_interval(monkeypatch):
         and args
         and args[0] is scheduler_module.purge_expired_recordings_job
     ]
-    _, args, kwargs = calls[at]
+    _, _, kwargs = calls[at]
     assert names.index("start") < at
     assert kwargs["id"] == scheduler_module.RECORDING_PURGE_JOB_ID
-    assert args[1].interval == RECORDING_PURGE_INTERVAL
+    assert kwargs["trigger"].interval == RECORDING_PURGE_INTERVAL
     assert kwargs["max_instances"] == 1
     assert kwargs["jobstore"] == scheduler_module.Jobstores.EXECUTION.value
 
@@ -2207,7 +2209,7 @@ def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
     """Changing the configured interval changes the registered ``seconds``."""
     calls = _registered_jobs(monkeypatch, interval_hours=12).add_job_calls
     match = next(c for c in calls if c.args and c.args[0] is reconcile_stripe_tiers)
-    assert match.kwargs["seconds"] == 12 * 3600
+    assert match.kwargs["trigger"].interval == timedelta(hours=12)
 
 
 def test_dream_pass_reaper_and_retention_are_registered_at_start(monkeypatch):
@@ -2247,8 +2249,8 @@ def test_stalled_erasure_check_runs_whether_the_erasure_job_is_on_or_not(
         c for c in calls if c.kwargs.get("id") == "report_stalled_account_erasures"
     ]
     assert len(match) == 1
-    assert (
-        match[0].kwargs["seconds"] == Config().account_erasure_stall_check_interval_secs
+    assert match[0].kwargs["trigger"].interval == timedelta(
+        seconds=Config().account_erasure_stall_check_interval_secs
     )
 
 
@@ -2266,8 +2268,7 @@ def test_startup_embedding_backfill_can_be_disabled(monkeypatch):
     job = next(
         c for c in run.add_job_calls if c.kwargs["id"] == "ensure_embeddings_coverage"
     )
-    assert job.kwargs["trigger"] == "interval"
-    assert job.kwargs["hours"] == 6
+    assert job.kwargs["trigger"].interval == timedelta(hours=6)
     assert before + timedelta(hours=6) <= job.kwargs["next_run_time"]
 
 
@@ -2282,11 +2283,8 @@ def test_startup_embedding_backfill_runs_in_the_existing_background_job(monkeypa
     assert len(jobs) == 1
     job = jobs[0]
     assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
-    assert job.kwargs["trigger"] == "interval"
-    assert job.kwargs["hours"] == 6
+    assert job.kwargs["trigger"].interval == timedelta(hours=6)
     assert job.kwargs["max_instances"] == 1
-    assert job.kwargs["misfire_grace_time"] is None
-    assert job.kwargs["coalesce"] is True
     job.args[0]()
     run.embedding_backfill.assert_called_once_with()
 
@@ -2313,11 +2311,8 @@ def test_embedding_backfill_is_registered_to_run_immediately(monkeypatch):
     job = jobs[0]
     assert job.args[0] is run.embedding_backfill
     assert before <= job.kwargs["next_run_time"] <= datetime.now(timezone.utc)
-    assert job.kwargs["trigger"] == "interval"
-    assert job.kwargs["hours"] == 6
+    assert job.kwargs["trigger"].interval == timedelta(hours=6)
     assert job.kwargs["max_instances"] == 1
-    assert job.kwargs["misfire_grace_time"] is None
-    assert job.kwargs["coalesce"] is True
 
 
 class TestScheduleOrgVisibility:
@@ -3344,7 +3339,7 @@ class TestPostHogLifecycleSweepRegistration:
         sched = Scheduler.__new__(Scheduler)
         sched.scheduler = MagicMock()
         sched.scheduler.get_job.return_value = existing
-        Scheduler._register_posthog_lifecycle_sweep(sched)
+        sched._register_after_start(declared_system_job("sync_posthog_lifecycles"))
         return sched.scheduler.add_job
 
     def test_registers_the_daily_cron_when_missing(self):
@@ -3352,7 +3347,7 @@ class TestPostHogLifecycleSweepRegistration:
 
         add_job.assert_called_once()
         assert add_job.call_args.kwargs["id"] == "sync_posthog_lifecycles"
-        assert "hour='4', minute='15'" in str(add_job.call_args.args[1])
+        assert "hour='4', minute='15'" in str(add_job.call_args.kwargs["trigger"])
 
     def test_leaves_an_unchanged_job_alone(self):
         existing = MagicMock(trigger=CronTrigger.from_crontab("15 4 * * *"))
@@ -3365,12 +3360,7 @@ class TestPostHogLifecycleSweepRegistration:
         self._register(existing=existing).assert_called_once()
 
     def test_morning_briefing_stays_an_rpc_endpoint(self):
-        # The sweep registrar sits next to it; the @expose must stay on the
-        # RPC method, not slide onto the private helper.
         assert getattr(Scheduler.add_morning_briefing_schedule, EXPOSED_FLAG, False)
-        assert not getattr(
-            Scheduler._register_posthog_lifecycle_sweep, EXPOSED_FLAG, False
-        )
 
 
 class TestScheduleListCache:

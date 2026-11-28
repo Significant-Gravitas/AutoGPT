@@ -14,8 +14,7 @@ from collections.abc import Callable, Mapping
 from concurrent.futures import Future
 from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -170,6 +169,7 @@ from backend.util.service import (
     expose,
 )
 from backend.util.settings import Config
+from backend.util.system_jobs import Jobstores, SystemJob, every
 
 if TYPE_CHECKING:
     from backend.copilot.dream.nightly_batch import NightlyBatchResult
@@ -2471,50 +2471,6 @@ def execute_dream_pass_retention() -> None:
     )
 
 
-class _SystemJobs(Protocol):
-    """The call the dream pass jobs make on the scheduler, typed:
-    ``BackgroundScheduler.add_job`` itself is unannotated."""
-
-    def add_job(
-        self,
-        func: Callable[[], None],
-        trigger: str | CronTrigger,
-        *,
-        id: str,
-        replace_existing: bool,
-        max_instances: int,
-        jobstore: str,
-        coalesce: bool = ...,
-        minutes: int = ...,
-    ) -> JobObj: ...
-
-
-def _register_dream_pass_jobs(scheduler: _SystemJobs) -> None:
-    """The two jobs over every user's DreamPass rows, registered once at
-    start like the other system jobs: the reaper every
-    ``REAPER_INTERVAL_MINUTES``, retention weekly (Sunday 05:30 UTC)."""
-    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
-
-    scheduler.add_job(
-        execute_dream_pass_reaper,
-        id="dream_pass_reaper",
-        trigger="interval",
-        minutes=REAPER_INTERVAL_MINUTES,
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        jobstore=Jobstores.EXECUTION.value,
-    )
-    scheduler.add_job(
-        execute_dream_pass_retention,
-        CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
-        id="dream_pass_retention",
-        replace_existing=True,
-        max_instances=1,
-        jobstore=Jobstores.EXECUTION.value,
-    )
-
-
 class _KeptScheduleJobs:
     """``add_job`` for the system jobs every start re-adds. An interval job whose
     interval is unchanged keeps its stored next run: re-added afresh, the run
@@ -2533,9 +2489,9 @@ class _KeptScheduleJobs:
         self, func: Callable[..., object], *args: Any, **options: Any
     ) -> JobObj:
         trigger = args[0] if args else options.get("trigger")
-        if trigger == "interval" and "next_run_time" not in options:
+        if isinstance(trigger, IntervalTrigger) and "next_run_time" not in options:
             stored = self._stored_job(options["id"], options["jobstore"])
-            if stored is not None and _same_interval(stored.trigger, options):
+            if stored is not None and _same_interval(stored.trigger, trigger):
                 # None for a paused job, which stays paused.
                 options["next_run_time"] = stored.next_run_time
         return self._scheduler.add_job(func, *args, **options)
@@ -2564,14 +2520,8 @@ def _has_table(store: ResilientSQLAlchemyJobStore) -> bool:
         return True
 
 
-def _same_interval(trigger: object, options: dict[str, Any]) -> bool:
-    units = ("weeks", "days", "hours", "minutes", "seconds")
-    interval = IntervalTrigger(
-        **{unit: options[unit] for unit in units if unit in options}
-    )
-    return (
-        isinstance(trigger, IntervalTrigger) and trigger.interval == interval.interval
-    )
+def _same_interval(stored: object, trigger: IntervalTrigger) -> bool:
+    return isinstance(stored, IntervalTrigger) and stored.interval == trigger.interval
 
 
 def ensure_embeddings_coverage():
@@ -2693,13 +2643,6 @@ _PARKED_SCAN_LIMIT = 1000
 # ~10 s to ready, a 15 s preStop, a 300 s grace). The index is trusted only after
 # a reconcile that began later, so rows that pod wrote unindexed are in it.
 _SCHEDULE_INDEX_SETTLE_S = 600
-
-
-class Jobstores(Enum):
-    EXECUTION = "execution"
-    BATCHED_NOTIFICATIONS = "batched_notifications"
-    WEEKLY_NOTIFICATIONS = "weekly_notifications"
-    MEMORY_CRON_RECONCILE = "memory_cron_reconcile"
 
 
 class GraphExecutionJobArgs(BaseModel):
@@ -3169,246 +3112,15 @@ class Scheduler(AppService):
             timezone=ZoneInfo("UTC"),
         )
 
-        if self.register_system_tasks:
-            system_jobs = _KeptScheduleJobs(self.scheduler, self._persistent_jobstores)
-            # ALERTS — empty the ten-minute debounce window. Runs every
-            # minute so a condition raised at :01 goes out at :11, not at the
-            # next quarter hour.
-            system_jobs.add_job(
-                flush_matured_alerts,
-                id="flush_matured_alerts",
-                trigger="interval",
-                replace_existing=True,
-                seconds=60,
-                # Belt and braces. This only stops APScheduler double-firing
-                # the RPC; the RPC returns as soon as the pass is spawned, so
-                # the real guards are the in-process one in NotificationManager
-                # and the per-user claim the work itself takes.
-                max_instances=1,
-                jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-            )
-
-            # BRIEFINGS — hourly, because "07:30 in the user's own timezone"
-            # is a different UTC hour for each of them.
-            system_jobs.add_job(
-                send_due_briefings,
-                CronTrigger.from_crontab("30 * * * *"),
-                id="send_due_briefings",
-                kwargs={},
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
-            )
-
-            # TRIAL LAST CALL — hourly, so the one-day reminder goes out
-            # within an hour of a canceled trial's last day starting.
-            self.scheduler.add_job(
-                send_trial_last_calls,
-                CronTrigger.from_crontab("15 * * * *"),
-                id="send_trial_last_calls",
-                kwargs={},
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Notification LATE EXECUTIONS ALERT
-            system_jobs.add_job(
-                report_late_executions,
-                id="report_late_executions",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.execution_late_notification_threshold_secs,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Block Error Rate Monitoring
-            system_jobs.add_job(
-                report_block_error_rates,
-                id="report_block_error_rates",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.block_error_rate_check_interval_secs,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Auth identity <-> platform User invariant. Heals any auth
-            # identity that has no platform User row and pages when it had to.
-            if config.auth_identity_orphan_sweep_enabled:
-                system_jobs.add_job(
-                    report_orphaned_auth_identities,
-                    id="report_orphaned_auth_identities",
-                    trigger="interval",
-                    replace_existing=True,
-                    max_instances=1,
-                    seconds=config.auth_identity_orphan_check_interval_secs,
-                    jobstore=Jobstores.EXECUTION.value,
-                )
-
-            # Account erasure: works through the closed accounts not erased
-            # yet. Off by default (account_erasure_sweep_enabled).
-            if config.account_erasure_sweep_enabled:
-                system_jobs.add_job(
-                    erase_closed_accounts,
-                    id="erase_closed_accounts",
-                    trigger="interval",
-                    replace_existing=True,
-                    max_instances=1,
-                    seconds=config.account_erasure_sweep_interval_secs,
-                    jobstore=Jobstores.EXECUTION.value,
-                )
-
-            # Account erasures that started and did not finish, from the job
-            # or the CLI. Runs whether the job is on or not.
-            system_jobs.add_job(
-                report_stalled_account_erasures,
-                id="report_stalled_account_erasures",
-                trigger="interval",
-                replace_existing=True,
-                max_instances=1,
-                seconds=config.account_erasure_stall_check_interval_secs,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Cloud Storage Cleanup - configurable interval
-            system_jobs.add_job(
-                cleanup_expired_files,
-                id="cleanup_expired_files",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.cloud_storage_cleanup_interval_hours
-                * 3600,  # Convert hours to seconds
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # OAuth Token Cleanup - configurable interval
-            system_jobs.add_job(
-                cleanup_oauth_tokens,
-                id="cleanup_oauth_tokens",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.oauth_token_cleanup_interval_hours
-                * 3600,  # Convert hours to seconds
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Sign-in IP log retention - daily
-            system_jobs.add_job(
-                cleanup_auth_ip_events,
-                id="cleanup_auth_ip_events",
-                trigger="interval",
-                hours=24,
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Failed Push Subscription Cleanup - configurable interval
-            system_jobs.add_job(
-                cleanup_failed_push_subscriptions,
-                id="cleanup_failed_push_subscriptions",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.push_subscription_cleanup_interval_hours * 3600,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Platform Link Token Cleanup - configurable interval
-            system_jobs.add_job(
-                cleanup_platform_link_tokens,
-                id="cleanup_platform_link_tokens",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.platform_link_token_cleanup_interval_hours * 3600,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Stripe Subscription Tier Reconciliation - configurable interval
-            # Safety net for missed/lost Stripe webhooks: makes Stripe the
-            # eventual source of truth for STRIPE-sourced tiers (incl. downgrades).
-            system_jobs.add_job(
-                reconcile_stripe_tiers,
-                id="reconcile_stripe_tiers",
-                trigger="interval",
-                replace_existing=True,
-                max_instances=1,  # Prevent overlapping sweeps
-                seconds=config.stripe_tier_reconcile_interval_hours * 3600,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Execution Accuracy Monitoring - configurable interval
-            system_jobs.add_job(
-                execution_accuracy_alerts,
-                id="report_execution_accuracy_alerts",
-                trigger="interval",
-                replace_existing=True,
-                seconds=config.execution_accuracy_check_interval_hours
-                * 3600,  # Convert hours to seconds
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Embedding Coverage - Every 6 hours
-            # Ensures all approved agents have embeddings for hybrid search
-            # Critical: missing embeddings = agents invisible in search
-            system_jobs.add_job(
-                ensure_embeddings_coverage,
-                id="ensure_embeddings_coverage",
-                trigger="interval",
-                hours=6,
-                # Due now rather than called inline below: run_service() is what
-                # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc)
-                + timedelta(
-                    hours=0 if config.scheduler_startup_embedding_backfill else 6
-                ),
-                replace_existing=True,
-                max_instances=1,  # Prevent overlapping runs
-                misfire_grace_time=None,
-                coalesce=True,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Block Description Optimization - Every 24 hours
-            # Generates concise LLM-optimized block descriptions for
-            # agent generation. Only processes blocks missing descriptions.
-            system_jobs.add_job(
-                optimize_block_descriptions,
-                id="optimize_block_descriptions",
-                trigger="interval",
-                hours=24,
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            system_jobs.add_job(
-                deliver_background_subtasks,
-                id="deliver_background_subtasks",
-                trigger="interval",
-                seconds=5,
-                replace_existing=True,
-                max_instances=1,
-                coalesce=True,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
-            # Dream passes: close those that outlived their lease, and delete
-            # the closed ones past their retention.
-            _register_dream_pass_jobs(system_jobs)
-
-            # Schedule Index Reconcile - Every 24 hours
-            # Safety net for the best-effort index writes: re-adds rows a
-            # failed write missed and clears rows for jobs APScheduler
-            # auto-removed (fired one-shots) outside our delete path.
-            system_jobs.add_job(
-                reconcile_schedule_index,
-                id="reconcile_schedule_index",
-                trigger="interval",
-                hours=24,
-                replace_existing=True,
-                max_instances=1,
-                jobstore=Jobstores.EXECUTION.value,
-            )
+        system_jobs = (
+            [job for job in scheduler_system_jobs(config) if job.enabled]
+            if self.register_system_tasks
+            else []
+        )
+        kept = _KeptScheduleJobs(self.scheduler, self._persistent_jobstores)
+        for job in system_jobs:
+            if not job.after_start:
+                kept.add_job(job.func, **_add_job_options(job))
 
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
@@ -3419,14 +3131,10 @@ class Scheduler(AppService):
         global _scheduler_instance
         _scheduler_instance = self
         self.scheduler.start()
+        for job in system_jobs:
+            if job.after_start:
+                self._register_after_start(job)
         if self.register_system_tasks:
-            # After start: until then get_job only sees pending jobs, not the
-            # jobstore, so the "leave an unchanged job alone" check can't work.
-            self._register_idle_credential_sweep()
-            self._register_posthog_lifecycle_sweep()
-            self._register_recording_purge()
-            self._register_memory_cron_reconcile()
-            self._register_community_sweep()
             # Off the startup path: a full scan of the jobstore.
             threading.Thread(
                 target=self._drop_stored_misfire_graces,
@@ -3479,27 +3187,14 @@ class Scheduler(AppService):
         )
         return None, f"sqlite:///{self._throwaway_dir.name}/jobs.sqlite"
 
-    def _register_idle_credential_sweep(self) -> None:
-        """Keep an existing daily job's overdue run or explicit pause intact."""
-        job_id = "refresh_near_expiry_credentials"
-        trigger = CronTrigger(hour=3, minute=0, timezone=timezone.utc)
-        existing = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
-        if (
-            existing is not None
-            and str(existing.trigger) == str(trigger)
-            and _job_timezone_name(existing) == "UTC"
-        ):
-            return
-        self.scheduler.add_job(
-            refresh_near_expiry_credentials,
-            id=job_id,
-            trigger=trigger,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=None,
-            jobstore=Jobstores.EXECUTION.value,
-        )
+    def _register_after_start(self, job: SystemJob) -> None:
+        """After start: until then get_job only sees pending jobs, not the
+        jobstore, so the "leave an unchanged job alone" check can't work."""
+        if job.keep_if_unchanged:
+            stored = self.scheduler.get_job(job.id, jobstore=job.jobstore.value)
+            if stored is not None and _same_trigger(stored, job.trigger):
+                return
+        self.scheduler.add_job(job.func, **_add_job_options(job))
 
     # Paused and fired-once rows are never deleted, so this scan is bounded
     # rather than left to grow with the backlog — startup precedes the RPC port.
@@ -4965,96 +4660,6 @@ class Scheduler(AppService):
             timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
         )
 
-    def _register_posthog_lifecycle_sweep(self) -> None:
-        """Daily PostHog lifecycle sweep: the safety net behind the webhook and
-        signup hooks, and what moves a trial that ran out on the clock on.
-
-        Cron rather than an interval, because replace_existing re-arms an
-        interval from every restart. An unchanged job isn't re-registered
-        either: replacing it recomputes ``next_run_time``, so a restart after
-        04:15 but before the overdue run fires would skip that day's sweep.
-        Left in place, the overdue run fires on start (``coalesce``, no
-        misfire limit).
-        """
-        trigger = CronTrigger.from_crontab("15 4 * * *")
-        existing = self.scheduler.get_job(
-            _POSTHOG_LIFECYCLE_JOB_ID, jobstore=Jobstores.EXECUTION.value
-        )
-        if existing is not None and str(existing.trigger) == str(trigger):
-            return
-        self.scheduler.add_job(
-            sync_posthog_lifecycles,
-            trigger,
-            id=_POSTHOG_LIFECYCLE_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            jobstore=Jobstores.EXECUTION.value,
-        )
-
-    def _register_recording_purge(self) -> None:
-        """The brain-dump recording sweep, which keeps "deleted within 48
-        hours" by running every ``RECORDING_PURGE_INTERVAL``.
-
-        Registered like the PostHog sweep: replacing an interval job re-arms
-        it at start + interval, so restarts closer together than the
-        interval would postpone the sweep indefinitely. An unchanged job is
-        left with the next run it has, and an overdue run fires on start.
-        """
-        trigger = IntervalTrigger(
-            seconds=int(RECORDING_PURGE_INTERVAL.total_seconds()),
-            timezone=timezone.utc,
-        )
-        existing = self.scheduler.get_job(
-            RECORDING_PURGE_JOB_ID, jobstore=Jobstores.EXECUTION.value
-        )
-        if existing is not None and str(existing.trigger) == str(trigger):
-            return
-        self.scheduler.add_job(
-            purge_expired_recordings_job,
-            trigger,
-            id=RECORDING_PURGE_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            jobstore=Jobstores.EXECUTION.value,
-        )
-
-    def _register_memory_cron_reconcile(self) -> None:
-        """The memory cron reconcile (``reconcile_memory_scope_crons``), the
-        level-triggered backstop of the registry's pause, resume and ensure
-        (``copilot/dream/scope_reconcile.py``), every
-        ``RECONCILE_INTERVAL_MINUTES``.
-
-        Each process starts with an immediate pass. Keep the job in memory
-        so an old scheduler cannot park it during a rolling deploy.
-        Overlapping passes replay the same bounded, idempotent work.
-        """
-        trigger = IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
-        self.scheduler.add_job(
-            reconcile_memory_scope_crons,
-            trigger,
-            id=_MEMORY_CRON_RECONCILE_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            next_run_time=datetime.now(ZoneInfo("UTC")),
-            jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
-        )
-
-    def _register_community_sweep(self) -> None:
-        """The hourly community sweep (``rebuild_due_communities_job``),
-        process-local like the reconcile, with a pass at start so a deploy
-        removes the old per-scope crons at once."""
-        self.scheduler.add_job(
-            rebuild_due_communities_job,
-            IntervalTrigger(hours=1),
-            id=_COMMUNITY_SWEEP_JOB_ID,
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            next_run_time=datetime.now(ZoneInfo("UTC")),
-            jobstore=Jobstores.MEMORY_CRON_RECONCILE.value,
-        )
-
     def _sweep_communities(self) -> None:
         try:
             removed = self._remove_community_crons()
@@ -5461,6 +5066,240 @@ class Scheduler(AppService):
 
         result = run_async(run_ratification_pass(user_id))
         return result.model_dump(mode="json")
+
+
+def scheduler_system_jobs(config: Config) -> list[SystemJob]:
+    """The system jobs declared here, in the order a start registers them."""
+    # The dream modules import the batch executor, whose package imports this
+    # module, so the reaper's interval is read here, at registration.
+    from backend.copilot.dream.reaper import REAPER_INTERVAL_MINUTES
+
+    return [
+        # ALERTS — empty the ten-minute debounce window. Runs every minute so a
+        # condition raised at :01 goes out at :11, not at the next quarter hour.
+        SystemJob(
+            id="flush_matured_alerts",
+            func=flush_matured_alerts,
+            trigger=every(seconds=60),
+            # Belt and braces. This only stops APScheduler double-firing the
+            # RPC; the RPC returns as soon as the pass is spawned, so the real
+            # guards are the in-process one in NotificationManager and the
+            # per-user claim the work itself takes.
+            max_instances=1,
+            jobstore=Jobstores.BATCHED_NOTIFICATIONS,
+        ),
+        # BRIEFINGS — hourly, because "07:30 in the user's own timezone" is a
+        # different UTC hour for each of them.
+        SystemJob(
+            id="send_due_briefings",
+            func=send_due_briefings,
+            trigger=CronTrigger.from_crontab("30 * * * *"),
+            max_instances=1,
+            jobstore=Jobstores.WEEKLY_NOTIFICATIONS,
+        ),
+        # TRIAL LAST CALL — hourly, so the one-day reminder goes out within an
+        # hour of a canceled trial's last day starting.
+        SystemJob(
+            id="send_trial_last_calls",
+            func=send_trial_last_calls,
+            trigger=CronTrigger.from_crontab("15 * * * *"),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="report_late_executions",
+            func=report_late_executions,
+            trigger=every(seconds=config.execution_late_notification_threshold_secs),
+        ),
+        SystemJob(
+            id="report_block_error_rates",
+            func=report_block_error_rates,
+            trigger=every(seconds=config.block_error_rate_check_interval_secs),
+        ),
+        # Auth identity <-> platform User invariant. Heals any auth identity
+        # that has no platform User row and pages when it had to.
+        SystemJob(
+            id="report_orphaned_auth_identities",
+            func=report_orphaned_auth_identities,
+            trigger=every(seconds=config.auth_identity_orphan_check_interval_secs),
+            max_instances=1,
+            enabled=config.auth_identity_orphan_sweep_enabled,
+        ),
+        # Account erasure: works through the closed accounts not erased yet.
+        SystemJob(
+            id="erase_closed_accounts",
+            func=erase_closed_accounts,
+            trigger=every(seconds=config.account_erasure_sweep_interval_secs),
+            max_instances=1,
+            enabled=config.account_erasure_sweep_enabled,
+        ),
+        # Account erasures that started and did not finish, from the job or the
+        # CLI. Runs whether the job is on or not.
+        SystemJob(
+            id="report_stalled_account_erasures",
+            func=report_stalled_account_erasures,
+            trigger=every(seconds=config.account_erasure_stall_check_interval_secs),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="cleanup_expired_files",
+            func=cleanup_expired_files,
+            trigger=every(hours=config.cloud_storage_cleanup_interval_hours),
+        ),
+        SystemJob(
+            id="cleanup_oauth_tokens",
+            func=cleanup_oauth_tokens,
+            trigger=every(hours=config.oauth_token_cleanup_interval_hours),
+        ),
+        SystemJob(
+            id="cleanup_auth_ip_events",
+            func=cleanup_auth_ip_events,
+            trigger=every(hours=24),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="cleanup_failed_push_subscriptions",
+            func=cleanup_failed_push_subscriptions,
+            trigger=every(hours=config.push_subscription_cleanup_interval_hours),
+        ),
+        SystemJob(
+            id="cleanup_platform_link_tokens",
+            func=cleanup_platform_link_tokens,
+            trigger=every(hours=config.platform_link_token_cleanup_interval_hours),
+        ),
+        # Safety net for missed/lost Stripe webhooks: makes Stripe the eventual
+        # source of truth for STRIPE-sourced tiers (incl. downgrades).
+        SystemJob(
+            id="reconcile_stripe_tiers",
+            func=reconcile_stripe_tiers,
+            trigger=every(hours=config.stripe_tier_reconcile_interval_hours),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="report_execution_accuracy_alerts",
+            func=execution_accuracy_alerts,
+            trigger=every(hours=config.execution_accuracy_check_interval_hours),
+        ),
+        # Ensures all approved agents have embeddings for hybrid search; missing
+        # embeddings = agents invisible in search.
+        SystemJob(
+            id="ensure_embeddings_coverage",
+            func=ensure_embeddings_coverage,
+            trigger=every(hours=6),
+            max_instances=1,
+            # Due now rather than called inline: run_service() is what starts
+            # the event loop uvicorn binds the RPC port on.
+            first_run=datetime.now(timezone.utc)
+            + timedelta(hours=0 if config.scheduler_startup_embedding_backfill else 6),
+        ),
+        # Generates concise LLM-optimized block descriptions for agent
+        # generation. Only processes blocks missing descriptions.
+        SystemJob(
+            id="optimize_block_descriptions",
+            func=optimize_block_descriptions,
+            trigger=every(hours=24),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="deliver_background_subtasks",
+            func=deliver_background_subtasks,
+            trigger=every(seconds=5),
+            max_instances=1,
+        ),
+        # The passes of every user that outlived their lease, closed.
+        SystemJob(
+            id="dream_pass_reaper",
+            func=execute_dream_pass_reaper,
+            trigger=every(minutes=REAPER_INTERVAL_MINUTES),
+            max_instances=1,
+        ),
+        # The closed passes past their retention, deleted, weekly.
+        SystemJob(
+            id="dream_pass_retention",
+            func=execute_dream_pass_retention,
+            trigger=CronTrigger(day_of_week="sun", hour=5, minute=30, timezone="UTC"),
+            max_instances=1,
+        ),
+        # Safety net for the best-effort index writes: re-adds rows a failed
+        # write missed and clears rows for jobs APScheduler auto-removed (fired
+        # one-shots) outside our delete path.
+        SystemJob(
+            id="reconcile_schedule_index",
+            func=reconcile_schedule_index,
+            trigger=every(hours=24),
+            max_instances=1,
+        ),
+        SystemJob(
+            id="refresh_near_expiry_credentials",
+            func=refresh_near_expiry_credentials,
+            trigger=CronTrigger(hour=3, minute=0, timezone=timezone.utc),
+            max_instances=1,
+            after_start=True,
+            keep_if_unchanged=True,
+        ),
+        # The safety net behind the webhook and signup hooks, and what moves a
+        # trial that ran out on the clock on. A cron, because replacing an
+        # interval re-arms it from every restart.
+        SystemJob(
+            id=_POSTHOG_LIFECYCLE_JOB_ID,
+            func=sync_posthog_lifecycles,
+            trigger=CronTrigger.from_crontab("15 4 * * *"),
+            max_instances=1,
+            after_start=True,
+            keep_if_unchanged=True,
+        ),
+        # Keeps "deleted within 48 hours" for brain-dump recordings.
+        SystemJob(
+            id=RECORDING_PURGE_JOB_ID,
+            func=purge_expired_recordings_job,
+            trigger=every(seconds=int(RECORDING_PURGE_INTERVAL.total_seconds())),
+            max_instances=1,
+            after_start=True,
+            keep_if_unchanged=True,
+        ),
+        # The level-triggered backstop of the memory registry's pause, resume
+        # and ensure. In memory, so an old scheduler cannot park it during a
+        # rolling deploy; each process starts with an immediate pass.
+        SystemJob(
+            id=_MEMORY_CRON_RECONCILE_JOB_ID,
+            func=reconcile_memory_scope_crons,
+            trigger=IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES),
+            max_instances=1,
+            first_run=datetime.now(ZoneInfo("UTC")),
+            jobstore=Jobstores.MEMORY_CRON_RECONCILE,
+            after_start=True,
+        ),
+        # Process-local like the reconcile, with a pass at start so a deploy
+        # removes the old per-scope crons at once.
+        SystemJob(
+            id=_COMMUNITY_SWEEP_JOB_ID,
+            func=rebuild_due_communities_job,
+            trigger=IntervalTrigger(hours=1),
+            max_instances=1,
+            first_run=datetime.now(ZoneInfo("UTC")),
+            jobstore=Jobstores.MEMORY_CRON_RECONCILE,
+            after_start=True,
+        ),
+    ]
+
+
+def _add_job_options(job: SystemJob) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "trigger": job.trigger,
+        "id": job.id,
+        "jobstore": job.jobstore.value,
+        "replace_existing": True,
+    }
+    if job.max_instances is not None:
+        options["max_instances"] = job.max_instances
+    if job.first_run is not None:
+        options["next_run_time"] = job.first_run
+    return options
+
+
+def _same_trigger(stored: JobObj, trigger: IntervalTrigger | CronTrigger) -> bool:
+    # A cron's str() leaves out its timezone.
+    zone = str(trigger.timezone) if isinstance(trigger, CronTrigger) else None
+    return str(stored.trigger) == str(trigger) and _job_timezone_name(stored) == zone
 
 
 _USER_SCHEDULE_FUNC_REFS = frozenset(
