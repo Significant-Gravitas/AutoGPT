@@ -1,4 +1,11 @@
 import {
+  postV2DiscoverAvailableToolsOnAnMcpServer,
+  postV2ExchangeOauthCodeForMcpTokens,
+  postV2InitiateOauthLoginForAnMcpServer,
+  postV2StoreABearerTokenForAnMcpServer,
+} from "@/app/api/__generated__/endpoints/mcp/mcp";
+import { openOAuthPopup, preOpenOAuthPopup } from "@/lib/oauth-popup";
+import {
   act,
   cleanup,
   fireEvent,
@@ -71,15 +78,10 @@ const manualTokenPlaceholder = /paste (api token|base64 of user:password)/i;
 describe("McpConnectPanel", () => {
   // Saving a manual credential probes the server first, so the default is an
   // accepting server; the tests that care override it.
-  beforeEach(async () => {
-    const { postV2DiscoverAvailableToolsOnAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
+  beforeEach(() => {
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue(
+      respond(200, { tools: [], server_name: "Example" }),
     );
-    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
-      status: 200,
-      data: { tools: [], server_name: "Example" },
-      headers: new Headers(),
-    } as never);
   });
 
   afterEach(() => {
@@ -115,38 +117,21 @@ describe("McpConnectPanel", () => {
   // first async break and then blocks window.open() outright — including the
   // new-tab fallback — so on mobile nothing opened at all.
   describe("user activation (#14532)", () => {
-    async function mockInitiateOk(record?: string[]) {
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
-      );
+    function mockInitiateOk(record?: string[]) {
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
         async () => {
           record?.push("initiate");
-          return {
-            status: 200,
-            data: {
-              login_url: "https://login.example.com",
-              state_token: "tok",
-            },
-            headers: new Headers(),
-          } as never;
+          return respond(200, {
+            login_url: "https://login.example.com",
+            state_token: "tok",
+          });
         },
       );
-    }
-
-    function clickConnect() {
-      fireEvent.change(screen.getByLabelText(/server url/i), {
-        target: { value: "https://mcp.example.com" },
-      });
-      fireEvent.click(screen.getByRole("button", { name: /connect/i }));
     }
 
     it("opens the window before the initiate await and hands it to openOAuthPopup", async () => {
       const callOrder: string[] = [];
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
       vi.mocked(preOpenOAuthPopup).mockImplementation(() => {
         callOrder.push("preOpen");
         return fakeWindow as unknown as Window;
@@ -155,10 +140,9 @@ describe("McpConnectPanel", () => {
         promise: new Promise(() => {}),
         cleanup: { abort: vi.fn() },
       } as never);
-      await mockInitiateOk(callOrder);
+      mockInitiateOk(callOrder);
 
-      render(<McpConnectPanel onSuccess={() => {}} />);
-      clickConnect();
+      startConnect();
 
       await waitFor(() => expect(vi.mocked(openOAuthPopup)).toHaveBeenCalled());
       // The ordering IS the fix. Asserting only that preOpenOAuthPopup was
@@ -179,19 +163,14 @@ describe("McpConnectPanel", () => {
 
     it("closes the window when the server turns out not to support OAuth", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
-      );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
       );
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
         makeApiError(400, noOAuthDetail.detail),
       );
 
-      render(<McpConnectPanel onSuccess={() => {}} />);
-      clickConnect();
+      startConnect();
 
       // The 400 returns early from inside the try, before openOAuthPopup ever
       // runs — an about:blank window would otherwise sit there for good.
@@ -201,52 +180,38 @@ describe("McpConnectPanel", () => {
 
     it("closes the window when the initiate request fails outright", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { preOpenOAuthPopup } = await import("@/lib/oauth-popup");
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
-      );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
       );
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
         makeApiError(500, "server exploded"),
       );
 
-      render(<McpConnectPanel onSuccess={() => {}} />);
-      clickConnect();
+      startConnect();
 
       await waitFor(() => expect(fakeWindow.close).toHaveBeenCalled());
     });
 
     it("closes the window when the panel unmounts mid-initiation", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
-      );
-      const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-        "@/app/api/__generated__/endpoints/mcp/mcp"
       );
       let release: (() => void) | undefined;
       vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockImplementation(
         () =>
           new Promise((resolve) => {
             release = () =>
-              resolve({
-                status: 200,
-                data: {
+              resolve(
+                respond(200, {
                   login_url: "https://login.example.com",
                   state_token: "tok",
-                },
-                headers: new Headers(),
-              } as never);
+                }),
+              );
           }),
       );
 
-      const { unmount } = render(<McpConnectPanel onSuccess={() => {}} />);
-      clickConnect();
+      const { unmount } = startConnect();
       await waitFor(() =>
         expect(vi.mocked(preOpenOAuthPopup)).toHaveBeenCalled(),
       );
@@ -265,9 +230,6 @@ describe("McpConnectPanel", () => {
 
     it("a double tap starts one flow, not two", async () => {
       const fakeWindow = { closed: false, close: vi.fn() };
-      const { openOAuthPopup, preOpenOAuthPopup } = await import(
-        "@/lib/oauth-popup"
-      );
       vi.mocked(preOpenOAuthPopup).mockReturnValue(
         fakeWindow as unknown as Window,
       );
@@ -275,7 +237,7 @@ describe("McpConnectPanel", () => {
         promise: new Promise(() => {}),
         cleanup: { abort: vi.fn() },
       } as never);
-      await mockInitiateOk();
+      mockInitiateOk();
 
       render(<McpConnectPanel onSuccess={() => {}} />);
       fireEvent.change(screen.getByLabelText(/server url/i), {
@@ -299,10 +261,7 @@ describe("McpConnectPanel", () => {
     });
   });
 
-  it("allows manual authentication without first attempting OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+  it("allows manual authentication without first attempting OAuth", () => {
     render(
       <McpConnectPanel
         onSuccess={() => {}}
@@ -317,16 +276,12 @@ describe("McpConnectPanel", () => {
   });
 
   it("can cancel a pending OAuth popup and use a manual token", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2ExchangeOauthCodeForMcpTokens,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    const { openOAuthPopup } = await import("@/lib/oauth-popup");
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: { login_url: "https://login.example.com", state_token: "tok" },
-      headers: new Headers(),
-    } as never);
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      respond(200, {
+        login_url: "https://login.example.com",
+        state_token: "tok",
+      }),
+    );
     const controller = new AbortController();
     const abort = vi.fn(() => controller.abort());
     vi.mocked(openOAuthPopup).mockImplementation(() => ({
@@ -364,22 +319,9 @@ describe("McpConnectPanel", () => {
   });
 
   it("falls back to manual-token form when initiate returns 400", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
+    mockInitiateNoOAuth();
 
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
@@ -390,32 +332,21 @@ describe("McpConnectPanel", () => {
   });
 
   it("offers the manual form for a catalog service that has no OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
-
     // A catalog entry without OAuth is rejected in quite different words from
     // the "does not advertise OAuth" case above. Both mean the same thing to
     // this panel, and only the code says so.
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: {
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      respond(400, {
         detail: {
           code: "no_oauth",
           message:
             "Brevo uses bearer / basic authentication. Create an API key in " +
             "your Brevo dashboard.",
         },
-      },
-      headers: new Headers(),
-    } as never);
+      }),
+    );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
@@ -424,27 +355,16 @@ describe("McpConnectPanel", () => {
   });
 
   it("keeps the OAuth form for a 400 that is not about missing OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
-
     // A failed client registration is a problem with this attempt, on a server
     // that does support OAuth. Sending the user off to find an API token would
     // be the wrong advice.
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: {
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      respond(400, {
         detail: "Could not register an OAuth client with this MCP server.",
-      },
-      headers: new Headers(),
-    } as never);
+      }),
+    );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     await waitFor(() => {
       expect(
@@ -455,35 +375,23 @@ describe("McpConnectPanel", () => {
   });
 
   it("does NOT switch to manual-token on a 400 from token exchange", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2ExchangeOauthCodeForMcpTokens,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    const { openOAuthPopup } = await import("@/lib/oauth-popup");
-
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: { login_url: "https://login.example.com", state_token: "tok" },
-      headers: new Headers(),
-    } as never);
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+      respond(200, {
+        login_url: "https://login.example.com",
+        state_token: "tok",
+      }),
+    );
 
     vi.mocked(openOAuthPopup).mockReturnValueOnce({
       promise: Promise.resolve({ code: "abc" }),
       cleanup: { abort: vi.fn() },
     } as never);
 
-    vi.mocked(postV2ExchangeOauthCodeForMcpTokens).mockResolvedValueOnce({
-      status: 400,
-      data: { detail: "bad code" },
-      headers: new Headers(),
-    } as never);
+    vi.mocked(postV2ExchangeOauthCodeForMcpTokens).mockResolvedValueOnce(
+      respond(400, { detail: "bad code" }),
+    );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     await waitFor(() => {
       expect(screen.getByText(/bad code/i)).toBeDefined();
@@ -493,32 +401,20 @@ describe("McpConnectPanel", () => {
   });
 
   it("submits a bearer token then calls onSuccess", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(400, noOAuthDetail.detail),
     );
 
     const onSuccess = vi.fn();
-    render(<McpConnectPanel onSuccess={onSuccess} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect({ onSuccess });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: { ok: true },
-      headers: new Headers(),
-    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      respond(200, { ok: true }),
+    );
 
     fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "secret-bearer-token" },
@@ -538,27 +434,12 @@ describe("McpConnectPanel", () => {
   });
 
   it("submits a selected Basic credential with an explicit prefix", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    mockInitiateNoOAuth();
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      respond(200, { ok: true }),
+    );
 
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: { ok: true },
-      headers: new Headers(),
-    } as never);
-
-    render(<McpConnectPanel onSuccess={() => {}} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -591,26 +472,12 @@ describe("McpConnectPanel", () => {
         mcp_auth_scheme: "basic",
       },
     ];
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: { ok: true },
-      headers: new Headers(),
-    } as never);
+    mockInitiateNoOAuth();
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      respond(200, { ok: true }),
+    );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com/" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect({ url: "https://mcp.example.com/" });
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -637,10 +504,6 @@ describe("McpConnectPanel", () => {
   it("hands the stored credential to onSuccess", async () => {
     // The payload, not just the fact of being called: the dialog binds what it
     // receives here, so returning undefined silently unbinds the connection.
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
     const stored = {
       id: "cred-1",
       provider: "mcp",
@@ -649,23 +512,13 @@ describe("McpConnectPanel", () => {
       host: "https://mcp.example.com",
       mcp_auth_scheme: "basic",
     };
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
-      status: 200,
-      data: stored,
-      headers: new Headers(),
-    } as never);
+    mockInitiateNoOAuth();
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      respond(200, stored),
+    );
 
     const onSuccess = vi.fn();
-    render(<McpConnectPanel onSuccess={onSuccess} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect({ onSuccess });
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -681,22 +534,9 @@ describe("McpConnectPanel", () => {
   });
 
   it("rejects an unencoded user:password before any request", async () => {
-    const {
-      postV2DiscoverAvailableToolsOnAnMcpServer,
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
+    mockInitiateNoOAuth();
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -716,29 +556,13 @@ describe("McpConnectPanel", () => {
   });
 
   it("does not store a credential the server rejects", async () => {
-    const {
-      postV2DiscoverAvailableToolsOnAnMcpServer,
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue({
-      status: 401,
-      data: { detail: "Bad credential" },
-      headers: new Headers(),
-    } as never);
+    mockInitiateNoOAuth();
+    vi.mocked(postV2DiscoverAvailableToolsOnAnMcpServer).mockResolvedValue(
+      respond(401, { detail: "Bad credential" }),
+    );
 
     const onSuccess = vi.fn();
-    render(<McpConnectPanel onSuccess={onSuccess} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect({ onSuccess });
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -755,23 +579,9 @@ describe("McpConnectPanel", () => {
   });
 
   it("rejects a Basic credential containing whitespace before any request", async () => {
-    const {
-      postV2DiscoverAvailableToolsOnAnMcpServer,
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+    mockInitiateNoOAuth();
 
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce({
-      status: 400,
-      data: noOAuthDetail,
-      headers: new Headers(),
-    } as never);
-
-    render(<McpConnectPanel onSuccess={() => {}} />);
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
     await waitFor(() => {
       expect(screen.getByLabelText("Authentication type")).toBeDefined();
     });
@@ -791,20 +601,11 @@ describe("McpConnectPanel", () => {
   });
 
   it("lets the user switch from manual-token back to OAuth", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
-
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(400, noOAuthDetail.detail),
     );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
@@ -821,22 +622,8 @@ describe("McpConnectPanel", () => {
   });
 
   it("discards manual credentials when the server URL changes", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-
-    vi.mocked(postV2InitiateOauthLoginForAnMcpServer)
-      .mockResolvedValueOnce({
-        status: 400,
-        data: noOAuthDetail,
-        headers: new Headers(),
-      } as never)
-      .mockResolvedValueOnce({
-        status: 400,
-        data: noOAuthDetail,
-        headers: new Headers(),
-      } as never);
+    mockInitiateNoOAuth();
+    mockInitiateNoOAuth();
 
     render(<McpConnectPanel onSuccess={() => {}} />);
 
@@ -886,32 +673,20 @@ describe("McpConnectPanel", () => {
   });
 
   it("surfaces an error when bearer-token submission fails", async () => {
-    const {
-      postV2InitiateOauthLoginForAnMcpServer,
-      postV2StoreABearerTokenForAnMcpServer,
-    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
-
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(400, noOAuthDetail.detail),
     );
 
     const onSuccess = vi.fn();
-    render(<McpConnectPanel onSuccess={onSuccess} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect({ onSuccess });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(manualTokenPlaceholder)).toBeDefined();
     });
 
-    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce({
-      status: 401,
-      data: { detail: "invalid token" },
-      headers: new Headers(),
-    } as never);
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockResolvedValueOnce(
+      respond(401, { detail: "invalid token" }),
+    );
 
     fireEvent.change(screen.getByPlaceholderText(manualTokenPlaceholder), {
       target: { value: "wrong-token" },
@@ -924,23 +699,36 @@ describe("McpConnectPanel", () => {
   });
 
   it("renders an aria-live error region when a non-400 error occurs", async () => {
-    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
-      "@/app/api/__generated__/endpoints/mcp/mcp"
-    );
-
     vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
       makeApiError(500, "internal server error"),
     );
 
-    render(<McpConnectPanel onSuccess={() => {}} />);
-
-    fireEvent.change(screen.getByLabelText(/server url/i), {
-      target: { value: "https://mcp.example.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+    startConnect();
 
     const alert = await screen.findByRole("alert");
     expect(alert.getAttribute("aria-live")).toBe("polite");
     expect(alert.textContent).toContain("internal server error");
   });
 });
+
+function startConnect({
+  onSuccess = () => {},
+  url = "https://mcp.example.com",
+}: { onSuccess?: () => void; url?: string } = {}) {
+  const view = render(<McpConnectPanel onSuccess={onSuccess} />);
+  fireEvent.change(screen.getByLabelText(/server url/i), {
+    target: { value: url },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+  return view;
+}
+
+function mockInitiateNoOAuth() {
+  vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockResolvedValueOnce(
+    respond(400, noOAuthDetail),
+  );
+}
+
+function respond(status: number, data: unknown) {
+  return { status, data, headers: new Headers() } as never;
+}
