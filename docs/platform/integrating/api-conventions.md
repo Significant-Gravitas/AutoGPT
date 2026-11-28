@@ -40,6 +40,7 @@ Every response from the API that is not `2xx` has the same body:
 | 405 | `method_not_allowed` | The path exists but not with this HTTP method. | No. |
 | 409 | `conflict` | The request clashes with the current state, e.g. a file or folder name already in use, stopping a run that already finished, or a run with the same `Idempotency-Key` still being created. | Only the idempotency case: retry the same run start, with the same key, after a second. |
 | 413 | `payload_too_large` | The request body, or an uploaded file, is over the size limit (see [Formats](#formats)). | No. |
+| 415 | `unsupported_media_type` | An upload was sent as something other than `multipart/form-data`. | No. Fix the request. |
 | 422 | `validation_error` | The body or query parameters failed validation (`details.errors` lists up to 20 failing fields), or an `Idempotency-Key` was reused for a different request. | No. Fix the request, or use a new key. |
 | 428 | `precondition_required` | Something must be set up first; the message says what. | After doing it. |
 | 429 | `rate_limit_exceeded` | A rate limit was hit. | Yes, after `Retry-After` seconds. |

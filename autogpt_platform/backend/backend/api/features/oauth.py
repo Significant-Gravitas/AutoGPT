@@ -41,6 +41,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.api.features.local_executor.gating import is_local_executor_enabled
+from backend.api.middleware.body_limit import request_body_limit
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
@@ -520,11 +521,16 @@ _TOKEN_REQUEST_BODY_SCHEMA = {
 }
 
 
+# A token request is a handful of short fields.
+TOKEN_REQUEST_BODY_LIMIT = 64 * 1024
+
+
 @router.post(
     "/token",
     openapi_extra={"requestBody": _TOKEN_REQUEST_BODY_SCHEMA},
     responses={422: {"description": "The token request is malformed"}},
 )
+@request_body_limit(TOKEN_REQUEST_BODY_LIMIT)
 async def token(
     http_request: Request,
 ) -> TokenResponse:

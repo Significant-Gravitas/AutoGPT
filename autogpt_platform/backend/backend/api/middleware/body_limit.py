@@ -3,7 +3,7 @@
 FastAPI reads and parses a route's body before the route runs, so the bound
 sits in front of the routes. Each route gets the limit of its kind: an upload
 route's multipart body may carry a whole file, every other body is held to
-`max_request_body_mb`.
+`max_request_body_mb`. An upload route takes a multipart body only.
 """
 
 from collections.abc import Callable
@@ -23,6 +23,10 @@ settings = Settings()
 MiB = 1024 * 1024
 # The multipart framing around an uploaded file.
 MULTIPART_OVERHEAD = MiB
+# The allowance of a body an upload route does not take; refused with a 415.
+NOT_MULTIPART = 0
+
+MULTIPART_REQUIRED = "This endpoint takes a multipart/form-data body."
 
 # Set by a mounted app that bounds its own bodies, so its error shape answers.
 _BOUNDED_INSIDE = "backend.request_body_bounded"
@@ -72,8 +76,8 @@ def route_body_limit(scope: Scope) -> int | None:
         own = _ENDPOINT_LIMITS.get(route.endpoint)
         if own is not None:
             return own
-        if _takes_a_file(route) and _is_multipart(scope):
-            return upload_body_limit()
+        if _takes_a_file(route):
+            return upload_body_limit() if is_multipart(scope) else NOT_MULTIPART
     return settings.config.max_request_body_mb * MiB
 
 
@@ -179,12 +183,17 @@ def declared_length(scope: Scope) -> int | None:
         return None
 
 
-def _is_multipart(scope: Scope) -> bool:
+def is_multipart(scope: Scope) -> bool:
     content_type = Headers(scope=scope).get("content-type", "")
     return content_type.lower().startswith("multipart/form-data")
 
 
 def _too_large(limit: int) -> Response:
+    if limit == NOT_MULTIPART:
+        return JSONResponse(
+            {"detail": MULTIPART_REQUIRED},
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        )
     # The upload toast shows this detail, so it reads as a size, not bytes.
     return JSONResponse(
         {"detail": f"The request is too large. The limit is {_readable(limit)}."},
