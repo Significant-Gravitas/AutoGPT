@@ -14,6 +14,7 @@ from backend.blocks.data_manipulation import (
 from backend.data.execution import ExecutionContext
 from backend.util.json import dumps
 from backend.util.mock import MockObject
+from backend.util.type import MAX_JSON_VALUES
 
 
 async def test_remove_from_list_returns_the_first_matching_item() -> None:
@@ -55,6 +56,15 @@ async def _find(obj: Any, key: Any) -> list[tuple[str, Any]]:
 )
 async def test_list_lookup_by_numeric_string_key(obj, key, expected):
     assert await _find(obj, key) == expected
+
+
+async def test_a_text_input_is_read_as_json_only_within_the_value_limit():
+    def text_of(values: int) -> str:
+        return "[" + ",".join(["0"] * values) + "]"
+
+    assert await _find(text_of(MAX_JSON_VALUES - 1), 0) == [("output", 0)]
+    with pytest.raises(ValueError, match="more than 500,000 values"):
+        await _find(text_of(MAX_JSON_VALUES), 0)
 
 
 @pytest.mark.parametrize("key", ["²", "٣", "1²"])

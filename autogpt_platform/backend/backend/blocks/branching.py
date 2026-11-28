@@ -13,7 +13,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import SchemaField
-from backend.util.type import convert
+from backend.util.type import check_json_value_count, convert
 
 
 class ComparisonOperator(Enum):
@@ -220,6 +220,7 @@ def _convert_for_match(value: Any, target: Any) -> Any:
         # same shape, or a list/tuple holding the same items.
         if isinstance(value, str):
             try:
+                check_json_value_count(value)
                 parsed = json.loads(value, parse_float=_parse_exact_float)
             except ValueError:
                 return value

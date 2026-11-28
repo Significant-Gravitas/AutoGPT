@@ -8,13 +8,24 @@ from backend.data.execution import ExecutionContext
 from backend.data.graph import Link, Node
 from backend.executor.utils import validate_exec
 from backend.util.exceptions import BlockInputError
-from backend.util.type import coerce_inputs_to_schema
+from backend.util.type import MAX_JSON_VALUES, coerce_inputs_to_schema
 
 
 @pytest.fixture(scope="session", autouse=True)
 def graph_cleanup():
     """These pure block tests do not create persisted graphs or need services."""
     yield
+
+
+@pytest.mark.parametrize(
+    "values, matches", [(MAX_JSON_VALUES - 1, True), (MAX_JSON_VALUES, False)]
+)
+async def test_list_text_is_read_as_json_only_within_the_value_limit(
+    values: int, matches: bool
+):
+    text = "[" + ",".join(["0"] * values) + "]"
+
+    assert await _matches([0] * values, text) is matches
 
 
 async def _matches(input_value: Any, value: Any) -> bool:

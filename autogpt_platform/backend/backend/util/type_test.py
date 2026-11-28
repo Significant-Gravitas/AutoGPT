@@ -3,7 +3,12 @@ from typing import Any, List, Literal, Optional
 import pytest
 from pydantic import BaseModel
 
-from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, convert
+from backend.util.type import (
+    MAX_JSON_VALUES,
+    _value_satisfies_type,
+    coerce_inputs_to_schema,
+    convert,
+)
 
 
 @pytest.mark.parametrize(
@@ -12,6 +17,23 @@ from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, co
 def test_integer_string_conversion_preserves_precision(value: str):
     assert convert(value, int) == int(value)
     assert convert({"id": value}, dict[str, int]) == {"id": int(value)}
+
+
+@pytest.mark.parametrize(
+    "target, as_text",
+    [
+        (list, lambda v: [v]),
+        (dict, lambda v: {"value": v}),
+        (tuple, lambda v: (v,)),
+        (set, lambda v: {v}),
+    ],
+)
+def test_json_text_past_the_value_limit_is_kept_as_text(target, as_text):
+    under = "[" + ",".join(["0"] * (MAX_JSON_VALUES - 1)) + "]"
+    over = "[" + ",".join(["0"] * MAX_JSON_VALUES) + "]"
+
+    assert convert(under, target) != as_text(under)
+    assert convert(over, target) == as_text(over)
 
 
 BIG_INT = 9007199254740993  # 2**53 + 1, not representable as a float
