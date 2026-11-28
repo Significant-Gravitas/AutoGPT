@@ -3,7 +3,7 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.copilot.rate_limit import UserPaywalledError
@@ -151,7 +151,7 @@ async def test_missing_api_key_fails_the_node_unless_the_field_has_a_default(
     captured: dict[str, object] = {}
     block = _block_with_credentials({"credentials": OpenAIKeyInput}, captured)
     block.input_schema.model_fields = {
-        "credentials": SimpleNamespace(default={} if field_has_default else None)
+        "credentials": Field(default={} if field_has_default else None)
     }
     run = execute_node(
         _node(block),
@@ -471,14 +471,15 @@ def _block_with_credentials(
     # A real `CredentialsFieldInfo`, not a stand-in carrying only the one
     # attribute the test happens to need: `execute_node` reads whatever the
     # field declares, so a partial fake fails with an AttributeError the moment
-    # the executor consults another one.
+    # the executor consults another one. Like a real block's, it matches the
+    # field's annotation, which `execute_node` holds the credentials to.
     input_schema.get_credentials_fields_info.return_value = {
         field_name: CredentialsFieldInfo(
-            credentials_provider=frozenset({ProviderName.CODEX}),
-            credentials_types=frozenset({"oauth2"}),
+            credentials_provider=frozenset(input_type.allowed_providers()),
+            credentials_types=frozenset(input_type.allowed_cred_types()),
             credential_reference_only=field_name in reference_only_fields,
         )
-        for field_name in credential_fields
+        for field_name, input_type in credential_fields.items()
     }
     input_schema.get_auto_credentials_fields.return_value = {}
     block = MagicMock()

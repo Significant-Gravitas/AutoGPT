@@ -140,6 +140,7 @@ from .utils import (
     LogMetadata,
     NodeExecutionProgress,
     create_execution_queue_config,
+    credentials_fit_field,
     validate_exec,
 )
 
@@ -738,6 +739,12 @@ async def execute_node(
                 continue  # Block runs without credentials
 
             credentials_meta = input_type(**field_value)
+            field_info = credential_fields_info[field_name]
+            if not credentials_fit_field(credentials_meta, field_info):
+                raise ValueError(
+                    f"Credentials #{credentials_meta.id} in field '{field_name}' are "
+                    "not of a provider and type this block takes."
+                )
             # An expert run uses only the credentials granted to it.
             if execution_context.expert_id is not None and not is_system_credential(
                 credentials_meta.id
@@ -757,7 +764,6 @@ async def execute_node(
             # Write normalized values back so JSON schema validation also passes
             # (model_validator may have fixed legacy formats like "ProviderName.MCP")
             input_data[field_name] = credentials_meta.model_dump(mode="json")
-            field_info = credential_fields_info[field_name]
             if field_info.credential_reference_only:
                 credentials = await creds_manager.get(
                     user_id,
@@ -784,7 +790,8 @@ async def execute_node(
             except ValueError:
                 # Credential was deleted or doesn't exist.
                 # If the field has a default, run without credentials.
-                if input_model.model_fields[field_name].default is not None:
+                field = input_model.model_fields[field_name]
+                if not field.is_required() and field.default is not None:
                     log_metadata.warning(
                         f"Credentials #{credentials_meta.id} not found, "
                         "running without (field has default)"
