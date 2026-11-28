@@ -6,17 +6,25 @@ const UNCONFIRMED =
 const EARLIER_TRY =
   "A schedule from an earlier try may already exist. Check your schedules before trying again.";
 
-// The toast for a failed schedule create. With no answer, a server error or
-// a 409 for its key, the schedule may exist already, so the toast points to
-// the schedules instead of inviting a retry that could add a second one.
-export function scheduleCreateErrorToast(error: unknown) {
+// With no answer, a server error or a 409 for the create key, the schedule
+// may already exist. Refresh the lists the toast sends the user to check.
+export function describeScheduleCreateError(error: unknown) {
   if (!(error instanceof ApiError) || error.status >= 500) {
-    return { description: UNCONFIRMED, action: <ViewSchedulesButton /> };
+    return {
+      shouldRefresh: true,
+      toast: { description: UNCONFIRMED, action: <ViewSchedulesButton /> },
+    };
   }
   if (error.status === 409) {
-    return { description: EARLIER_TRY, action: <ViewSchedulesButton /> };
+    return {
+      shouldRefresh: true,
+      toast: { description: EARLIER_TRY, action: <ViewSchedulesButton /> },
+    };
   }
-  return { description: error.message || "An unexpected error occurred." };
+  return {
+    shouldRefresh: false,
+    toast: { description: error.message || "An unexpected error occurred." },
+  };
 }
 
 function ViewSchedulesButton() {
