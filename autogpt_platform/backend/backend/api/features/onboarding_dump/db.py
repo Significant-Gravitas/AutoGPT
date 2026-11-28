@@ -66,14 +66,6 @@ class _TakeUpdate(TypedDict, total=False):
     recommendedExperts: Json
 
 
-class _TakeClaim(TypedDict):
-    recordingId: str
-    status: BrainDumpStatus
-    inputMode: BrainDumpInputMode
-    errorCode: None
-    errorReason: None
-
-
 class _TakeOwnedReset(TypedDict):
     audioPath: None
     mimeType: None
@@ -159,6 +151,14 @@ async def start_dump(
     )
 
 
+class _TakeClaim(TypedDict):
+    recordingId: str
+    status: BrainDumpStatus
+    inputMode: BrainDumpInputMode
+    errorCode: None
+    errorReason: None
+
+
 async def update_dump(
     user_id: str,
     recording_id: str,
@@ -204,7 +204,7 @@ async def store_greeting(
         data={
             "greeting": greeting,
             "errorCode": None,
-            "suggestedPrompts": Json(prompts),
+            "suggestedPrompts": SafeJson(prompts),
         },
     )
     if with_tasks == 1:
@@ -337,7 +337,7 @@ async def replace_plan(
     """
     updated = await OnboardingBrainDump.prisma().update_many(
         where={"userId": user_id, "recordingId": recording_id, "updatedAt": read_at},
-        data={"suggestedPrompts": Json(prompts), "recommendedExperts": Json(team)},
+        data={"suggestedPrompts": SafeJson(prompts), "recommendedExperts": Json(team)},
     )
     return updated == 1
 

@@ -310,9 +310,7 @@ async def migrate_flat_triggered_preset_inputs():
     # resumes; converted rows leave the query, so a converged scan is one query.
     while True:
         page = await AgentPreset.prisma().find_many(
-            where=(
-                AgentPresetWhereInput(**where, id={"gt": last_id}) if last_id else where
-            ),
+            where=({**where, "id": {"gt": last_id}} if last_id else where),
             include={"InputPresets": True},
             order={"id": "asc"},
             take=_BACKFILL_PAGE_SIZE,

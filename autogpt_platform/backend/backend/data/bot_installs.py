@@ -37,15 +37,6 @@ class BotInstallCredentials(BaseModel):
     name: Optional[str] = None
 
 
-def _key(platform: Platform, team_id: str) -> BotInstallWhereUniqueInput:
-    return {
-        "platform_platformServerId": {
-            "platform": PlatformType(platform.value),
-            "platformServerId": team_id,
-        }
-    }
-
-
 async def upsert_bot_install(
     *,
     platform: Platform,
@@ -79,6 +70,15 @@ async def upsert_bot_install(
             },
         },
     )
+
+
+def _key(platform: Platform, team_id: str) -> BotInstallWhereUniqueInput:
+    return {
+        "platform_platformServerId": {
+            "platform": PlatformType(platform.value),
+            "platformServerId": team_id,
+        }
+    }
 
 
 async def get_bot_install(

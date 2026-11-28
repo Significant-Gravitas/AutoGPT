@@ -40,20 +40,6 @@ from backend.copilot.scheduled_chats.streaks import Streak, StreakStep, advance
 logger = logging.getLogger(__name__)
 
 
-# The columns every streak write sets; unpacked into each Prisma input literal.
-class _StreakFields(TypedDict):
-    scheduleIds: list[str]
-    title: str
-    sessionId: str | None
-    failureKey: str
-    failureKind: str
-    provider: str | None
-    tool: str | None
-    failures: int
-    wholeRunFailures: int
-    pausedAt: datetime | None
-
-
 class ScheduledRun(BaseModel):
     """One scheduled run's outcome, as the copilot executor saw it."""
 
@@ -353,6 +339,20 @@ async def _save(
     except UniqueViolationError:
         # The paused row the delete left in place.
         return None
+
+
+# The columns every streak write sets; unpacked into each Prisma input literal.
+class _StreakFields(TypedDict):
+    scheduleIds: list[str]
+    title: str
+    sessionId: str | None
+    failureKey: str
+    failureKind: str
+    provider: str | None
+    tool: str | None
+    failures: int
+    wholeRunFailures: int
+    pausedAt: datetime | None
 
 
 async def _raise_paused(

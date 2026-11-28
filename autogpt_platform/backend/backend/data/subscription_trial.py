@@ -102,7 +102,7 @@ async def list_trials_ending_unrenewed(
             "status": "trialing",
             "cancelAtPeriodEnd": True,
             "convertedAt": None,
-            "stripeSubscriptionId": {"not": None},
+            "NOT": [{"stripeSubscriptionId": None}],
             "endsAt": {"gt": after, "lte": until},
         },
         order={"endsAt": "asc"},

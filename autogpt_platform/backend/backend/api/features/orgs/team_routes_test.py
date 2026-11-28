@@ -14,20 +14,6 @@ ORG_ID = "org-1"
 WS_ID = "ws-1"
 
 
-def _owner_ctx() -> RequestContext:
-    return RequestContext(
-        user_id="user-1",
-        org_id=ORG_ID,
-        team_id=WS_ID,
-        is_org_owner=True,
-        is_org_admin=False,
-        is_org_billing_manager=False,
-        is_team_admin=False,
-        is_team_billing_manager=False,
-        seat_status="ACTIVE",
-    )
-
-
 @pytest.mark.asyncio
 async def test_create_refuses_an_unknown_join_policy_before_writing(
     mocker: MockerFixture,
@@ -73,3 +59,17 @@ async def test_update_writes_only_the_fields_the_request_set(mocker: MockerFixtu
     )
 
     update.assert_awaited_once_with(WS_ID, {"joinPolicy": TeamJoinPolicy.PRIVATE})
+
+
+def _owner_ctx() -> RequestContext:
+    return RequestContext(
+        user_id="user-1",
+        org_id=ORG_ID,
+        team_id=WS_ID,
+        is_org_owner=True,
+        is_org_admin=False,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=False,
+        seat_status="ACTIVE",
+    )

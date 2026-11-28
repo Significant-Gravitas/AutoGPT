@@ -147,12 +147,10 @@ async def _has_turn_in_flight(user_id: str, expert_id: str) -> bool:
             "userId": user_id,
             "expertId": expert_id,
             "archivedAt": None,
-            "chatStatus": {
-                "in": [
-                    prisma.enums.ChatSessionStatus.running,
-                    prisma.enums.ChatSessionStatus.queued,
-                ]
-            },
+            "OR": [
+                {"chatStatus": prisma.enums.ChatSessionStatus.running},
+                {"chatStatus": prisma.enums.ChatSessionStatus.queued},
+            ],
         }
     )
     return busy > 0
@@ -255,7 +253,7 @@ async def _archive_chats(user_id: str, expert_id: str) -> int:
         where={
             "userId": user_id,
             "expertId": expert_id,
-            "archivedAt": {"not": None},
+            "NOT": [{"archivedAt": None}],
             "isShared": True,
         }
     )
@@ -279,7 +277,11 @@ async def _decline_waiting_approvals(user_id: str, expert_id: str) -> int:
     belongs to run history, which the reset leaves alone.
     """
     archived = await prisma.models.ChatSession.prisma().find_many(
-        where={"userId": user_id, "expertId": expert_id, "archivedAt": {"not": None}}
+        where={
+            "userId": user_id,
+            "expertId": expert_id,
+            "NOT": [{"archivedAt": None}],
+        }
     )
     if not archived:
         return 0

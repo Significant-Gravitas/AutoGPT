@@ -8,6 +8,7 @@ from autogpt_libs.auth import get_user_id, requires_org_permission, requires_use
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
+from prisma.enums import OrgMemberStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import OrgInvitation
 
@@ -271,7 +272,7 @@ async def _inviter_may_grant_billing(invitation: OrgInvitation) -> bool:
         where={
             "orgId": invitation.orgId,
             "userId": invitation.invitedByUserId,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
         }
     )
     return inviter is not None and (inviter.isOwner or inviter.isBillingManager)

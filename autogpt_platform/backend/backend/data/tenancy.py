@@ -51,12 +51,16 @@ async def get_user_team_ids(user_id: str, organization_id: str) -> list[str]:
     """
     org_member, memberships = await asyncio.gather(
         prisma.orgmember.find_first(
-            where={"userId": user_id, "orgId": organization_id, "status": "ACTIVE"}
+            where={
+                "userId": user_id,
+                "orgId": organization_id,
+                "status": OrgMemberStatus.ACTIVE,
+            }
         ),
         prisma.teammember.find_many(
             where={
                 "userId": user_id,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
                 "Team": {"is": {"orgId": organization_id, "archivedAt": None}},
             }
         ),
@@ -99,7 +103,11 @@ async def resource_role_refusal(
     """
     org_member, team_member = await asyncio.gather(
         prisma.orgmember.find_first(
-            where={"userId": user_id, "orgId": organization_id, "status": "ACTIVE"}
+            where={
+                "userId": user_id,
+                "orgId": organization_id,
+                "status": OrgMemberStatus.ACTIVE,
+            }
         ),
         _active_team_membership(user_id, organization_id, team_id),
     )
@@ -147,7 +155,11 @@ async def require_role_where_resource_lives(
     if not organization_id:
         return
     org_member = await prisma.orgmember.find_first(
-        where={"userId": user_id, "orgId": organization_id, "status": "ACTIVE"}
+        where={
+            "userId": user_id,
+            "orgId": organization_id,
+            "status": OrgMemberStatus.ACTIVE,
+        }
     )
     if org_member is None:
         return
@@ -156,7 +168,7 @@ async def require_role_where_resource_lives(
             where={
                 "userId": user_id,
                 "teamId": team_id,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
                 "Team": {"is": {"orgId": organization_id}},
             }
         )

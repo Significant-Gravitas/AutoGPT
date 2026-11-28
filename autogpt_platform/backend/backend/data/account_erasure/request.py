@@ -265,7 +265,7 @@ async def complete_request(subject: Subject, *, dry_run: bool) -> StepReport:
         count = await AccountDeletionRequest.prisma().update_many(
             where={
                 "id": subject.request_id,
-                "startedAt": {"not": None},
+                "NOT": [{"startedAt": None}],
                 "completedAt": None,
             },
             data={"completedAt": datetime.now(UTC)},

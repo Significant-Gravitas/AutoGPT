@@ -71,33 +71,6 @@ RETIRED_TEMPLATES: list[str] = [
 ]
 
 
-# Each Prisma input type is a different TypedDict, so these are unpacked into a
-# literal at every call site; only a literal is checked key by key.
-class _TemplateFields(TypedDict):
-    templateKey: str
-    name: str
-    role: str
-    jobTitle: str
-    tagline: str
-    avatarUrl: str | None
-    identity: str
-    voicePreferences: str
-    boundaries: str
-    bio: str
-    categories: list[str]
-    dayOne: prisma.Json
-    isArchived: bool
-
-
-class _RoutineFields(TypedDict):
-    title: str
-    prompt: str
-    crons: list[str]
-    asks: list[str]
-    sessionMode: prisma.enums.ExpertRoutineSession
-    source: prisma.enums.ExpertRoutineSource
-
-
 async def _archive_retired_templates(keys: list[str], *, dry_run: bool) -> list[str]:
     """Archive the templates the catalog retires. Hires keep working: a hire
     points at its template through sourceTemplateId, so the row stays and only
@@ -526,6 +499,33 @@ async def _sync_routines(template_id: str, entry: RosterEntry) -> None:
     logger.info(
         f"Removed {len(stale)} stale template routine(s) from '{entry['name']}'"
     )
+
+
+# Each Prisma input type is a different TypedDict, so these are unpacked into a
+# literal at every call site; only a literal is checked key by key.
+class _TemplateFields(TypedDict):
+    templateKey: str
+    name: str
+    role: str
+    jobTitle: str
+    tagline: str
+    avatarUrl: str | None
+    identity: str
+    voicePreferences: str
+    boundaries: str
+    bio: str
+    categories: list[str]
+    dayOne: prisma.Json
+    isArchived: bool
+
+
+class _RoutineFields(TypedDict):
+    title: str
+    prompt: str
+    crons: list[str]
+    asks: list[str]
+    sessionMode: prisma.enums.ExpertRoutineSession
+    source: prisma.enums.ExpertRoutineSource
 
 
 def _routine_fields(routine: RoutineSeed) -> _RoutineFields:

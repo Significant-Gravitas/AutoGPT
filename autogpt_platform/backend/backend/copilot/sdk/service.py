@@ -6281,7 +6281,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # sanitize_user_supplied_context runs — preventing the trusted
                 # <env_context> block from being stripped by the sanitizer.
                 env_ctx_content = ""
-                if is_local_pc:
+                if isinstance(e2b_sandbox, LocalPCShim):
                     env_ctx_content = build_local_pc_env_context(
                         platform=e2b_sandbox.platform,
                         arch=e2b_sandbox.arch,

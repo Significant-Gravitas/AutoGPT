@@ -186,7 +186,7 @@ async def test_reopening_revokes_the_keys_and_grants_made_since_the_close(
     await reopen_account(USER_ID, now=now)
 
     tx.apikey.update_many.assert_awaited_once_with(
-        where={"userId": USER_ID, "status": {"not": APIKeyStatus.REVOKED}},
+        where={"userId": USER_ID, "NOT": [{"status": APIKeyStatus.REVOKED}]},
         data={"status": APIKeyStatus.REVOKED, "revokedAt": now},
     )
     tx.oauthauthorizationcode.delete_many.assert_awaited_once_with(
