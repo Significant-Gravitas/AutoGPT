@@ -43,7 +43,6 @@ UNBOUNDED_REQUEST_MODELS = frozenset(
         "backend.api.features.admin.execution_analytics_routes.ExecutionAnalyticsRequest",
         "backend.api.features.admin.impersonation_admin_routes.ImpersonationNotifyRequest",
         "backend.api.features.admin.rate_limit_admin_routes.SetUserTierRequest",
-        "backend.api.features.api_keys.model.CreateAPIKeyRequest",
         "backend.api.features.auth_email.routes.AuthEmailRequest",
         "backend.api.features.auth_email.routes.AuthEmailSuppressionRequest",
         "backend.api.features.billing.subscriptions.routes.SubscriptionTierRequest",

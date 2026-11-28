@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
+from pydantic import ValidationError
 
 from backend.api.features import oauth
 from backend.data.auth.oauth import OAuthApplicationInfo
@@ -166,6 +167,15 @@ async def test_a_closed_account_gets_no_code():
 
     assert error.value.status_code == 401
     issue.assert_not_awaited()
+
+
+def test_a_request_may_ask_for_every_scope_but_no_more():
+    every = [scope.value for scope in APIKeyPermission]
+    one_too_many = [APIKeyPermission.IDENTITY.value] * (len(every) + 1)
+
+    assert _request(REGISTERED, scopes=every).scopes == every
+    with pytest.raises(ValidationError):
+        _request(REGISTERED, scopes=one_too_many)
 
 
 async def _authorize(
