@@ -133,21 +133,50 @@ def test_an_invitation_carries_the_role_only_from_a_billing_holder(
 
 
 @pytest.mark.parametrize(
-    "inviter, granted",
+    "inviter",
     [
-        (MagicMock(isOwner=True, isBillingManager=False), True),
-        (MagicMock(isOwner=False, isBillingManager=True), True),
-        (MagicMock(isOwner=False, isBillingManager=False), False),
-        (None, False),
+        MagicMock(isOwner=True, isBillingManager=False),
+        MagicMock(isOwner=False, isBillingManager=True),
     ],
-    ids=["owner", "billing-manager", "plain-admin", "inviter-gone"],
+    ids=["owner", "billing-manager"],
 )
 @pytest.mark.asyncio
-async def test_accepting_grants_the_role_only_while_the_inviter_holds_billing(
-    mocker, inviter, granted
+async def test_accepting_grants_the_role_while_the_inviter_holds_billing(
+    mocker, inviter
 ):
-    """An invitation made before its inviter lost MANAGE_BILLING, or made by
-    someone who never held it, joins the member without the role."""
+    client, add = _accepting_a_billing_invitation(mocker, inviter)
+
+    await invitation_routes.accept_invitation("tok-1", user_id=MEMBER_ID)
+
+    assert add.await_args.kwargs["is_billing_manager"] is True
+    assert client.orgmember.find_first.await_args.kwargs["where"] == {
+        "orgId": ORG_ID,
+        "userId": CALLER_ID,
+        "status": "ACTIVE",
+    }
+
+
+@pytest.mark.parametrize(
+    "inviter",
+    [MagicMock(isOwner=False, isBillingManager=False), None],
+    ids=["plain-admin", "inviter-gone"],
+)
+@pytest.mark.asyncio
+async def test_accepting_is_refused_once_the_inviter_cannot_grant_billing(
+    mocker, inviter
+):
+    """The invitation stays pending rather than joining the member without the role."""
+    client, add = _accepting_a_billing_invitation(mocker, inviter)
+
+    with pytest.raises(fastapi.HTTPException) as refused:
+        await invitation_routes.accept_invitation("tok-1", user_id=MEMBER_ID)
+
+    assert refused.value.status_code == 409
+    add.assert_not_awaited()
+    client.orginvitation.update.assert_not_awaited()
+
+
+def _accepting_a_billing_invitation(mocker, inviter) -> tuple[MagicMock, AsyncMock]:
     invitation = _stored_invitation(
         data={
             "orgId": ORG_ID,
@@ -167,17 +196,7 @@ async def test_accepting_grants_the_role_only_while_the_inviter_holds_billing(
     client.user.find_unique = AsyncMock(return_value=MagicMock(email="new@example.com"))
     client.orgmember.find_first = AsyncMock(return_value=inviter)
     mocker.patch.object(invitation_routes, "prisma", client)
-    add = mocker.patch.object(orgs_db, "add_org_member", AsyncMock())
-
-    await invitation_routes.accept_invitation("tok-1", user_id=MEMBER_ID)
-
-    assert add.await_args.kwargs["is_billing_manager"] is granted
-    if inviter is not None:
-        assert client.orgmember.find_first.await_args.kwargs["where"] == {
-            "orgId": ORG_ID,
-            "userId": CALLER_ID,
-            "status": "ACTIVE",
-        }
+    return client, mocker.patch.object(orgs_db, "add_org_member", AsyncMock())
 
 
 def _stored_invitation(data: dict) -> MagicMock:

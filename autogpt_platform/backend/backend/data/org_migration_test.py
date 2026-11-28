@@ -161,10 +161,10 @@ class TestResolveUniqueSlug:
 
     @pytest.mark.asyncio
     async def test_every_numbered_slug_taken_still_resolves(self, mock_prisma):
+        taken = {"x", *(f"x-{i}" for i in range(1, 21))}
+
         async def alias_find(where):
-            if re.fullmatch(r"x(-\d+)?", where["aliasSlug"]):
-                return MagicMock()
-            return None
+            return MagicMock() if where["aliasSlug"] in taken else None
 
         mock_prisma.organizationalias.find_unique = AsyncMock(side_effect=alias_find)
 

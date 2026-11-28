@@ -33,6 +33,10 @@ PERSONAL_ORG_JOIN_REFUSED = (
     "This invitation is to a personal organization, which has a single "
     "member. Ask the sender to invite you to a team organization."
 )
+BILLING_INVITE_LAPSED = (
+    "The sender of this invitation can no longer make you a billing manager. "
+    "Ask an owner to invite you again."
+)
 
 
 def _verify_org_path(ctx: RequestContext, org_id: str) -> None:
@@ -198,6 +202,8 @@ async def accept_invitation(
     # org to a team.
     if invitation.Org.isPersonal:
         raise HTTPException(409, detail=PERSONAL_ORG_JOIN_REFUSED)
+    if invitation.isBillingManager and not await _inviter_may_grant_billing(invitation):
+        raise HTTPException(409, detail=BILLING_INVITE_LAPSED)
 
     # Add user to org (idempotent — handles race condition from concurrent accepts)
     try:
@@ -205,8 +211,7 @@ async def accept_invitation(
             org_id=invitation.orgId,
             user_id=user_id,
             is_admin=invitation.isAdmin,
-            is_billing_manager=invitation.isBillingManager
-            and await _inviter_may_grant_billing(invitation),
+            is_billing_manager=invitation.isBillingManager,
             invited_by=invitation.invitedByUserId,
         )
     except UniqueViolationError:
