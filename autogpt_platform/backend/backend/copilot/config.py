@@ -321,6 +321,14 @@ class ChatConfig(BaseSettings):
         "(``copilot-read-screen`` = shadow) judges and records, 0 to 1. Picked "
         "per chat, so a sampled chat is recorded whole.",
     )
+    gate_shadow_sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Share of chats whose tool calls the action gate's shadow mode "
+        "(``copilot-auto-mode`` = shadow) judges and records, 0 to 1. Picked per "
+        "chat, so a sampled chat is recorded whole.",
+    )
     content_judge_timeout_s: float = Field(
         default=15.0,
         description="Hard timeout for one content-judge call on an outside "

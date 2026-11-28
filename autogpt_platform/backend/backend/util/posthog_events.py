@@ -55,6 +55,8 @@ class PostHogEvent(StrEnum):
     CHAT_BLOCKED = "chat_blocked"
     # backend/copilot/gate/shadow.py
     CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
+    # backend/copilot/gate/action_shadow.py
+    CHAT_GATE_SHADOW_DECISION = "chat_gate_shadow_decision"
 
     # Billing: backend/data/credit.py
     TOPUP_COMPLETED = "topup_completed"

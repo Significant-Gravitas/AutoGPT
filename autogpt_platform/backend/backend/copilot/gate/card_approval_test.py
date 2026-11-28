@@ -40,6 +40,19 @@ async def test_an_approval_is_read_once_by_its_user_in_its_chat():
     assert not await approved_on_card(_CONFIRM, {"confirmation_id": "c-1"}, "u-1", chat)
 
 
+async def test_a_look_leaves_the_approval_for_the_confirm_that_spends_it():
+    chat = f"s-{uuid.uuid4()}"
+    await record_card_decisions(
+        "u-1", chat, "Approved: create Otto (confirmation_id: c-1)."
+    )
+    args = {"confirmation_id": "c-1"}
+
+    assert await approved_on_card(_CONFIRM, args, "u-1", chat, spend=False)
+    assert await approved_on_card(_CONFIRM, args, "u-1", chat, spend=False)
+    assert await approved_on_card(_CONFIRM, args, "u-1", chat)
+    assert not await approved_on_card(_CONFIRM, args, "u-1", chat, spend=False)
+
+
 async def test_a_later_decline_withdraws_an_approval():
     chat = f"s-{uuid.uuid4()}"
     await record_card_decisions(
